@@ -1,0 +1,213 @@
+# 02: System Architecture
+
+## High-level flow
+
+```mermaid
+flowchart LR
+    subgraph Sources
+        NV[nflverse via nflreadpy]
+        ESPN[ESPN public API<br/>news, injuries, QBR, FPI, current lines]
+        EXTRA[Other free sources<br/>NGS site, PFR, Open-Meteo, The Odds API]
+        BDB[Big Data Bowl 2026<br/>one-time download]
+    end
+
+    subgraph Storage
+        RAW[(Raw Parquet snapshots<br/>D:\nfl-ml-data\raw)]
+        CUR[(Curated tables<br/>DuckDB over Parquet)]
+    end
+
+    subgraph Track1[Track 1: weekly]
+        FEAT[Feature builder]
+        RATE[Team ratings + trend]
+        GAME[Game win-prob model]
+        PLAY[Player model]
+        GRAPH[(Neo4j in Docker<br/>rebuilt weekly)]
+        PAY[Payload builder<br/>JSON + pydantic]
+        LLM[LLM synthesis<br/>prose only]
+        CHECK[Number / claim / language checks]
+        OUT[Digest .md<br/>+ optional email]
+    end
+
+    subgraph Track2[Track 2: research]
+        T2[BDB movement models]
+        FIND[Findings + historical<br/>player movement profiles]
+    end
+
+    WB[(Weights & Biases)]
+
+    NV --> RAW
+    ESPN --> RAW
+    EXTRA --> RAW
+    RAW --> CUR --> FEAT
+    FEAT --> RATE --> GAME
+    FEAT --> PLAY
+    RATE --> PLAY
+    GAME --> PLAY
+    CUR --> GRAPH
+    RATE --> GRAPH
+    GAME --> GRAPH
+    PLAY --> GRAPH
+    GRAPH --> PAY
+    RATE --> PAY
+    GAME --> PAY
+    PLAY --> PAY
+    CUR --> PAY
+    PAY --> LLM --> CHECK --> OUT
+    BDB --> T2 --> FIND
+    FIND -.static attributes.-> GRAPH
+    FIND -.feature choices.-> PLAY
+    RATE & GAME & PLAY & T2 & CHECK --> WB
+```
+
+**Key idea: Parquet is the source of truth.** Everything downstream (features, models, the graph, the payload) can be regenerated from the raw snapshots. The Neo4j graph is a **derived view that's rebuilt every week**, so it can be wiped and recreated at any time with no data loss.
+
+## Components
+
+| Component | Responsibility | Notes |
+|---|---|---|
+| Ingestion | Pull each source into dated raw Parquet snapshots | Idempotent. A rerun on the same day overwrites that day's snapshot. See [03](03-data-sources.md). |
+| Curation | Clean, standardize team codes and player IDs, build analysis tables | DuckDB SQL plus Polars. Data-quality checks run here. |
+| Feature builder | Build model features using **only data available at prediction time** | One function per feature family, each tested against leakage. |
+| Team ratings | Opponent-adjusted EPA ratings and trend | Not a learned label: a calculation. See [04](04-track1-models.md). |
+| Game model | Win probability and expected margin for every game | Two versions: model-only and market-informed. |
+| Player model | Projected output vs the player's own baseline, with uncertainty | Separate target per position group. |
+| Knowledge graph | Multi-hop insight queries, plus a store of model outputs | Neo4j Community in Docker. See [05](05-knowledge-graph.md). |
+| Payload builder | Assemble one validated JSON payload per run | Pydantic schema. Numbers are pre-formatted as display strings. |
+| Synthesis | LLM turns the payload into prose sections | Called through a **provider-agnostic `LLMClient`**. Starts with a `PlaceholderLLM` (a deterministic template writer); Rishi connects a real provider later. Tables (game probabilities, report card) are rendered by code, not the LLM. |
+| Checks | Number provenance, entity binding, banned language, length | On failure: regenerate once, then publish with a warning banner. See [06](06-weekly-digest.md). |
+| Delivery | Write Markdown to `reports/`, optionally send email or a notification | |
+| Tracking | Log experiments and every production run to W&B | See [08](08-experiment-tracking.md). |
+
+## Tech stack
+
+| Concern | Choice | Why |
+|---|---|---|
+| Language | Python 3.12 | Ecosystem fit |
+| Environment | `uv` (pyproject + lockfile) | Fast, reproducible |
+| NFL data | `nflreadpy` (the successor to the deprecated `nfl_data_py`) | Official nflverse Python loader, returns Polars, has caching |
+| DataFrames | Polars (main), pandas only where a library needs it | Speed, matches nflreadpy |
+| Analytical SQL | DuckDB over Parquet | Zero setup, fast, works well with Polars |
+| Tabular ML | scikit-learn (logistic / ridge), LightGBM | Simple baselines first, then gradient boosting |
+| Explanations | SHAP (TreeExplainer) | Per-prediction drivers for the digest |
+| Deep learning (Track 2) | PyTorch | Sequence and interaction models |
+| Graph | Neo4j Community (Docker) + APOC + Graph Data Science plugin, official `neo4j` Python driver | Learning goal, multi-hop queries, GDS algorithms |
+| Schemas | Pydantic v2 | Payload and config validation |
+| LLM | `LLMClient` interface. Providers: `placeholder` (default), later `anthropic` and `openai_compatible` (covers open-source model servers such as Ollama, vLLM and LM Studio) | Rishi picks and connects the real model later; only config changes |
+| Tracking | `wandb` | Already set up and paid for |
+| CLI | Typer | One command per pipeline step, plus `weekly run` |
+| Tests | pytest | Leakage tests, query golden tests, check tests |
+| Scheduling | Windows Task Scheduler running the CLI | Local machine hosts Docker Neo4j; see below |
+
+## Proposed repository layout
+
+```
+NFL-ML-AI/
+├── documentation/              # these docs
+├── docker-compose.yml          # Neo4j (+ plugins)
+├── pyproject.toml / uv.lock
+├── .env.example                # secrets template (real .env is git-ignored)
+├── config/
+│   ├── settings.yaml           # seasons, paths, model + LLM choices, thresholds
+│   └── followed_teams.yaml     # digest personalization (prioritization only)
+├── src/nflengine/
+│   ├── cli.py                  # `nfl ingest`, `nfl features`, `nfl train`, `nfl graph build`, `nfl digest`, `nfl weekly run`
+│   ├── ingest/                 # one module per source
+│   ├── curate/                 # cleaning, ID/team normalization, quality checks
+│   ├── features/               # feature families with as-of-date guarantees
+│   ├── models/
+│   │   ├── ratings.py          # team ratings + trend
+│   │   ├── elo.py              # Elo baseline
+│   │   ├── game.py             # win probability model(s)
+│   │   └── player.py           # player projections
+│   ├── graph/
+│   │   ├── schema.cypher       # constraints + indexes
+│   │   ├── load.py             # Parquet -> Neo4j
+│   │   └── queries/            # one .cypher file per insight query
+│   ├── digest/
+│   │   ├── payload.py          # pydantic models + builder
+│   │   ├── prompt/             # system prompt + section specs
+│   │   ├── render.py           # deterministic tables
+│   │   ├── synthesize.py       # LLM call
+│   │   └── checks.py           # number / entity / language / length checks
+│   ├── track2/                 # BDB pipeline + models
+│   └── tracking.py             # W&B helpers
+├── notebooks/                  # exploration only; nothing production lives here
+└── tests/
+```
+
+No data lives in the repo. Everything large lives under the data root on D: (see the next section).
+
+## Storage: data lives on D:
+
+The repo (code, config, docs) stays on **F:** (SSD). All data lives under one **data root** on **D:** (Seagate One Touch HDD, ~500 GB free as of 2026-09-30), set by one variable:
+
+```
+# .env
+NFL_DATA_ROOT=D:\nfl-ml-data
+```
+
+```
+D:\nfl-ml-data\
+├── raw\{source}\{dataset}\snapshot=YYYY-MM-DD\   # dated raw snapshots
+├── curated\                                     # curated Parquet tables + DuckDB file
+├── features\                                    # cached feature tables
+├── models\                                      # local model files (also W&B artifacts)
+├── runs\{season}\week{NN}\                      # per-run payload, predictions, checks, logs
+├── reports\{season}\                            # published digests
+├── bdb\                                         # Track 2: raw CSV, Parquet, outputs
+├── neo4j\data\  neo4j\logs\                     # Neo4j database files (Docker bind mount)
+├── wandb\                                       # W&B local run files (WANDB_DIR)
+└── cache\nflreadpy\  cache\uv\  cache\http\     # nflreadpy cache, uv package cache, HTTP cache
+```
+
+- All code reads paths from one `paths` module built from `NFL_DATA_ROOT`. **No hard-coded paths.**
+- `UV_CACHE_DIR` and `WANDB_DIR` also point under the data root (PyTorch alone is several GB).
+- **The D: drive is probably an external USB drive.** Every command starts with a data-root check. If `D:\nfl-ml-data` is missing, it stops with a clear "data drive not connected" error and writes nothing. Give the drive a fixed letter in Disk Management.
+- **HDD speed:** fine for Parquet and for a graph of a few hundred MB. Neo4j reading a Windows folder through Docker is slower than Docker's own storage. If weekly rebuilds get slow, move only the Neo4j folder; nothing else changes.
+- Expected size: about 10–30 GB at first (mostly Big Data Bowl data, snapshots and model files).
+
+## Weekly schedule
+
+The schedule is **driven by the game calendar, not fixed weekdays.** Each run reads the schedule to find (a) whether the previous week's games are all final and in the data, and (b) the next slate's first kickoff, which is the digest deadline.
+
+| Run | Default time | What it does |
+|---|---|---|
+| **Main run** | Tuesday 10:00 local (after Monday Night Football; nflverse play-by-play normally updates overnight) | Full pipeline: ingest → curate → features → refit → predict → graph rebuild → payload → digest → checks → deliver |
+| Retry | Every 3 hours until Wednesday 18:00 if the data-readiness check fails | Same as the main run |
+| **Injury update** (optional) | Saturday 10:00 (final injury designations come out Friday) | Re-ingest injuries and ESPN news, rerun the game and player predictions, publish a short addendum **only if** something material changed (a win probability moved ≥ 5 points, or a watch-list player's status changed) |
+
+Calendar edge cases the scheduler and the digest handle:
+- **Thursday games:** the main run must finish before the first Thursday kickoff. Thanksgiving week has several Thursday games.
+- **Odd game days:** Christmas, Saturday games late in the season, Black Friday, and international morning games are handled by reading kickoff times from the schedule, not by assuming Sunday.
+- **Byes:** teams on bye are skipped in game outlook, and their trend section notes the rest.
+- **Week 18:** teams that have clinched or been eliminated may rest starters. These games are marked low confidence.
+- **Playoffs:** the same pipeline runs with `game_type != 'REG'`. The bracket replaces a full slate.
+- **Weeks 1–3:** ratings lean on last season's numbers pulled toward the average (see [04](04-track1-models.md)). Confidence is shown as lower.
+
+## Orchestration
+
+**Main option: Windows Task Scheduler on the home machine** runs `uv run nfl weekly run`. Neo4j runs in local Docker, so running the pipeline on the same machine is simplest. Requirements: the machine is on (or wakes for the task), and Docker Desktop starts at login.
+
+**Fallback: GitHub Actions on a schedule.** Because the graph is rebuilt from Parquet every week, CI can start Neo4j as a temporary *service container*, rebuild it, run the queries and throw it away. To use this we'd need to keep raw snapshots somewhere CI can reach (a release asset or cache). Only set this up if the local machine proves unreliable.
+
+No heavyweight orchestrator such as Prefect or Airflow. `nfl weekly run` is a plain sequence of idempotent steps, and each step writes to `{NFL_DATA_ROOT}/runs/{season}/week{NN}/` so a failed run can resume from the step that failed (`--from-step graph`).
+
+## Failure handling
+
+| Failure | Behavior |
+|---|---|
+| Data drive (D:) not connected | Stop immediately with a clear error; write nothing; send a notification |
+| nflverse data not ready (previous week's games missing) | Don't run; retry on schedule; alert if still missing by Wednesday 18:00 |
+| ESPN endpoint changed or down | **Fail soft:** continue without news or current lines and note it in the footer |
+| Current market lines unavailable | Publish model-only probabilities; skip the "disagreement with consensus" item |
+| Neo4j down | Try to start the container once; if it still fails, publish the digest without graph sections and add a banner |
+| LLM check fails | Regenerate once with the list of failures; if it still fails, publish with a warning banner and mark the run in W&B |
+| Any unhandled exception | Run marked failed in W&B, notification sent, nothing published |
+
+Notifications: email through the SMTP settings in `.env`, or a push notification service. One channel is enough.
+
+## Secrets and config
+
+- `.env` (git-ignored) holds `NFL_DATA_ROOT`, `NEO4J_PASSWORD`, `WANDB_API_KEY`, optional `LLM_API_KEY` / `LLM_BASE_URL`, optional `ODDS_API_KEY`, SMTP credentials and the Kaggle token. `.env.example` lists the variable names.
+- `config/settings.yaml` holds non-secret settings: training seasons, rating decay, thresholds, `llm.provider` (default `placeholder`) and `llm.model`, word budgets, feature flags (such as `injury_update_enabled`, `source.odds_api.enabled`).
+- Each run's config is logged to W&B with a hash so it can be reproduced.

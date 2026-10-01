@@ -1,0 +1,51 @@
+# 10: Decisions Log
+
+Record of project decisions, why they were made, and when to revisit them. Add new entries at the bottom; don't edit old ones (supersede them instead).
+
+## Decisions
+
+| ID | Date | Decision | Why | Revisit if |
+|---|---|---|---|---|
+| D01 | 2026-09-30 | The original two docs are treated as starter material. The phased plan is dropped and replaced by [09](09-build-roadmap.md) | Review found undefined targets, data gaps and ordering issues | — |
+| D02 | 2026-09-30 | Track 1 outputs **calibrated win probabilities for every game**, alongside team trends, players to watch and graph insights. **No odds framing** | Rishi confirmed win probabilities are wanted; the original "trend, not picks" wording was a misread | — |
+| D03 | 2026-09-30 | **Betting-market data allowed** as model features and as the benchmark. The digest never shows lines, odds or betting language; model-vs-consensus gaps are described in words only | More accurate models and a tough, honest benchmark; keeps the digest about analysis, not wagering | Rishi wants market numbers shown |
+| D04 | 2026-09-30 | Every Track 1 model has a defined target and baseline: ratings (calculation), game (margin / win; must beat Elo), player (per-position stat vs own baseline) | The original "trend score" and "perform well" weren't trainable | — |
+| D05 | 2026-09-30 | Team strength = opponent-adjusted EPA/play with recency weighting and a preseason prior pulled toward average. Raw points, yards and turnover margin aren't core features | EPA is steadier and more predictive; the prior fixes the early-season gap | — |
+| D06 | 2026-09-30 | **Trend** is presented as descriptive unless validation shows it predicts beyond the rating | Honesty about evidence | Validation shows predictive value |
+| D07 | 2026-09-30 | **Neo4j Community in local Docker** (with APOC and GDS), not AuraDB | Rishi's preference; no free-tier pausing; full GDS for learning | Need remote access |
+| D08 | 2026-09-30 | **The graph is a deliberate learning goal** with a richer, multi-hop schema (coaches, officials, venues, QB–receiver links, depth charts, player movement, model outputs). Queries must truly need the graph | Rishi wants to learn graph databases on a real project; the graph should earn its place | — |
+| D09 | 2026-09-30 | Graph is **league-wide**, 2018 onward, **fully rebuilt weekly** from Parquet. Followed teams affect digest ranking only | Small data; no drift from the source of truth; cross-team history is the valuable part | Rebuild time goes over ~10 min |
+| D10 | 2026-09-30 | **Parquet snapshots are the source of truth.** Everything downstream can be regenerated | Reproducibility; nflverse corrects data after the fact | — |
+| D11 | 2026-09-30 | Track 2 uses **Big Data Bowl 2026 Prediction** data; **2027 not announced** as of this date | Only available edition | 2027 is announced |
+| D12 | 2026-09-30 | Track 2 is **connected but not intertwined**: no live inference on current games (frame-level tracking isn't public). It connects through research findings → NGS feature choices, and historical movement profiles → labeled graph attributes | Honest and feasible; keeps Track 2 off the weekly critical path | Current-season tracking becomes available |
+| D13 | 2026-09-30 | Current-season "movement" content comes from **weekly NGS summaries** (+ PFR advanced, FTN) in a new **"Last week under the hood"** section and as player-model features | Rishi asked for previous-week, current-season data in the digest | — |
+| D14 | 2026-09-30 | `load_participation` (filled in only after the season) is **excluded from live features** | Not available at prediction time → leakage | nflverse starts publishing it in season |
+| D15 | 2026-09-30 | Pass-rusher target is **pressures**, not sacks | Sacks are too rare and noisy to project | — |
+| D16 | 2026-09-30 | No cornerback-vs-receiver matchup features (paid PFF data). Use opponent-adjusted position defense, NGS cushion and separation, FTN instead | $15 data ceiling | A cheap source appears |
+| D17 | 2026-09-30 | Models are **refit weekly from scratch** on an expanding window; hyperparameters **fixed per season** (tuned before the season with walk-forward evaluation) | Refitting is cheap; avoids mid-season overfitting to noise | Drift signals ([08](08-experiment-tracking.md)) |
+| D18 | 2026-09-30 | LLM writes **prose only**; tables are rendered by code; payload numbers are pre-formatted display strings; number, entity, banned-language and length checks; regenerate once, then publish with a warning banner | Keeps the room for errors small; a flagged digest beats a missing one | — |
+| D19 | 2026-09-30 | A **Report card** section grades last week's saved predictions | Accountability; uses last week's data; matches the W&B scorecard | — |
+| D20 | 2026-09-30 | Schedule driven by the calendar: Tuesday main run + retries, optional Saturday injury update; deadline = first kickoff of the next slate | TNF and holiday games; injury designations are final on Friday | — |
+| D21 | 2026-09-30 | Orchestration: Windows Task Scheduler + a resumable `nfl weekly run` CLI. GitHub Actions with a temporary Neo4j is the fallback | Neo4j is local; the simplest thing that works | The local machine is unreliable |
+| D22 | 2026-09-30 | Stack: Python 3.12, uv, nflreadpy (not the deprecated nfl_data_py), Polars + DuckDB, scikit-learn, LightGBM, SHAP, PyTorch (Track 2), Pydantic, Typer, W&B, Anthropic SDK | Modern, fast, fits the data size | — |
+| D23 | 2026-09-30 | Evaluation metrics: Brier score, log loss, calibration (game); MAE, rank correlation, coverage (player); RMSE (Track 2). ROC/F1 are secondary | Match each metric to its task; the original ROC/F1 framing didn't fit regression or probabilities | — |
+| D24 | 2026-10-01 | **LLM is a placeholder** behind a provider-agnostic `LLMClient` (`placeholder` → later `anthropic` or `openai_compatible`). Rishi connects the real model in P09. **Supersedes the "Anthropic SDK" part of D22** | Writing the prose is a simple task; keep the choice open (Claude or open-source); the pipeline and checks can be built and tested with no API | — |
+| D25 | 2026-10-01 | Use **every useful free source**: NGS site endpoints, the expanded ESPN API (QBR, FPI, win rates), careful PFR scraping, Open-Meteo forecasts, The Odds API free tier. All optional and fail-soft | More and better player data, especially NGS, is the heart of the project | A source becomes unreliable |
+| D26 | 2026-10-01 | **Licensing isn't a design constraint**: private, personal project, nothing published. Sources are still listed for provenance | Rishi confirmed it's private | Anything is ever published |
+| D27 | 2026-10-01 | **All data lives on D:** (`NFL_DATA_ROOT=D:\nfl-ml-data`, HDD, ~500 GB free); code stays on F:. Neo4j database files are a bind mount on D:; the W&B dir, nflreadpy cache and uv cache are on D: too. A data-root check runs first in every command | F: is short on space; D: is probably an external drive, so check it every time | Neo4j bind mount too slow → named Docker volume |
+| D28 | 2026-10-01 | **Explicit current-season sample weighting** in all weekly refits (start: current 3×, last season 1.5×, older 1×; tuned) | Current form must dominate as the season goes on; historical data teaches the relationships | Walk-forward evaluation favors other weights |
+| D29 | 2026-10-01 | **Expanded prediction targets**: predicted score per game, plus offense and defense player stats (see [11](11-prediction-targets.md)), plus an **accuracy scoreboard** per target in W&B and the digest | "How accurate can we get" is the most exciting part of the project for Rishi | — |
+| D30 | 2026-10-01 | **Rishi-in-the-loop working model**: 🤖 Agent / 🧑 Rishi runs / ✋ Checkpoint tags on every task; first training runs, tuning and backtests are Rishi's to launch (or delegate); live W&B curves; `launched-by` tag. Ingestion and scaffolding are agent-only | Rishi wants to learn hands-on and watch training live | — |
+| D31 | 2026-10-01 | The build is organized as **phases in `documentation/plans/`** (P00–P10, T00–T04, STRETCH) with `PROGRESS.md` as the tracker. The M-milestones in the old roadmap are replaced | Any agent (or Rishi) can pick up exactly where work stopped | — |
+
+## Open questions
+
+| ID | Question | Default until answered |
+|---|---|---|
+| Q01 | Which teams go in `followed_teams.yaml`? | Empty: no prioritization |
+| Q02 | Delivery channel: file only, email, or push notification? | File in `{NFL_DATA_ROOT}/reports/` + email if SMTP is configured |
+| Q03 | Should digests also be copied into the repo (a version-controlled record of calls)? | No: they stay on D: |
+| Q04 | Is the Saturday injury update wanted from day one or later? | Off until P07 |
+| Q05 | ~~Which LLM model by default?~~ **Answered (D24):** placeholder until Rishi connects one in P09 | — |
+| Q06 | Should the optional coordinator / coaching-tree seed CSV be hand-curated? | Not until P08 |
+| Q07 | Can the PC stay on (or wake) and keep D: connected for scheduled runs? | Decided at the P07 checkpoint |
