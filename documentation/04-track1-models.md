@@ -25,14 +25,21 @@ The models stack: A feeds B, and A and B feed C.
 
 ## A. Team ratings and trend
 
+### Key terms
+
+- **Expected points (EP):** for any game situation (down, distance, field position, time left, score), the points the offense scores on average from there. For example, 1st-and-10 at your own 25 is worth about +0.5, and 1st-and-goal at the 2 about +5.
+- **EPA (Expected Points Added):** a play's EPA is EP after the play minus EP before it. It measures how much the play helped the offense's scoring chances. Examples: a 20-yard completion into field-goal range ≈ +1.5; a 3rd-down sack ≈ −1.5; an interception ≈ −4 or worse. It beats raw yards because context counts: 4 yards on 3rd-and-3 is a success, on 3rd-and-10 a failure. We don't compute it: nflverse play-by-play carries it (`epa`, from the nflfastR model).
+- **Success rate:** the share of plays with EPA > 0.
+- **Offense / defense / net rating:** a team's opponent-adjusted EPA per play on offense, the EPA per play its defense **allows** (lower is better), and `net = offense − defense`. All are relative to the league average (0 = average).
+
 ### Ratings
 
-Separate offense and defense ratings for each team, split by pass and rush, measured in **EPA per play**, adjusted for opponent strength.
+Separate offense and defense ratings for each team, split by pass and rush, measured in **EPA per play**, adjusted for opponent strength. *(This section is the original plan. What was built and tuned, including the final 12-week half-life and 0.1 prior pull, is in "As built in P02" below and in the [model card](model_cards/team_ratings.md).)*
 
-- **Method:** ridge regression on play-level EPA with an offense-team indicator, a defense-team indicator and home field, fit on a recency-weighted window. Each play's weight = exponential decay by weeks ago (half-life tuned, starting point ~4 weeks). Ridge shrinkage stabilizes small samples.
+- **Method:** ridge regression on play-level EPA with an offense-team indicator, a defense-team indicator and home field, fit on a recency-weighted window. Each play's weight = exponential decay by weeks ago (half-life tuned, starting point ~4 weeks; tuned to 12, D46). Ridge shrinkage stabilizes small samples.
 - **Play filters:** drop kneels, spikes and no-plays. Down-weight garbage time (win probability < 0.05 or > 0.95) instead of dropping it.
 - **Variants computed:** overall EPA/play, pass EPA/dropback, rush EPA/carry, success rate. Mostly offense and defense, plus a combined "net" rating.
-- **Preseason prior (the early-season fix):** start each season from last season's final rating pulled ~1/3 of the way toward the league average (tune the factor on past seasons). Blend current-season evidence in by plays observed, so by around Week 6 the prior has little weight. Optionally adjust the prior for an offseason QB change (starting QB changed → pull further toward average).
+- **Preseason prior (the early-season fix):** start each season from last season's final rating pulled ~1/3 of the way toward the league average (tune the factor on past seasons). Blend current-season evidence in by plays observed, so by around Week 6 the prior has little weight. Optionally adjust the prior for an offseason QB change (starting QB changed → pull further toward average). *(Tuned: a 0.1 pull from last season's full-season rating, which is already shrunk. The prior fades more slowly than planned, because longer memory predicted better: about 50% of the rating in week 4, 38% in week 6, 24% in week 10. The QB-change pull was set to 0 because it hurt. See D42 and D46.)*
 - **Elo** (also used as a baseline): standard NFL Elo with margin-of-victory multiplier, home field, and pull back toward the average between seasons. Computed from 2002 on so it has history.
 
 ### Trend
@@ -209,7 +216,7 @@ This answers the brief's open question.
 - **Current-season weighting (explicit):** training rows get sample weights that favor recent data. Current-season rows get the highest weight, last season less, older seasons less again (start: current 3×, last season 1.5×, older 1×; tuned before the season with walk-forward evaluation). Historical seasons teach the model *how much* form, matchups and injuries matter; current-season rows and features provide *the form itself*.
 - **How a week's new data reaches the next prediction.** For example, on the Tuesday after Week 4:
   1. Ingest Week 4.
-  2. Ratings update, with recency weighting (half-life ~4 weeks) and the preseason prior fading out by about Week 6.
+  2. Ratings update (`nfl ratings build`): every week's ratings are recomputed from scratch with the season's fixed settings (12-week recency half-life; the preseason prior is about half the rating by week 4 and a quarter by week 10; D46).
   3. Player baselines and rolling features update (last 4 games plus season to date).
   4. Every model is refit, including all 2026 Weeks 1–4 rows.
   5. Predict Week 5.

@@ -49,6 +49,12 @@ _None._
 
 ## Session log (newest first)
 
+### 2026-10-03: P02 docs follow-up
+- Rishi asked whether the P02 explanation was documented. I found and filled three gaps:
+  - EPA, success rate and net rating were never defined. They are now under "Key terms" at the top of doc 04 → A, linked from `documentation/README.md`.
+  - Doc 04's weekly-cadence text still said "half-life ~4 weeks, prior gone by week 6". It now gives the tuned values and the real fade: the prior is 52% of the rating in week 4, 38% in week 6, 24% in week 10. The original plan bullets point to the as-built values.
+  - The model card has a new "How it works, in plain language" section: what is computed vs learned, what each setting means, how the tables are applied each week, and where P03–P06 use them.
+
 ### 2026-10-03: P01 closed, P02 built, tuned and closed
 - **Approvals and waivers.**
   - Rishi approved closing P01 in the kickoff prompt.

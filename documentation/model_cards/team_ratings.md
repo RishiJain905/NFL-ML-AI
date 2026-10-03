@@ -13,6 +13,48 @@ Opponent-adjusted team strength in **EPA per play** (and success rate), for offe
 - **Not a learned label:** it's a calculation, validated by how well it predicts the next games.
 - **Elo** (baseline for P03): 538-style, K 20, home field 48, 1/3 reversion, margin-of-victory multiplier, from 2002 (D43).
 
+## How it works, in plain language
+
+New to EPA? See [04 → Key terms](../04-track1-models.md#key-terms).
+
+**Nothing here is "trained" like a neural net or LightGBM.** There are no saved weights and no model file. Every `nfl ratings build` recomputes all of history from the data and three fixed settings, in about 0.2 seconds.
+
+- **Ratings: a regression solved fresh for every week.**
+  - The equation: `EPA of a play = league average + offense strength + defense strength + home field`. It is solved over this season's plays from earlier weeks, for each of 3 play types × 2 metrics.
+  - Solving it across every play untangles schedule strength. Gaining 0.2 EPA/play against a great defense earns more credit than doing it against a bad one.
+  - Each week's plays are summarized once into a 66×66 matrix, so any week's ratings are a single small solve.
+- **Elo: a running score, updated game by game from 2002.**
+  - Before a game it gives a win probability.
+  - After the game, the winner takes points from the loser. Upsets and blowouts move it more.
+  - Each offseason every team is pulled 1/3 back toward average.
+- **Trend: arithmetic on the ratings.**
+  - The change over 3 weeks, plus performance vs what the ratings expected over the last 3 games.
+  - Which part moved most (pass/rush, offense/defense), and evidence: QB change, key injuries, pressure-rate shifts.
+
+**What was actually learned: three settings, chosen once by a backtest.** For every week of 2015–2025, the backtest took the ratings as of that week, predicted that week's games, and measured the error (sweep `dwyj31wk`, 175 combinations). The settings stay fixed for the season (D17) and are retuned before 2027 (P10).
+
+| Setting | Value | Plain meaning |
+|---|---|---|
+| Half-life | 12 weeks | How fast old games stop counting: a game 12 weeks older than the latest one counts half as much, 24 weeks older a quarter. Within a ~17-week season, early games keep real weight. Short half-lives (4) chase noise; anything 8+ was about equally good |
+| Prior pull | 0.1 (10%) | In week 1, every team starts at last season's rating moved 10% toward average, a "regression to the mean" for the offseason. 0–20% were about equal; 50% threw away useful information and hurt weeks 1–3 |
+| Shrinkage | 250 plays | How much evidence it takes to move a team away from its starting point: the prior counts like 250 plays. Too little (100) chases noise; too much (650) reacts too slowly |
+
+**How fast the preseason prior fades** (average share of last season's rating in the current rating, 2015–2025):
+
+| Week | 1 | 2 | 4 | 6 | 10 | 18 |
+|---|---|---|---|---|---|---|
+| Prior share | 100% | 78% | 52% | 38% | 24% | 11% |
+
+**How it's applied each week.** Every table row is keyed "as of week w": it is built only from games before week w. A week-5 game therefore joins its week-5 rows directly, with no look-ahead (D44, covered by tests). From P07 on, each Tuesday runs ingest → curate → `nfl ratings build` with the fixed settings, and the current week's rows are the ratings going into this week's games.
+
+**Where the outputs are used:**
+- **P03 game model:** rating differences are the core features (net, pass offense vs pass defense, rush offense vs rush defense), with the Elo difference and home field. For example, net +0.10 vs −0.02 plus home field 0.01 gives an expected margin of +0.13 EPA/play, which the game model turns into a win probability and score. Elo's Brier score (0.2214) is the bar it has to beat.
+- **P04 digest:**
+  - "Team trend shifts" reads `team_trends` (direction, drivers, evidence), worded as form, never as a forecast (D47).
+  - `prior_weight` flags low confidence early in the season.
+- **P05 graph:** ratings and trends become weekly attributes of team nodes.
+- **P06 player model:** opponent pass and rush defense ratings become matchup features.
+
 ## Parameters (`config/settings.yaml` → `ratings`)
 
 | Parameter | Value | How chosen |

@@ -25,7 +25,9 @@ Last updated: 2026-10-01 (start of 2026 Week 4).
 | 10 | [Decisions log](10-decisions-log.md) | Every decision so far, why, when to revisit, open questions |
 | 11 | [Prediction targets](11-prediction-targets.md) | Every game, team and player (offense + defense) target, the baselines, realistic ceilings, the accuracy scoreboard |
 
-`plans/` is the phase-by-phase build plan. `archive/` holds the original starter docs, for reference only.
+`plans/` is the phase-by-phase build plan. `model_cards/` holds one card per trained or tuned model: what it is, how it was tuned, results vs baselines, known limits. Start with [team ratings](model_cards/team_ratings.md) (P02). `archive/` holds the original starter docs, for reference only.
+
+New to the football terms? **EPA, success rate and net rating** are defined at the top of [04 → A](04-track1-models.md#key-terms).
 
 ## One-paragraph summary
 
