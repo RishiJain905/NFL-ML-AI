@@ -23,6 +23,9 @@ Before writing code against any data source, API, library or model output, **loo
 
 ## 3. Build
 - Work the phase tasks **in order**. Tick each checkbox in the phase file when it's done.
+- Use the companion skills:
+  - **`curated-data`** (`.claude/skills/curated-data/SKILL.md`) for any data access
+  - **`model-experiment`** (`.claude/skills/model-experiment/SKILL.md`) for any feature, training, backtest or W&B work
 - Respect the architecture:
   - all paths come from the `nflengine.paths` module (data on D: under `NFL_DATA_ROOT`)
   - secrets only via `nflengine.settings` (`SecretStr`, never logged, never in W&B config)

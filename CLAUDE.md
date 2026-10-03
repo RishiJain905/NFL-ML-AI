@@ -71,7 +71,15 @@ A personal ML system that produces a weekly NFL digest (win probabilities, predi
 
 ## How to work here
 
-- **For any phase work** (starting, resuming or closing a phase, or picking up from PROGRESS), **use the `phase-workflow` skill** (`.claude/skills/phase-workflow/SKILL.md`). It's the step-by-step routine: session start, probing before building, build/test, Rishi-in-the-loop steps, verification, review, docs, PROGRESS updates, commit/push, the end-of-run report, and known quirks. Agents may improve it (rules in its last section).
+- **Project skills.** Use them whenever the task matches. If a skill wasn't loaded into your context, **read its `SKILL.md` directly** at the path below. Agents may improve any of them (rules in each file's last section). They never override this file.
+
+  | Skill | Use when | File |
+  |---|---|---|
+  | `phase-workflow` | Starting, resuming or closing any phase; picking up from PROGRESS; the end-to-end build routine (session start, probe before building, build/test, Rishi-in-the-loop steps, verify, review, docs, PROGRESS, commit/push, end-of-run report, known quirks) | `.claude/skills/phase-workflow/SKILL.md` |
+  | `curated-data` | Reading, joining or aggregating any curated data (games, plays, player/team stats, NGS, PFR, FTN, snaps, injuries, depth charts, lines, weather, ESPN): data dictionary, keys and conventions, quirks, tested query recipes | `.claude/skills/curated-data/SKILL.md` |
+  | `model-experiment` | Any feature building for models, training, tuning, walk-forward backtest or evaluation; W&B logging; artifacts and promotion; model cards; 🧑 handoffs with "what to look for" notes | `.claude/skills/model-experiment/SKILL.md` |
+
+  Planned for later phases (create them at the start of that phase): `digest-checks` (P04), `neo4j-graph` (P05), `weekly-ops` (P07), `adding-a-data-source` (whenever a new source is added).
 - **Pick up work** with the protocol in `documentation/plans/README.md`: read PROGRESS → the phase file → the docs it lists. Update PROGRESS at the end of every session.
 - **Task tags:** 🤖 the agent does it · 🧑 Rishi runs it (prepare the command and "what to look for" notes, then pause) · ✋ checkpoint (stop and ask). Never skip a 🧑 or ✋ step silently.
 - **Data lives on D:** under `NFL_DATA_ROOT` (`D:\nfl-ml-data`). Code stays on F:. All paths go through the `paths` module; no hard-coded paths; no data in git.

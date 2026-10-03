@@ -48,6 +48,14 @@ class Curator:
         return self.raw.read_latest(source, dataset)
 
     def write(self, name: str, df: pl.DataFrame) -> None:
+        # Some nflverse tables (e.g. injuries) carry season/week as floats; keep them integer.
+        casts = [
+            pl.col(c).cast(pl.Int32)
+            for c in ("season", "week")
+            if c in df.columns and df.schema[c].is_float()
+        ]
+        if casts:
+            df = df.with_columns(casts)
         tmp = self.out / f"{name}.parquet.tmp"
         df.write_parquet(tmp, compression="zstd")
         tmp.replace(self.out / f"{name}.parquet")
@@ -208,7 +216,7 @@ class Curator:
             pl.col("club_code").alias("team"),
             "gsis_id",
             pl.col("full_name").alias("player_name"),
-            pl.col(pos).alias("position"),
+            pl.col(pos).str.strip_chars().alias("position"),  # old feed has stray whitespace
             pl.col("depth_team").cast(pl.Int32, strict=False).alias("depth_rank"),
             pl.col("formation") if "formation" in df.columns else pl.lit(None).alias("formation"),
             pl.lit("weekly").alias("source_format"),
