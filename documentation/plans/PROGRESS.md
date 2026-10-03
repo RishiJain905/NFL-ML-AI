@@ -3,8 +3,8 @@
 > **Agents: update this file at the end of every session**, even mid-phase. See the protocol in [README.md](README.md).
 
 **Current phase:** P01, Data ingestion and curation (⏸ all exit criteria met; waiting on Rishi's ✋ approval to close)
-**Next step:** Rishi approves closing P01 → start P02 (team ratings, Elo, trend). Rishi to-do whenever convenient: rename the env-file line `NEO4JS_PASSWORD` → `NEO4J_PASSWORD`, then an agent removes the temporary fallback (see Open blockers).
-**Last updated:** 2026-10-03, P01 build session
+**Next step:** Rishi approves closing P01 → start P02 (team ratings, Elo, trend) in a new session (kickoff prompt in the `phase-workflow` skill). Optional for Rishi: add `ODDS_API_KEY` (https://the-odds-api.com/), then set `sources.odds_api: true`.
+**Last updated:** 2026-10-03, env-var cleanup session
 
 Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ blocked · ✅ done
 
@@ -40,14 +40,14 @@ Every 🧑 step goes here, whether Rishi ran it or delegated it.
 
 ## Open blockers
 
-_None._ One cleanup item (not blocking):
-- **Temporary `NEO4JS_PASSWORD` fallback.** Rishi's env file spells the variable `NEO4JS_PASSWORD`. `settings.py` and `docker-compose.yml` accept it as a fallback, and `nfl doctor` shows a WARN while it's in use. Once Rishi renames the line to `NEO4J_PASSWORD`:
-  1. remove the `neo4js_password` field and validator from `settings.py`
-  2. remove the doctor branch
-  3. remove the related test
-  4. remove the `:-${NEO4JS_PASSWORD...}` default in compose
+_None._
 
 ## Session log (newest first)
+
+### 2026-10-03: Env-var cleanup + project skills
+- Rishi renamed the env-file variable to `NEO4J_PASSWORD`. `nfl doctor` confirms it's set directly. Removed the temporary fallback from settings, doctor, tests and compose (D39 supersedes D38). Neo4j stays up with no container recreate needed. 74 tests pass.
+- Added project skills `curated-data` (data dictionary + verified recipes) and `model-experiment` (training/backtest/W&B recipe). Both are listed in `CLAUDE.md`. Curation fixes: integer season/week everywhere; old-format depth-chart positions stripped of whitespace.
+- The Odds API key is still to come from Rishi (optional source).
 
 ### 2026-10-03: P01 build
 - **Explored every source live first**, then built to match. Findings are in [03 → Findings from P01](../03-data-sources.md#findings-from-p01-checked-live-on-2026-10-03); decisions D32–D37.

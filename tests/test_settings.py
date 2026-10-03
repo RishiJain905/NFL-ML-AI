@@ -8,13 +8,7 @@ FAKE_SECRET = "fake-secret-value-123"
 
 
 def make_env(monkeypatch: pytest.MonkeyPatch, **values: str) -> EnvSettings:
-    for key in (
-        "NFL_DATA_ROOT",
-        "NEO4J_PASSWORD",
-        "NEO4JS_PASSWORD",
-        "WANDB_API_KEY",
-        "WANDB_ENTITY",
-    ):
+    for key in ("NFL_DATA_ROOT", "NEO4J_PASSWORD", "WANDB_API_KEY", "WANDB_ENTITY"):
         monkeypatch.delenv(key, raising=False)
     for key, value in values.items():
         monkeypatch.setenv(key, value)
@@ -34,18 +28,6 @@ def test_is_set(monkeypatch: pytest.MonkeyPatch) -> None:
     assert env.is_set("WANDB_API_KEY")
     assert not env.is_set("NEO4J_PASSWORD")  # whitespace only counts as unset
     assert not env.is_set("NFL_DATA_ROOT")
-
-
-def test_misspelled_neo4j_password_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("NEO4JS_PASSWORD", raising=False)
-    env = make_env(monkeypatch, NEO4JS_PASSWORD=FAKE_SECRET)
-    assert env.is_set("NEO4J_PASSWORD")
-    assert env.neo4j_password_via_fallback
-    assert FAKE_SECRET not in repr(env)
-    # The correct name wins when both are present.
-    env = make_env(monkeypatch, NEO4J_PASSWORD="right-one", NEO4JS_PASSWORD=FAKE_SECRET)
-    assert env.neo4j_password.get_secret_value() == "right-one"
-    assert not env.neo4j_password_via_fallback
 
 
 def test_data_root_parses_forward_slash_path(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -42,15 +42,6 @@ def check_env_vars() -> list[Check]:
     checks = []
     for var in REQUIRED_ENV_VARS:
         ok = env.is_set(var)
-        if var == "NEO4J_PASSWORD" and env.neo4j_password_via_fallback:
-            checks.append(
-                Check(
-                    f"var {var}",
-                    WARN,
-                    "set via misspelled NEO4JS_PASSWORD; rename that line to NEO4J_PASSWORD",
-                )
-            )
-            continue
         checks.append(Check(f"var {var}", OK if ok else FAIL, "set" if ok else "NOT SET"))
     optional_set = [v for v in OPTIONAL_ENV_VARS if env.is_set(v)]
     detail = ", ".join(optional_set) if optional_set else "none set (fine for P00)"
