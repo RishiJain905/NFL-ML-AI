@@ -133,6 +133,21 @@ Note: **ESPN spreads use the opposite sign** (favorite negative, e.g. `DAL -9.5`
   - Spreads are quoted with the favorite **negative**, so curation flips them to `home_spread`. Events are matched to `game_id` by canonical teams plus kickoff within 36 hours (100% matched).
   - The median across books agreed with nflverse/ESPN to within 0.5 points for Weeks 4–5.
 
+### Findings from P03 (checked live on 2026-10-03)
+
+- **Venues.**
+  - `games.stadium_id` covers 13 historical stadiums that weren't in `config/stadiums.yaml`: Georgia Dome, Rogers Centre (Toronto), StubHub Center, LA Coliseum, Twickenham, the Metrodome, TCF Bank Stadium, Oakland Coliseum, Qualcomm, Candlestick, Edward Jones Dome. They were added, and every entry now has an IANA time zone `tz` for travel features.
+  - **nflverse mislabels every 2025 international game.** Both `stadium` and `stadium_id` name the home team's stadium (e.g. `2025_07_LA_JAX` says "TIAA Bank Stadium", but it was played at Wembley). The YAML's `game_venues` section corrects them by `game_id`. The 2026 international games are labeled correctly by name (`stadium_id` can still be the home team's, as above).
+  - After that, every 2010–2026 game resolves to a known venue.
+- **Starting QBs.**
+  - For **unplayed** games, `games.home_qb_id` / `away_qb_id` hold nflverse's projected starters. All 2026 week-4 and week-5 games have them, the same set as the games with lines.
+  - Only the current snapshot exists, so history has no "projected on Tuesday" values. Backtests use the Tuesday rule in `features/qb.py` instead (D49).
+  - The play-by-play `passer_id` (the dropback player, scrambles and sacks included) plus `qb_epa` gives per-QB dropback EPA. The QB with most dropbacks in a game differs from the listed starter when the starter leaves early (2023 NYJ week 1: Rodgers listed, Zach Wilson took the dropbacks).
+  - In 2025–2026 no dated depth chart is published by the Tuesday of week 1.
+- **Lines.** Closing spread, total and moneylines are present for every 2010–2025 game, except one 2017 game without moneylines. 2026 has lines for weeks 1–5 only, about one week ahead of play.
+- **Rest days** (`home_rest` / `away_rest`): 7 days is typical. 4 means Thursday after Sunday, 10 is a mini-bye after Thursday, 13–15 is a bye. Week 1 is always 7.
+- **Ties:** 0–2 per season (13 in 2010–2025).
+
 ### Curated layout
 
 `{NFL_DATA_ROOT}/curated/` holds one Parquet file per table, plus:

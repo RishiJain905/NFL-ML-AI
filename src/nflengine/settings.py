@@ -91,6 +91,8 @@ class AppConfig(BaseModel):
     ratings: dict[str, Any] = Field(default_factory=dict)
     elo: dict[str, Any] = Field(default_factory=dict)
     training: dict[str, Any] = Field(default_factory=dict)
+    game_model: dict[str, Any] = Field(default_factory=dict)
+    qb: dict[str, Any] = Field(default_factory=dict)
     digest: dict[str, Any] = Field(default_factory=dict)
 
 

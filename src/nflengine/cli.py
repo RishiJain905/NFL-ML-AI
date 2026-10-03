@@ -297,10 +297,154 @@ def ratings_validate_trend(
             console.print(f"  {k}: {v:.5f}" if isinstance(v, float) else f"  {k}: {v}")
 
 
+# ---- game model (P03) -------------------------------------------------------------------------
+
+features_app = typer.Typer(
+    help="Feature tables with as-of guarantees (P03+).",
+    no_args_is_help=True,
+    pretty_exceptions_show_locals=False,
+)
+backtest_app = typer.Typer(
+    help="Walk-forward backtests logged live to W&B (P03+).",
+    no_args_is_help=True,
+    pretty_exceptions_show_locals=False,
+)
+train_app = typer.Typer(
+    help="Weekly production fits: refit, predict the week, save + log the model (P03+).",
+    no_args_is_help=True,
+    pretty_exceptions_show_locals=False,
+)
+app.add_typer(features_app, name="features")
+app.add_typer(backtest_app, name="backtest")
+app.add_typer(train_app, name="train")
+
+VARIANT_OPT = typer.Option("model-only", help="model-only | market")
+GAME_SEASONS_OPT = typer.Option("2018-2025", help="Reported walk-forward seasons.")
+
+
+def _variant(value: str) -> str:
+    v = value.strip().lower().replace("-", "_")
+    if v not in ("model_only", "market"):
+        raise typer.BadParameter("variant must be model-only or market")
+    return v
+
+
+@features_app.command("game")
+def features_game() -> None:
+    """Build features/game_features.parquet (one row per game, as of its week)."""
+    from nflengine.models.game_runs import load_frame, write_feature_table
+
+    frame = load_frame(log=console.print)
+    out = write_feature_table(frame)
+    console.print(f"[green]game features: {frame.height:,} games -> {out}[/]")
+
+
+@backtest_app.command("game")
+def backtest_game(
+    variant: str = VARIANT_OPT,
+    seasons: str = GAME_SEASONS_OPT,
+    current_weight: float | None = typer.Option(
+        None, help="Current-season sample weight (default: settings.yaml)."
+    ),
+    win_method: str | None = typer.Option(None, help="margin | logistic"),
+    calibration: str | None = typer.Option(None, help="none | platt | isotonic"),
+    qb_mode: str = typer.Option(
+        "tuesday", help="tuesday (what a Tuesday run knows) | actual (research oracle)."
+    ),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Walk-forward backtest of the game model vs home / Elo / market baselines."""
+    from nflengine.models.backtest import SampleWeights
+    from nflengine.models.game_runs import run_backtest
+
+    weights = SampleWeights.for_current(current_weight) if current_weight else None
+    res = run_backtest(
+        _variant(variant),
+        _parse_seasons(seasons),
+        launched_by,
+        log=console.print,
+        qb_mode=qb_mode,
+        weights=weights,
+        win_method=win_method,
+        calibration=calibration,
+    )
+    s = res.summary
+    table = Table(title=f"backtest {variant} (pooled, {int(s['games'])} games)")
+    for col in ("predictor", "brier", "log loss", "accuracy", "ECE"):
+        table.add_column(col)
+    for name in ("model", "elo", "market", "home"):
+        table.add_row(
+            name,
+            f"{s[f'brier_{name}']:.4f}",
+            f"{s[f'log_loss_{name}']:.4f}",
+            f"{s[f'accuracy_{name}']:.3f}",
+            f"{s[f'ece_{name}']:.4f}",
+        )
+    console.print(table)
+    console.print(
+        f"margin MAE {s['mae_margin_model']:.2f} (market {s['mae_margin_market']:.2f}); "
+        f"points MAE per team {s['mae_points_model']:.2f} (rolling {s['mae_points_rolling']:.2f},"
+        f" market {s['mae_points_market']:.2f}); total MAE {s['mae_total_model']:.2f}"
+    )
+    console.print(f"predictions saved -> {res.saved_to}")
+
+
+@backtest_app.command("game-weights")
+def backtest_game_weights(
+    weights: str = typer.Option("1,2,3,5", help="Current-season weights to compare."),
+    variant: str = VARIANT_OPT,
+    seasons: str = GAME_SEASONS_OPT,
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """W&B sweep over the current-season sample weight (pooled Brier per value)."""
+    from nflengine.models.game_runs import run_weight_sweep
+
+    values = [float(v) for v in weights.split(",") if v.strip()]
+    df = run_weight_sweep(
+        values, _variant(variant), _parse_seasons(seasons), launched_by, log=console.print
+    )
+    if df.height:
+        cols = [c for c in df.columns if c.startswith(("current_season", "brier_model"))]
+        console.print(df.select(cols))
+
+
+@train_app.command("game")
+def train_game(
+    season: int = typer.Option(..., help="Season to predict."),
+    week: int | None = typer.Option(None, help="Week to predict (default: the next one)."),
+    promote: bool = typer.Option(
+        False, "--promote", help="Also give the W&B artifact the `production` alias."
+    ),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Refit on everything before week N, predict week N, save predictions_games.parquet."""
+    from nflengine.models.game_runs import run_train
+
+    out = run_train(season, week, launched_by, promote=promote, log=console.print)
+    t = out["table"].filter(out["table"]["is_primary"])
+    table = Table(title=f"{season} week {t['week'][0]:02d} predictions (digest rows)")
+    for col in ("game", "home win %", "margin", "score", "variant", "QBs"):
+        table.add_column(col)
+
+    def num(v: float | None, spec: str) -> str:
+        return "?" if v is None else format(v, spec)
+
+    for r in t.iter_rows(named=True):
+        p = r["home_win_prob"]
+        table.add_row(
+            f"{r['away_team']} @ {r['home_team']}",
+            "?" if p is None else f"{100 * p:.0f}%",
+            num(r["expected_margin"], "+.1f"),
+            f"{r['home_team']} {num(r['pred_home_points'], '.0f')} - "
+            f"{num(r['pred_away_points'], '.0f')} {r['away_team']}",
+            r["variant"] + (" (no line)" if r["market_fallback"] else ""),
+            f"{r['away_qb_name'] or '?'} @ {r['home_qb_name'] or '?'}",
+        )
+    console.print(table)
+    console.print(f"W&B: {out['url']}  aliases {out['aliases']}")
+
+
 PLACEHOLDERS = {
-    "features": ("P03", "Build game-model feature tables with as-of guarantees."),
-    "train": ("P03", "Fit models for a given week."),
-    "backtest": ("P03", "Walk-forward backtests logged to W&B."),
     "graph": ("P05", "Rebuild the Neo4j graph and run the query library."),
     "digest": ("P04", "Build the payload and write the weekly digest."),
     "weekly": ("P04", "Run the full weekly pipeline."),

@@ -1,50 +1,82 @@
-# Stadium coordinates for Open-Meteo forecasts (documentation/03 -> Additional free sources).
+# Stadium coordinates and time zones. Two consumers:
+#   - Open-Meteo forecasts (documentation/03 -> Additional free sources): lat/lon.
+#   - Travel features (features/venues.py): lat/lon for great-circle distance, `tz` (IANA zone)
+#     for the time-zone shift between a team's home venue and the game venue.
 # Resolution order: stadium NAME (from schedules) first, then stadium_id. nflverse can keep
 # the home team's stadium_id for neutral-site games (e.g. 2026 PHI@JAX at Tottenham has
 # stadium_id JAX00), so names win. Coordinates are approximate (weather grid is ~km scale).
 # `verify: true` marks entries whose nflverse id mapping is inferred, not confirmed.
+# `tz` is required on every entry (DST is evaluated at kickoff, so Phoenix stays on MST).
 
 stadiums:
-  ATL97: {name: Mercedes-Benz Stadium, lat: 33.7554, lon: -84.4008}
-  BAL00: {name: M&T Bank Stadium, lat: 39.2780, lon: -76.6227}
-  BOS00: {name: Gillette Stadium, lat: 42.0909, lon: -71.2643}
-  BUF00: {name: Highmark Stadium, lat: 42.7738, lon: -78.7870}
-  CAR00: {name: Bank of America Stadium, lat: 35.2258, lon: -80.8528}
-  CHI98: {name: Soldier Field, lat: 41.8623, lon: -87.6167}
-  CIN00: {name: Paycor Stadium, lat: 39.0955, lon: -84.5161, aliases: [Paul Brown Stadium]}
-  CLE00: {name: Huntington Bank Field, lat: 41.5061, lon: -81.6995, aliases: [Cleveland Browns Stadium, FirstEnergy Stadium]}
-  DAL00: {name: AT&T Stadium, lat: 32.7473, lon: -97.0945}
-  DEN00: {name: Empower Field at Mile High, lat: 39.7439, lon: -105.0201}
-  DET00: {name: Ford Field, lat: 42.3400, lon: -83.0456}
-  GNB00: {name: Lambeau Field, lat: 44.5013, lon: -88.0622}
-  HOU00: {name: NRG Stadium, lat: 29.6847, lon: -95.4107}
-  IND00: {name: Lucas Oil Stadium, lat: 39.7601, lon: -86.1639}
-  JAX00: {name: EverBank Stadium, lat: 30.3239, lon: -81.6373, aliases: [TIAA Bank Stadium, TIAA Bank Field, EverBank Field]}
-  KAN00: {name: GEHA Field at Arrowhead Stadium, lat: 39.0489, lon: -94.4839, aliases: [Arrowhead Stadium]}
-  LAX01: {name: SoFi Stadium, lat: 33.9535, lon: -118.3392}
-  MIA00: {name: Hard Rock Stadium, lat: 25.9580, lon: -80.2389}
-  MIN01: {name: U.S. Bank Stadium, lat: 44.9737, lon: -93.2581}
-  NAS00: {name: Nissan Stadium, lat: 36.1665, lon: -86.7713}
-  NOR00: {name: Caesars Superdome, lat: 29.9511, lon: -90.0812, aliases: [Mercedes-Benz Superdome]}
-  NYC01: {name: MetLife Stadium, lat: 40.8135, lon: -74.0745}
-  PHI00: {name: Lincoln Financial Field, lat: 39.9008, lon: -75.1675}
-  PHO00: {name: State Farm Stadium, lat: 33.5276, lon: -112.2626}
-  PIT00: {name: Acrisure Stadium, lat: 40.4468, lon: -80.0158, aliases: [Heinz Field]}
-  SEA00: {name: Lumen Field, lat: 47.5952, lon: -122.3316}
-  SFO01: {name: Levi's Stadium, lat: 37.4030, lon: -121.9700}
-  TAM00: {name: Raymond James Stadium, lat: 27.9759, lon: -82.5033}
-  VEG00: {name: Allegiant Stadium, lat: 36.0909, lon: -115.1833}
-  WAS00: {name: Northwest Stadium, lat: 38.9077, lon: -76.8645, aliases: [FedExField, FedEx Field, Commanders Field]}
+  ATL97: {name: Mercedes-Benz Stadium, lat: 33.7554, lon: -84.4008, tz: America/New_York}
+  BAL00: {name: M&T Bank Stadium, lat: 39.2780, lon: -76.6227, tz: America/New_York}
+  BOS00: {name: Gillette Stadium, lat: 42.0909, lon: -71.2643, tz: America/New_York}
+  BUF00: {name: Highmark Stadium, lat: 42.7738, lon: -78.7870, tz: America/New_York}
+  CAR00: {name: Bank of America Stadium, lat: 35.2258, lon: -80.8528, tz: America/New_York}
+  CHI98: {name: Soldier Field, lat: 41.8623, lon: -87.6167, tz: America/Chicago}
+  CIN00: {name: Paycor Stadium, lat: 39.0955, lon: -84.5161, tz: America/New_York, aliases: [Paul Brown Stadium]}
+  CLE00: {name: Huntington Bank Field, lat: 41.5061, lon: -81.6995, tz: America/New_York, aliases: [Cleveland Browns Stadium, FirstEnergy Stadium]}
+  DAL00: {name: AT&T Stadium, lat: 32.7473, lon: -97.0945, tz: America/Chicago}
+  DEN00: {name: Empower Field at Mile High, lat: 39.7439, lon: -105.0201, tz: America/Denver}
+  DET00: {name: Ford Field, lat: 42.3400, lon: -83.0456, tz: America/New_York}
+  GNB00: {name: Lambeau Field, lat: 44.5013, lon: -88.0622, tz: America/Chicago}
+  HOU00: {name: NRG Stadium, lat: 29.6847, lon: -95.4107, tz: America/Chicago}
+  IND00: {name: Lucas Oil Stadium, lat: 39.7601, lon: -86.1639, tz: America/Indiana/Indianapolis}
+  JAX00: {name: EverBank Stadium, lat: 30.3239, lon: -81.6373, tz: America/New_York, aliases: [TIAA Bank Stadium, TIAA Bank Field, EverBank Field]}
+  KAN00: {name: GEHA Field at Arrowhead Stadium, lat: 39.0489, lon: -94.4839, tz: America/Chicago, aliases: [Arrowhead Stadium]}
+  LAX01: {name: SoFi Stadium, lat: 33.9535, lon: -118.3392, tz: America/Los_Angeles}
+  MIA00: {name: Hard Rock Stadium, lat: 25.9580, lon: -80.2389, tz: America/New_York}
+  MIN01: {name: U.S. Bank Stadium, lat: 44.9737, lon: -93.2581, tz: America/Chicago}
+  NAS00: {name: Nissan Stadium, lat: 36.1665, lon: -86.7713, tz: America/Chicago}
+  NOR00: {name: Caesars Superdome, lat: 29.9511, lon: -90.0812, tz: America/Chicago, aliases: [Mercedes-Benz Superdome]}
+  NYC01: {name: MetLife Stadium, lat: 40.8135, lon: -74.0745, tz: America/New_York}
+  PHI00: {name: Lincoln Financial Field, lat: 39.9008, lon: -75.1675, tz: America/New_York}
+  PHO00: {name: State Farm Stadium, lat: 33.5276, lon: -112.2626, tz: America/Phoenix}
+  PIT00: {name: Acrisure Stadium, lat: 40.4468, lon: -80.0158, tz: America/New_York, aliases: [Heinz Field]}
+  SEA00: {name: Lumen Field, lat: 47.5952, lon: -122.3316, tz: America/Los_Angeles}
+  SFO01: {name: Levi's Stadium, lat: 37.4030, lon: -121.9700, tz: America/Los_Angeles}
+  TAM00: {name: Raymond James Stadium, lat: 27.9759, lon: -82.5033, tz: America/New_York}
+  VEG00: {name: Allegiant Stadium, lat: 36.0909, lon: -115.1833, tz: America/Los_Angeles}
+  WAS00: {name: Northwest Stadium, lat: 38.9077, lon: -76.8645, tz: America/New_York, aliases: [FedExField, FedEx Field, Commanders Field]}
+  # Former home stadiums (2010+). Ids confirmed against games.stadium_id; used by travel
+  # features for historical seasons (relocations: OAK -> LV, SD -> LAC, STL -> LA).
+  ATL00: {name: Georgia Dome, lat: 33.7577, lon: -84.4008, tz: America/New_York}
+  BUF01: {name: Rogers Centre, lat: 43.6414, lon: -79.3894, tz: America/Toronto}
+  LAX97: {name: StubHub Center, lat: 33.8644, lon: -118.2611, tz: America/Los_Angeles, aliases: [Dignity Health Sports Park]}
+  LAX99: {name: Los Angeles Memorial Coliseum, lat: 34.0141, lon: -118.2879, tz: America/Los_Angeles, aliases: [LA Memorial Coliseum]}
+  MIN00: {name: Mall of America Field, lat: 44.9738, lon: -93.2575, tz: America/Chicago, aliases: [Hubert H. Humphrey Metrodome, Metrodome]}
+  MIN98: {name: TCF Bank Stadium, lat: 44.9765, lon: -93.2247, tz: America/Chicago, aliases: [Huntington Bank Stadium]}
+  OAK00: {name: Oakland-Alameda County Coliseum, lat: 37.7516, lon: -122.2005, tz: America/Los_Angeles, aliases: [Oakland Coliseum, O.co Coliseum, Ring Central Coliseum, RingCentral Coliseum]}
+  SDG00: {name: Qualcomm Stadium, lat: 32.7831, lon: -117.1196, tz: America/Los_Angeles, aliases: [SDCCU Stadium, San Diego Stadium]}
+  SFO00: {name: Candlestick Park, lat: 37.7133, lon: -122.3862, tz: America/Los_Angeles}
+  STL00: {name: Edward Jones Dome, lat: 38.6328, lon: -90.1885, tz: America/Chicago, aliases: [The Dome at America's Center]}
   # International / neutral sites
-  LON00: {name: Wembley Stadium, lat: 51.5560, lon: -0.2796}
-  LON02: {name: Tottenham Hotspur Stadium, lat: 51.6043, lon: -0.0664}
-  MUN01: {name: Allianz Arena, lat: 48.2188, lon: 11.6247}
-  GER00: {name: Olympiastadion Berlin, lat: 52.5147, lon: 13.2395, verify: true, aliases: [Olympiastadion]}
-  FRA00: {name: Deutsche Bank Park, lat: 50.0686, lon: 8.6455, verify: true, aliases: [Frankfurt Stadium]}
-  MAD01: {name: Santiago Bernabeu Stadium, lat: 40.4531, lon: -3.6883, verify: true, aliases: [Estadio Santiago Bernabeu, Santiago Bernabéu]}
-  MEX00: {name: Estadio Azteca, lat: 19.3029, lon: -99.1505, aliases: [Estadio Banorte]}
-  SAO00: {name: Neo Quimica Arena, lat: -23.5453, lon: -46.4742, verify: true, aliases: [Arena Corinthians, Neo Química Arena]}
-  RIO00: {name: Maracana Stadium, lat: -22.9122, lon: -43.2302, verify: true, aliases: [Maracanã, Estadio do Maracana]}
-  MEL00: {name: Melbourne Cricket Ground, lat: -37.8200, lon: 144.9834, verify: true, aliases: [MCG]}
-  PAR00: {name: Stade de France, lat: 48.9245, lon: 2.3602, verify: true}
-  DUB00: {name: Croke Park, lat: 53.3607, lon: -6.2511, verify: true}
+  LON00: {name: Wembley Stadium, lat: 51.5560, lon: -0.2796, tz: Europe/London}
+  LON01: {name: Twickenham Stadium, lat: 51.4559, lon: -0.3415, tz: Europe/London}
+  LON02: {name: Tottenham Hotspur Stadium, lat: 51.6043, lon: -0.0664, tz: Europe/London, aliases: [Tottenham Stadium]}
+  MUN01: {name: Allianz Arena, lat: 48.2188, lon: 11.6247, tz: Europe/Berlin, aliases: [FC Bayern Munich Stadium]}
+  # nflverse's GER00 rows are the Allianz Arena (2022, 2024); they resolve through the name
+  # above. This entry is Berlin (2025 ATL@IND), which has no confirmed nflverse id.
+  GER00: {name: Olympiastadion Berlin, lat: 52.5147, lon: 13.2395, tz: Europe/Berlin, verify: true, aliases: [Olympiastadion, Olympic Stadium]}
+  FRA00: {name: Deutsche Bank Park, lat: 50.0686, lon: 8.6455, tz: Europe/Berlin, verify: true, aliases: [Frankfurt Stadium]}
+  MAD01: {name: Santiago Bernabeu Stadium, lat: 40.4531, lon: -3.6883, tz: Europe/Madrid, verify: true, aliases: [Estadio Santiago Bernabeu, Santiago Bernabéu, Bernabeu]}
+  MEX00: {name: Estadio Azteca, lat: 19.3029, lon: -99.1505, tz: America/Mexico_City, aliases: [Estadio Banorte, Azteca Stadium]}
+  SAO00: {name: Neo Quimica Arena, lat: -23.5453, lon: -46.4742, tz: America/Sao_Paulo, verify: true, aliases: [Arena Corinthians, Neo Química Arena]}
+  RIO00: {name: Maracana Stadium, lat: -22.9122, lon: -43.2302, tz: America/Sao_Paulo, verify: true, aliases: [Maracanã, Estadio do Maracana]}
+  MEL00: {name: Melbourne Cricket Ground, lat: -37.8200, lon: 144.9834, tz: Australia/Melbourne, verify: true, aliases: [MCG]}
+  PAR00: {name: Stade de France, lat: 48.9245, lon: 2.3602, tz: Europe/Paris, verify: true}
+  DUB00: {name: Croke Park, lat: 53.3607, lon: -6.2511, tz: Europe/Dublin, verify: true}
+
+# Games whose nflverse `stadium` / `stadium_id` is wrong, mapped to the stadium actually used
+# (game_id -> stadium_id). Checked against the play-by-play `stadium` name. nflverse lists the
+# home team's own stadium for the 2025 international games although they were played abroad.
+# Read only by features/venues.py; ingest/weather.py ignores this section.
+game_venues:
+  "2025_01_KC_LAC": SAO00   # Sao Paulo, Arena Corinthians (listed as SoFi Stadium)
+  "2025_04_MIN_PIT": DUB00  # Dublin, Croke Park (listed as Acrisure Stadium)
+  "2025_05_MIN_CLE": LON02  # London, Tottenham Hotspur Stadium (listed as FirstEnergy Stadium)
+  "2025_06_DEN_NYJ": LON02  # London, Tottenham Hotspur Stadium (listed as MetLife Stadium)
+  "2025_07_LA_JAX": LON00   # London, Wembley Stadium (listed as TIAA Bank Stadium)
+  "2025_10_ATL_IND": GER00  # Berlin, Olympiastadion (listed as Lucas Oil Stadium)
+  "2025_11_WAS_MIA": MAD01  # Madrid, Santiago Bernabeu (listed as Hard Rock Stadium)

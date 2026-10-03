@@ -37,6 +37,7 @@ Before writing code against any data source, API, library or model output, **loo
 - Keep going through steps that don't need Rishi. Put status notes in the same message as your next action.
 
 ## 4. Rishi-in-the-loop steps
+- **Confirm the waiver at session start.** If the kickoff prompt doesn't explicitly say the 🧑 runs or ✋ checkpoints are waived, ask once with AskUserQuestion before running any of them. "Complete all tasks of Pxx" is *not* an explicit waiver (P03 lesson). Record the answer and its scope in `PROGRESS.md`.
 - 🧑 **Rishi runs** (first training runs, tuning, backtests, first graph build, digest reviews):
   - prepare the code, the exact command and short **"What to look for"** notes
   - then pause and hand over, unless Rishi has waived the step
@@ -96,6 +97,8 @@ Before writing code against any data source, API, library or model output, **loo
 - **Neo4j** runs in Docker (`nfl-neo4j`), with data, logs and plugins bind-mounted on D:. Start it with `docker compose up -d`, then wait for "Started." in `docker compose logs neo4j`.
 - **W&B sweeps** (`tracking.run_sweep`) work in-process on Windows and take about 10–15 s per run, so 175 runs is about 45 minutes. Run them with `run_in_background`, and smoke-test them first with a 2-value grid.
 - **Shared test fixtures** live in `tests/conftest.py`. Tests import helpers from it directly (`from conftest import make_league`).
+- **Subagents in parallel (P03).** Give each subagent its own new files only (it must not touch `cli.py`, `settings.yaml` or modules you are editing) and a precise interface: function names, output columns. Integrate yourself. If a subagent goes idle without its final report reaching you, ask it with SendMessage.
+- **Smoke-test W&B logging before the real runs.** Do one short backtest tagged `smoke` (2 seasons, `save=False`). It checks that the tables and plots log correctly before the runs that count (P03: `e9ex7x3q`).
 
 ## 11. Kickoff prompt for a new session
 Rishi can paste this (edit the phase and approvals):

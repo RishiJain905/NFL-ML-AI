@@ -42,6 +42,12 @@ uv run nfl ratings tune            # W&B grid sweep over the rating parameters (
 uv run nfl ratings eval            # walk-forward check vs baselines + Elo Brier (P02)
 uv run nfl ratings validate-trend  # does the trend predict beyond the rating? (P02)
 
+uv run nfl features game           # features/game_features: one row per game, as of its week (P03)
+uv run nfl backtest game --variant model-only --seasons 2018-2025   # walk-forward vs Elo/market, live W&B (P03)
+uv run nfl backtest game --variant market --seasons 2018-2025
+uv run nfl backtest game-weights   # W&B sweep over the current-season sample weight (P03)
+uv run nfl train game --season 2026 --week N   # weekly fit -> runs/<season>/week<NN>/predictions_games.parquet (P03)
+
 uv run pytest                      # tests (integration tests excluded by default)
 uv run ruff check .                # lint
 ```

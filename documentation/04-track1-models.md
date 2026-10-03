@@ -156,6 +156,47 @@ Walk-forward by week across 2018–2025 (each week predicted with a model traine
 
 **Bar to ship:** the model-only version beats Elo on Brier score across the walk-forward seasons. **Stretch goal:** the market-informed version matches or beats the market alone. Reported per season and pooled.
 
+### As built in P03 (decisions D48–D51)
+
+Code: `features/game.py` (feature table), `features/qb.py` (QB status), `features/venues.py` (travel), `models/backtest.py` (walk-forward harness, reused by P06/P08), `models/metrics.py`, `models/game_model.py`, `models/game_runs.py`. Commands: `nfl features game`, `nfl backtest game | game-weights`, `nfl train game`. Full details and numbers: [model card](model_cards/game-model-v0.md).
+
+**Model (D48).** Win probability comes from the **margin** route: ridge margin (no intercept) → `Φ(margin / σ)`, σ = RMSE of earlier walk-forward residuals (≈ 13). A logistic head exists (`win_method: logistic`) but was worse on the tuning window.
+- **Margin features:** net rating difference, Elo difference, home field (0 at neutral sites) and **QB status** (`qb_adj_diff`).
+- **Scores:** a ridge **total** head (offense and defense rating sums, QB status, league scoring level, rolling team points, roof), split as home = (total + margin)/2 and away = (total − margin)/2, so score, margin and probability always agree.
+- **Training:** walk-forward from 2011 (2010 ratings have no prior), current-season weights 3× / 1.5× / 1× (D28 kept: the sweep was flat), no calibration layer (it didn't help).
+- **Feature selection:** chosen on the 2013–2017 tuning window. Pass/rush matchups (`(home_off + away_def) − (away_off + home_def)`, since `def` is EPA allowed), rest, bye, short week, divisional game, travel distance, time zones and success-rate ratings are built but **not used in v0**: they didn't help on 2013–2017 (P08's LightGBM gets them).
+- **Week of season:** not a feature in v0. The ratings' own preseason prior already carries the early-season uncertainty.
+
+**QB status (D49)** = value of the expected starter − value of the QBs the team's recent games were played with, in EPA per dropback.
+- **Value:** career dropbacks, 24-week half-life, shrunk to −0.05 by 250 dropbacks.
+- **Expected starter on Tuesday:** the QB with most dropbacks in the team's last game. Week 1: the depth chart published by Tuesday, else last season's main starter. First playoff game: most frequent starter of the last 3 games.
+- **Live runs:** the schedule's projected starter → the depth chart → the Tuesday starter; whoever is picked, an Out/Doubtful QB is replaced by the next one on the chart.
+- **Backtests use the Tuesday rule only** (leakage rule 4). Knowing each game's listed starter would add another −0.0016 Brier, the case for the Saturday injury update.
+
+**Market variant:** + spread and total. Current lines: nflverse first, then the Odds API median, then ESPN (D40). Games without a line fall back to model-only and are flagged (`market_fallback`).
+
+**Baselines (D50):**
+- home team: the walk-forward home win rate;
+- Elo: as of the game's week (the Tuesday view; P02's 0.2214 was game-by-game, so it saw same-week earlier games);
+- market: `Φ(spread / σ_m)`, with the vig-free moneyline as a reference;
+- ESPN FPI isn't a backtest baseline: only the current snapshot is collected.
+
+**Results (walk-forward 2018–2025, 2,227 games, Brier):**
+
+| Predictor | Brier |
+|---|---|
+| Model-only | **0.2199** |
+| Elo | 0.2221 |
+| Market-informed | **0.2102** |
+| Closing market | 0.2104 |
+| Home team always | 0.2477 |
+
+- Model-only beats Elo in every part of the season and in 5 of 8 seasons; Elo was ahead by ≤ 0.0008 in the other 3.
+- ECE 0.0315: at the noise floor (a perfectly calibrated model would show 0.031 at the 95th percentile), plus home field shrinking since 2020 (P08 follow-up).
+- Margin MAE 10.19 (spread 9.83); points MAE per team 7.46 (rolling average 7.65); total MAE 10.63 (closing total 10.42).
+
+**Outputs:** `runs/<season>/week<NN>/predictions_games.parquet`, one row per game per variant, with `is_primary` marking the digest row (schema in the model card). Fitted models go to `models/game-model/<season>-w<NN>/` and the W&B artifact `game-model:<season>-w<NN>`. Backtest predictions for every week go to `runs/backtests/game/<variant>/`.
+
 ---
 
 ## C. Player model

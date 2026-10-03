@@ -9,7 +9,7 @@ One W&B project: **`nfl-analytics-engine`**. Runs are organized by `group` and `
 | Group | Job types | What it holds |
 |---|---|---|
 | `track1-ratings` | `tune`, `eval` | Rating half-life / prior pull-back tuning, trend validation |
-| `track1-game` | `tune`, `train`, `eval` | Game model experiments and walk-forward backtests |
+| `track1-game` | `tune`, `train`, `eval`, `backtest` | Game model experiments, walk-forward backtests (`bt/*` curves, step `bt/step`), the current-season weight sweep, and weekly fits that log the `game-model` artifact |
 | `track1-player` | `tune`, `train`, `eval` | Player model experiments, one tag per position group |
 | `track1-graph` | `build`, `query-test` | Graph rebuild counts and timings, golden-test results |
 | `digest-dev` | `backtest` | Prompt and section experiments on past weeks |

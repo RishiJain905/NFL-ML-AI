@@ -78,6 +78,16 @@ These set expectations. **Our own measured baselines from P03 and P06 replace th
 | Player counts (receptions, tackles, pressures) | Similar relative gains; usage-driven stats (targets, carries) are the most predictable |
 | TD / sack / INT probabilities | Small gains in Brier score; **calibration** is the main goal |
 
+**Measured in P03** (walk-forward 2018–2025, 2,227 games; [game model card](model_cards/game-model-v0.md)). These replace the public ceilings for games:
+
+| Target | Our model-only | Our market-informed | Closing market | Other baselines |
+|---|---|---|---|---|
+| Picking winners (accuracy) | 64.0% | 66.3% | 66.2% | Elo 63.5%, home team 54.3% |
+| Win probability (Brier) | 0.2199 | 0.2102 | 0.2104 | Elo 0.2221, home team 0.2477 |
+| Final-margin MAE | 10.19 | 9.86 | 9.83 (spread) | Elo 10.22 |
+| Total-points MAE | 10.63 | 10.44 | 10.42 (total) | rolling team average 10.86 |
+| Points MAE per team | 7.46 | 7.28 | 7.27 (implied team total) | rolling team average 7.65 |
+
 ## The accuracy scoreboard
 
 One row per target per week, logged to a W&B Table (`accuracy_scoreboard`) and kept season-long:

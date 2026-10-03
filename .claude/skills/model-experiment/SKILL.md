@@ -7,7 +7,7 @@ description: Recipe for any model training, tuning, backtest or evaluation run i
 
 Applies to P02 (ratings/Elo/trend), P03 and P08 (game model), P06 and P08 (player models) and T00–T04 (Big Data Bowl). The specs live in `documentation/04-track1-models.md`, `11-prediction-targets.md`, `07-track2-big-data-bowl.md` and `08-experiment-tracking.md`. This skill is **how** to run an experiment so results are honest, comparable and reproducible.
 
-> Some building blocks are created by the phases themselves. The walk-forward harness (`models/backtest.py`) comes in P03. **When you build or change one, update this skill** with its real function names and usage.
+> Some building blocks are created by the phases themselves. **When you build or change one, update this skill** with its real function names and usage.
 
 **Building blocks that exist (P02):**
 - **As-of framework** (`nflengine.features.asof`):
@@ -27,6 +27,25 @@ Applies to P02 (ratings/Elo/trend), P03 and P08 (game model), P06 and P08 (playe
 - **Ratings features:**
   - P03+ joins `features/team_ratings`, `team_elo` and `team_trends` on (season, week, team). A row for week w is built from weeks before w (D44).
   - Recompute with `nfl ratings build`.
+
+**Building blocks that exist (P03):**
+- **Walk-forward harness** (`nflengine.models.backtest`), the one to reuse in P06/P08:
+  - `walk_forward(frame, keys, model, label=..., weights=SampleWeights(...), min_train_rows=..., on_week=cb)`. For each `AsOf` key in time order:
+    - `train` = labelled rows strictly before the key;
+    - `test` = the key's week (unplayed rows included; they're predicted but never trained on);
+    - `history` = this run's earlier predictions.
+  - Then it calls `model(train, weights, test, history)`, which must return one row per test row, with `season`/`week`. Use `history` for anything fitted on walk-forward output (σ, calibration).
+  - The harness raises `LeakageError` itself if train or history reach the key, or if test leaves its week.
+  - `week_keys(frame, seasons)` lists the keys.
+  - `SampleWeights(current_season, last_season, older)`: `.from_config(cfg)`, and `.for_current(w)` for sweeps (last season = min(1.5, w)).
+- **Metrics** (`nflengine.models.metrics`): `brier`, `log_loss`, `accuracy` (ties left out), `ece`, `reliability` (bins table), `mae`, `rmse`, `score_frame(df, {name: prob_col}, outcome, amounts={name: (pred, actual)})` and `by_group(...)`. Ties count as 0.5.
+- **Game model** (`models/game_model.py`): `GameModelConfig` (variant, win_method, alphas, calibration, feature lists, weights), `fit_game_model`, `GameWeekModel` (a harness model that keeps the last fit in `.last`), `coefficients()`, `feature_hash()`.
+- **Runs** (`models/game_runs.py`):
+  - `load_frame(qb_mode=..., live_key=...)`, `run_backtest`, `run_weight_sweep`, `run_train`;
+  - `LiveLogger`, the `on_week` callback that logs `bt/*` per-week + cumulative curves for every predictor;
+  - `pooled_summary`, `by_season`, `by_week_bucket`.
+- **Feature tables:** `features/game_features` (`nfl features game`), built by `features.game.build_game_features` from the P02 tables plus `features.qb.team_qb_features` (QB status) and `features.venues.game_travel` (travel).
+- **Outputs:** backtest predictions for every week go to `runs/backtests/game/<label>/`; the weekly `predictions_games.parquet` goes to the run folder; models go to `models/game-model/<season>-w<NN>/` and the W&B artifact `game-model`.
 
 ## 1. Define before you code
 Write these down (in the phase file or model card) before any training code:
@@ -86,7 +105,7 @@ At the end:
 Give Rishi a short block like this:
 ```
 Command:   uv run nfl backtest game --variant model-only --seasons 2018-2025
-Runtime:   ~N minutes; W&B group track1-game, job_type backtest
+Runtime:   ~30 s (P03); W&B group track1-game, job_type backtest
 Watch:     <link to the W&B project/run>
 What to look for:
  - cumulative Brier (bt/brier_model vs bt/brier_elo): model line should end BELOW Elo
@@ -109,7 +128,17 @@ Write one card per model family at `documentation/model_cards/<family>.md` (also
 - **Check each piece of a model against a simple baseline on its own.** The P02 prior lost to "raw last season" in weeks 1–3 until it was seeded from a full-season fit. Its in-season home-field estimate was pure noise until it was pinned.
 - **Make float accumulation order deterministic.** Polars `group_by` output order varies between runs, so sort before summing into matrices. Otherwise outputs differ at about 1e-18, and the future-invariance test flags them.
 
-## 9. Honesty rules
+## 9. Lessons from P03
+- **No intercept → don't center.** With a home-minus-away design and a home-field flag instead of an intercept, `StandardScaler()` centers the flag and erases home advantage for every non-neutral game. The prototype then lost to Elo for no real reason. Use `StandardScaler(with_mean=False)` when `fit_intercept=False`.
+- **Pick on a tuning window, report on another.** P03 chose features on 2013–2017 and reported 2018–2025. Travel and success-rate ratings looked good on 2018–2025 alone but hurt on 2013–2017, so they stayed out. Keep the pre-registered choice, and show both windows in the card.
+- **Fit σ and calibration on `history`, never in-sample.** The harness's `history` is exactly the earlier walk-forward predictions, so a model's σ for week w is the RMSE of its own misses before w.
+- **Build the oracle once, and make it a realistic one.** Running the same backtest with post-Tuesday information (`--qb-mode actual`) measures what better data would be worth (0.0016 Brier for each game's *listed* starting QB), without letting it into reported numbers. Use information a later run could really have: "the QB with most dropbacks" also foresees in-game injuries, so it is only an upper bound.
+- **Research runs must not overwrite canonical outputs.** A non-default run once overwrote the P04-facing backtest predictions; `backtest_label()` now gives every non-default run its own folder and W&B name. Re-run the canonical backtests last, after code changes.
+- **Sign conventions in matchup features.** `def_*` ratings are EPA **allowed**, so the expected offense EPA in a matchup is `off + opponent def`, never `off - opponent def`. A matchup feature with the wrong sign still gets a fitted weight and can even look fine on one window. Write a test with an asymmetric defense (Sol's review caught this in P03).
+- **Score every predictor on one cohort.** Metric helpers drop missing values per column, so a baseline with gaps silently gets scored on fewer games. `game_runs.scored()` keeps only rows where the model and every baseline exist, and reports `games_dropped`.
+- **Strong baselines can be hard to beat for a reason.** EPA ratings alone predicted game results *worse* than Elo (0.2233 vs 0.2221): margin of victory carries information EPA lacks. Combining both, plus the one thing neither sees (QB changes), is what won.
+
+## 10. Honesty rules
 - Report results that lose to the baseline as well. A model that doesn't beat its baseline doesn't ship (`documentation/11`).
 - A metric that looks too good usually means leakage. Check the as-of logic and feature timing before celebrating.
 - Small differences are probably noise. A gain under ~0.002 Brier, or one that doesn't hold across most seasons, isn't a win.

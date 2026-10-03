@@ -47,6 +47,18 @@ training:                 # tuned in P03 / P06
     last_season: 1.5
     older: 1.0
 
+game_model:               # game model v0 (P03; documentation/04 -> B)
+  win_method: margin      # margin (ridge margin -> normal CDF) | logistic
+  margin_alpha: 1.0       # ridge strength on scaled features
+  total_alpha: 1.0
+  logistic_c: 1.0
+  calibration: none       # none | platt | isotonic (fitted on walk-forward predictions)
+  sigma_default: 13.5     # margin sd until 400 walk-forward residuals exist
+  train_start: 2011       # 2010 ratings have no preseason prior
+  burn_in_seasons: 5      # walk-forward seasons before the reported ones (sigma, calibration)
+
+qb: {}                    # QB status feature (features/qb.py QBParams); defaults in code
+
 digest:                   # prose word budgets per section (documentation/06)
   word_budgets:
     report_card: 60

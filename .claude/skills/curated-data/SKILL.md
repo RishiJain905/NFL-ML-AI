@@ -66,6 +66,11 @@ Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/particip
 | `team_elo` | `elo` before week w's games, `elo_games` played this season |
 | `team_trends` | `net_epa`, `net_epa_prev` (3 weeks earlier), `trend_delta` (week ≥ 4), `perf_vs_expected` + `pve_games`, `band_low`/`band_high`, `direction` (up/down/stable; null for 2010–2012), plus evidence: `qb_change`, `qb_now_*`, `qb_before_*`, `key_players_out(_names)`, `off_cpoe_delta`, `off_proe_delta`, `off/def_sack_rate_delta`, `off/def_pressure_rate_delta` (PFR, 2018+), `off_time_to_throw_delta` (NGS, 2016+) |
 | `team_trend_drivers` | Top 3 rating parts that moved over 3 weeks: `part`, `delta`, `change` (+ = better), `contribution`, `effect` |
+| `game_features` (P03) | **One row per game** (key `game_id`), as of the game's week, 2011+. Rebuilt by `nfl features game`.<br>• Targets (null until played): `margin` (= home − away), `total`, `home_win` (1/0/0.5).<br>• Per side `home_*` / `away_*`: ratings, `elo`, `pf_avg` / `pa_avg` (last 8 games), `qb_id`, `qb_name`, `qb_source`, `qb_value`, `qb_baseline`, `qb_adj`, `qb_changed`, `travel_km`, `tz_shift`.<br>• Matchup: `net_diff`, `pass_matchup`, `rush_matchup`, `elo_diff` (per 100), `hfa`, `rest_diff`, `bye_diff`, `short_diff`, `div_game`, `travel_diff`, `tz_diff`, `qb_adj_diff`.<br>• Totals: `off_sum`, `def_sum`, `qb_adj_sum`, `league_ppg`, `pts_base_total`, `roof_dome`.<br>• Market and baselines: `spread_line`, `total_line`, `market_source`, `mkt_home_points`, `mkt_away_points`, `elo_prob`, `elo_margin`, `market_ml_prob` |
+
+**Model outputs (P03).**
+- `runs/<season>/week<NN>/predictions_games.parquet` (from `nfl train game`): one row per game × `variant` (`model_only` / `market`). `is_primary` marks the digest row. Schema in `documentation/model_cards/game-model-v0.md`.
+- `runs/backtests/game/<variant>/predictions_games.parquet`: walk-forward predictions for every week from 2013 on (2018+ reported), with outcomes and the Elo / market / home baseline probabilities on the same rows. Use it to test P04's report card on past weeks.
 
 ## Availability and leakage reminders
 - For a prediction of week N, use only rows from games **strictly before** week N's games (see `documentation/04` → Leakage rules). Use `nflengine.features.asof` (`before_expr`, `as_of`). It also hides the current season's week-0 NGS season totals.
@@ -89,6 +94,17 @@ Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/particip
 - **Snaps.** `snaps.offense_pct` / `defense_pct` are on a 0–1 scale in every season.
 - **Week-1 depth chart.** The week-1 depth-chart QB1 matches the actual week-1 starter in ~98% of team-seasons (2010–2026).
 - **Home field in EPA terms is small and noisy.** The per-season home EPA/play edge swings from −0.045 to +0.036.
+
+## Quirks found in P03 (checked live 2026-10-03)
+- **Projected starters.** `games.home_qb_id` / `away_qb_id` on **unplayed** games are nflverse's projected starters. All 2026 week-4 and week-5 games have them, the same games that have lines. Only the latest snapshot exists, so history has no projections. For a played game they name the listed starter, which is post-Tuesday information. Never use them as a feature for a backtest week (`features/qb.py` handles this).
+- **Who actually played QB.** Group dropback plays by `passer_id` (it includes scrambles and sacks) with `qb_epa`. The QB with most dropbacks can differ from the listed starter when the starter leaves early (2023 NYJ week 1: Rodgers listed, Wilson played).
+- **Venues.**
+  - **Every 2025 international game is mislabeled**: `stadium` and `stadium_id` name the home team's stadium. `config/stadiums.yaml` → `game_venues` corrects them by `game_id`.
+  - The 2026 ones are right by name (`stadium_id` can still be the home team's).
+  - Resolve venues with `features.venues.game_travel`, never with `stadium_id` alone.
+- **Matchup arithmetic with the ratings:** `def_*` is EPA allowed (higher = worse defense), so the expected offense EPA of A against B is `off_A + def_B` (+ home field), and A's edge over B is `(off_A + def_B) - (off_B + def_A)`. Never subtract the opponent's defense.
+- **Rest days:** 7 is normal; 4 = Thursday after Sunday; 10 = mini-bye after Thursday; 13–15 = bye. Week 1 is always 7.
+- **Lines:** closing spread, total and moneylines exist for every 2010–2025 game, except one 2017 game without moneylines.
 
 ## Recipes
 

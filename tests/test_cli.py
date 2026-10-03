@@ -15,15 +15,36 @@ def test_help_lists_all_commands() -> None:
         "curate",
         "data-status",
         "ratings",
+        "features",
+        "backtest",
+        "train",
         *PLACEHOLDERS,
     ]:
         assert name in result.output
 
 
 def test_placeholders_exit_nonzero_with_phase() -> None:
-    result = runner.invoke(app, ["features"])
+    result = runner.invoke(app, ["graph"])
     assert result.exit_code == 1
-    assert "P03" in result.output
+    assert "P05" in result.output
+
+
+def test_game_model_subcommands_listed() -> None:
+    for group, names in (
+        ("features", ["game"]),
+        ("backtest", ["game", "game-weights"]),
+        ("train", ["game"]),
+    ):
+        result = runner.invoke(app, [group, "--help"])
+        assert result.exit_code == 0
+        for name in names:
+            assert name in result.output
+
+
+def test_backtest_rejects_unknown_variant() -> None:
+    result = runner.invoke(app, ["backtest", "game", "--variant", "vegas"])
+    assert result.exit_code == 2  # a usage error, before any data or W&B is touched
+    assert "variant must be model-only or market" in result.output
 
 
 def test_ratings_subcommands_listed() -> None:
