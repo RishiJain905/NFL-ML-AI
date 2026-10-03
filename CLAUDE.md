@@ -32,6 +32,8 @@ Never read, open, print, `cat` / `type` / `Get-Content`, `grep` / `Select-String
 - `.claude/settings.json` contains **permission deny rules** for these files and commands. Never try to get around them (other tools, renamed copies, scripts that read the file and print it, and so on). A denied action means **stop and ask**.
 - `.gitignore` excludes `.env*` (except `.env.example`). Before every commit, check `git status` to confirm no secret file is staged.
 
+- **Codex** (used for code review via the Codex plugin) doesn't read this file or the deny rules above. It gets the same rules from `AGENTS.md` (instructions) and `.codex/config.toml` (env-var filtering). When you change this Security section, update both.
+
 ### Expected variable names (names only, no values)
 `NFL_DATA_ROOT`, `NEO4J_PASSWORD`, `WANDB_API_KEY`, and optionally `LLM_API_KEY`, `LLM_BASE_URL`, `ODDS_API_KEY`, `ODDS_API_KEY2` (backup), `KAGGLE_USERNAME`, `KAGGLE_KEY`, plus SMTP settings (P07). `.env.example` (created in P00) is the authoritative list.
 
