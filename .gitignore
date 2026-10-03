@@ -2,3 +2,5 @@
 .env
 .env*
 .env.local
+# The template has variable names only (no values) and should be committed
+!.env.example

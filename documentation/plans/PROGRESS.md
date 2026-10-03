@@ -2,9 +2,9 @@
 
 > **Agents: update this file at the end of every session**, even mid-phase. See the protocol in [README.md](README.md).
 
-**Current phase:** P00, Foundations (not started)
-**Next step:** begin P00 when Rishi gives the go-ahead.
-**Last updated:** 2026-10-01, planning session (documentation and plans created; no code yet)
+**Current phase:** P00, Foundations (in progress)
+**Next step:** agree the P00 task order with Rishi, then start the repo/environment tasks.
+**Last updated:** 2026-10-03, security setup session
 
 Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ blocked · ✅ done
 
@@ -12,7 +12,7 @@ Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ b
 
 | Phase | Title | Status | Started | Completed | Notes |
 |---|---|---|---|---|---|
-| P00 | Foundations | ⬜ | | | |
+| P00 | Foundations | 🟨 | 2026-10-03 | | Security guardrails done |
 | P01 | Data ingestion and curation | ⬜ | | | |
 | P02 | Team ratings, Elo, trend | ⬜ | | | |
 | P03 | Game model v0 | ⬜ | | | |
@@ -42,6 +42,17 @@ Every 🧑 step goes here, whether Rishi ran it or delegated it.
 _None._
 
 ## Session log (newest first)
+
+### 2026-10-03: P00 started, security guardrails
+- Rishi confirmed the prerequisites: Docker Desktop running, D: connected, W&B key and Neo4j password saved by Rishi in the env file (agents never read it).
+- Added `CLAUDE.md` with a top-priority **Security** section (never read or reveal credentials).
+- Enforcement:
+  - `.claude/settings.json` deny rules (Read/Edit of env and credential files, env-dumping and secret-printing commands)
+  - a PreToolUse hook, `.claude/hooks/block_secrets.py`, that guards Bash, PowerShell, Read, Grep and Glob
+  - the hook passed 26 synthetic cases; live tests against a decoy file confirmed Read, Bash and PowerShell are all blocked; decoy removed
+- `.gitignore`: env files stay ignored, with an exception for the example template.
+- Note: the hook also blocks any shell command whose *text* names an env file, including commit messages. Use the Edit tool for doc changes that mention it, and phrase commit messages as "env file".
+- Not committed yet.
 
 ### 2026-10-01: Planning
 - Reviewed the original brief and spec, and rewrote them as `documentation/01`–`11` (originals in `documentation/archive/`).
