@@ -1,0 +1,4 @@
+# Teams Rishi follows. Used only to prioritise digest content, never to filter
+# what is loaded or modelled (documentation/05 -> Scope). Use nflverse team codes,
+# e.g. ["DET", "KC"].
+teams: []

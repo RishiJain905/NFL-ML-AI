@@ -2,9 +2,9 @@
 
 > **Agents: update this file at the end of every session**, even mid-phase. See the protocol in [README.md](README.md).
 
-**Current phase:** P00, Foundations (in progress)
-**Next step:** agree the P00 task order with Rishi, then start the repo/environment tasks.
-**Last updated:** 2026-10-03, security setup session
+**Current phase:** P00, Foundations (⏸ waiting on Rishi: `NEO4J_PASSWORD`)
+**Next step:** once Rishi fixes the `NEO4J_PASSWORD` line → `docker compose up -d` → `uv run nfl doctor` all green → ✋ close P00.
+**Last updated:** 2026-10-03, P00 build session
 
 Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ blocked · ✅ done
 
@@ -12,7 +12,7 @@ Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ b
 
 | Phase | Title | Status | Started | Completed | Notes |
 |---|---|---|---|---|---|
-| P00 | Foundations | 🟨 | 2026-10-03 | | Security guardrails done |
+| P00 | Foundations | ⏸ | 2026-10-03 | | All tasks done except Neo4j start (needs `NEO4J_PASSWORD`) + checkpoint |
 | P01 | Data ingestion and curation | ⬜ | | | |
 | P02 | Team ratings, Elo, trend | ⬜ | | | |
 | P03 | Game model v0 | ⬜ | | | |
@@ -35,13 +35,41 @@ Every 🧑 step goes here, whether Rishi ran it or delegated it.
 
 | Date | Phase | Step | Run by | W&B run / link | Notes |
 |---|---|---|---|---|---|
-| | | | | | |
+| 2026-10-03 | P00 | `uv run nfl wandb-smoke` | agent (delegated by Rishi) | [restful-serenity-1](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/pfcqqjfy) | 50 live steps + summary table; local files on D: |
+| 2026-10-03 | P00 | `docker compose up -d` + Neo4j Browser check | agent (delegated by Rishi) | n/a | **Blocked:** `NEO4J_PASSWORD` has no value in the env file (doctor + compose both report it) |
 
 ## Open blockers
 
-_None._
+- **`NEO4J_PASSWORD` not set** (P00). Rishi needs the env file line to read exactly `NEO4J_PASSWORD=<8+ chars>`. Agents can't check this beyond `nfl doctor`.
 
 ## Session log (newest first)
+
+### 2026-10-03: P00 build
+- Rishi delegated every 🧑 step in P00 and asked for subagent help where useful.
+- Built:
+  - repo skeleton
+  - `uv` project (Python 3.12; package cache on D:, `link-mode = "copy"`)
+  - `settings.py` (secrets as `SecretStr`, `is_set()` without revealing values)
+  - `paths.py` (data root on D:, fails on a missing drive; the root is created only with `nfl doctor --init-data-root`; nflreadpy cache configured explicitly)
+  - `tracking.py` (`init_run` with `launched-by` auto-detection, refuses secret-looking config keys)
+  - `graph/client.py`, `doctor.py`, `cli.py` (doctor, wandb-smoke, placeholder commands)
+  - `docker-compose.yml` (Neo4j 5.26 Community + APOC + GDS, data/logs/plugins bind-mounted on D:)
+  - config files, `.env.example`, root README, full `.gitignore`
+- **opus-high reviewed P00** (read-only): 12 findings, no live leaks. All addressed:
+  - hook strengthened (dotenv loaders, `set` / `export -p` / `declare -x` / `cmd /c set`, `Get-Item env:`, `[Environment]::`, any `environ` reference, `get_secret_value`; now blocks unparseable calls instead of allowing them)
+  - sanitized Neo4j errors in doctor
+  - `pretty_exceptions_show_locals=False`
+  - nflreadpy `update_config`
+  - plugins mount; `NEO4J_USER` in compose
+  - `--steps` min 1
+  - `.gitignore`
+  - missing plugins = FAIL
+  - no silent root creation on a typo
+  - Grep finding tested empirically with a decoy: Grep never reaches env files
+- Tests: **50 passed** (paths, settings, CLI, tracking, the guard hook including the new cases). `ruff check` and `ruff format` are clean.
+- `nfl doctor`: everything OK except `NEO4J_PASSWORD` (NOT SET), and therefore Neo4j.
+- W&B runs go to the account's default entity `models-ontario-tech-university`. Set `WANDB_ENTITY` in the env file to use another entity.
+- Committed and pushed.
 
 ### 2026-10-03: P00 started, security guardrails
 - Rishi confirmed the prerequisites: Docker Desktop running, D: connected, W&B key and Neo4j password saved by Rishi in the env file (agents never read it).

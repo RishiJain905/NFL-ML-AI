@@ -27,8 +27,11 @@ services:
     volumes:
       - ${NFL_DATA_ROOT}/neo4j/data:/data   # database files live on D: (see 02 → Storage)
       - ${NFL_DATA_ROOT}/neo4j/logs:/logs
+      - ${NFL_DATA_ROOT}/neo4j/plugins:/plugins   # keeps downloaded APOC/GDS across recreates
     restart: unless-stopped
 ```
+
+The real file is `docker-compose.yml` at the repo root (P00). It also sets the procedure allowlist for `gds.*` / `apoc.*` and takes an optional `NEO4J_USER`.
 
 - **The database files live on the D: drive** (a bind mount under the data root), not in Docker's own storage on C:. The graph is disposable (rebuilt weekly from Parquet), so if the HDD bind mount is ever too slow, switching to a named Docker volume costs nothing.
 - Community edition has one user database (`neo4j`), with no size limit at our scale.

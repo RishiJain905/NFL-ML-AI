@@ -24,42 +24,42 @@ An empty but fully working skeleton: the project installs, all data paths point 
 ## Tasks
 
 ### Repo and environment
-- [ ] 🤖 Create the repo layout from [02](../02-system-architecture.md#proposed-repository-layout): `src/nflengine/{ingest,curate,features,models,graph,digest,track2}`, `config/`, `tests/`, `notebooks/`, plus `__init__.py` files.
-- [ ] 🤖 `uv init` a package project (Python 3.12) with a `nfl` console script → `nflengine.cli:app`.
-- [ ] 🤖 Add core dependencies: `nflreadpy`, `polars`, `pyarrow`, `duckdb`, `pydantic`, `pydantic-settings`, `pyyaml`, `typer`, `rich`, `neo4j`, `wandb`, `scikit-learn`, `lightgbm`, `shap`, `httpx`, `python-dotenv`. Dev: `pytest`, `ruff`. **Don't** add `torch` yet (T02 adds it).
-- [ ] 🤖 `ruff` config in `pyproject.toml`; `pytest` config; one trivial passing test.
+- [x] 🤖 Create the repo layout from [02](../02-system-architecture.md#proposed-repository-layout): `src/nflengine/{ingest,curate,features,models,graph,digest,track2}`, `config/`, `tests/`, `notebooks/`, plus `__init__.py` files.
+- [x] 🤖 `uv init` a package project (Python 3.12) with a `nfl` console script → `nflengine.cli:app`.
+- [x] 🤖 Add core dependencies: `nflreadpy`, `polars`, `pyarrow`, `duckdb`, `pydantic`, `pydantic-settings`, `pyyaml`, `typer`, `rich`, `neo4j`, `wandb`, `scikit-learn`, `lightgbm`, `shap`, `httpx`, `python-dotenv`. Dev: `pytest`, `ruff`. **Don't** add `torch` yet (T02 adds it).
+- [x] 🤖 `ruff` config in `pyproject.toml`; `pytest` config; one trivial passing test.
 
 ### Config, secrets and data root
-- [ ] 🤖 `.env.example` with every variable from [02 → Secrets](../02-system-architecture.md#secrets-and-config) and comments.
-- [ ] 🤖 `.gitignore`: `.env`, `.venv/`, `__pycache__/`, `*.parquet`, `*.duckdb`, `wandb/`, `notebooks/.ipynb_checkpoints/`, any local `data/`.
-- [ ] 🤖 `config/settings.yaml` (seasons, `llm.provider: placeholder`, feature flags, thresholds as placeholders) and `config/followed_teams.yaml` (empty list).
-- [ ] 🤖 `nflengine/settings.py`: load `.env` + YAML into a typed Pydantic settings object.
-- [ ] 🤖 `nflengine/paths.py`: every data path built from `NFL_DATA_ROOT` (`raw`, `curated`, `features`, `models`, `runs`, `reports`, `bdb`, `neo4j`, `wandb`, `cache`). Includes `ensure_data_root()`, which **fails clearly if D: is missing** and creates subfolders if the root exists.
-- [ ] 🤖 Set `WANDB_DIR`, `UV_CACHE_DIR` and the nflreadpy cache dir to point under the data root (document how in the repo README).
+- [x] 🤖 `.env.example` with every variable from [02 → Secrets](../02-system-architecture.md#secrets-and-config) and comments.
+- [x] 🤖 `.gitignore`: `.env`, `.venv/`, `__pycache__/`, `*.parquet`, `*.duckdb`, `wandb/`, `notebooks/.ipynb_checkpoints/`, any local `data/`.
+- [x] 🤖 `config/settings.yaml` (seasons, `llm.provider: placeholder`, feature flags, thresholds as placeholders) and `config/followed_teams.yaml` (empty list).
+- [x] 🤖 `nflengine/settings.py`: load `.env` + YAML into a typed Pydantic settings object.
+- [x] 🤖 `nflengine/paths.py`: every data path built from `NFL_DATA_ROOT` (`raw`, `curated`, `features`, `models`, `runs`, `reports`, `bdb`, `neo4j`, `wandb`, `cache`). Includes `ensure_data_root()`, which **fails clearly if D: is missing** and creates subfolders if the root exists.
+- [x] 🤖 Set `WANDB_DIR`, `UV_CACHE_DIR` and the nflreadpy cache dir to point under the data root (document how in the repo README).
 
 ### Neo4j in Docker
-- [ ] 🤖 `docker-compose.yml` per [05 → Runtime](../05-knowledge-graph.md#runtime-neo4j-in-docker-local): pinned `neo4j:5.26-community` (or a newer pinned tag), APOC + GDS plugins, a **bind mount to `${NFL_DATA_ROOT}/neo4j/{data,logs}`**, and memory settings.
-- [ ] 🤖 `nflengine/graph/client.py`: a driver factory from settings, plus `ping()`.
+- [x] 🤖 `docker-compose.yml` per [05 → Runtime](../05-knowledge-graph.md#runtime-neo4j-in-docker-local): pinned `neo4j:5.26-community` (or a newer pinned tag), APOC + GDS plugins, a **bind mount to `${NFL_DATA_ROOT}/neo4j/{data,logs}`**, and memory settings.
+- [x] 🤖 `nflengine/graph/client.py`: a driver factory from settings, plus `ping()`.
 - [ ] 🧑 **Rishi runs** `docker compose up -d`, opens `http://localhost:7474`, logs in, and runs `RETURN gds.version(), apoc.version()` in Neo4j Browser.
 
 ### W&B
-- [ ] 🤖 `nflengine/tracking.py`: `init_run(group, job_type, config, tags)` that sets the project `nfl-analytics-engine` and the `launched-by` tag, with `WANDB_DIR` on D:.
-- [ ] 🤖 A `nfl wandb-smoke` command that logs a 50-step fake curve plus a small table.
-- [ ] 🧑 **Rishi runs** `uv run nfl wandb-smoke` and checks the run shows up in the W&B UI with a live-updating chart.
+- [x] 🤖 `nflengine/tracking.py`: `init_run(group, job_type, config, tags)` that sets the project `nfl-analytics-engine` and the `launched-by` tag, with `WANDB_DIR` on D:.
+- [x] 🤖 A `nfl wandb-smoke` command that logs a 50-step fake curve plus a small table.
+- [x] 🧑 **Rishi runs** `uv run nfl wandb-smoke` and checks the run shows up in the W&B UI with a live-updating chart.
 
 ### CLI skeleton
-- [ ] 🤖 Typer app with placeholder subcommands: `ingest`, `curate`, `features`, `ratings`, `train`, `backtest`, `graph`, `digest`, `weekly`, `doctor`, `wandb-smoke`.
-- [ ] 🤖 `nfl doctor` checks and prints a green/red table for:
+- [x] 🤖 Typer app with placeholder subcommands: `ingest`, `curate`, `features`, `ratings`, `train`, `backtest`, `graph`, `digest`, `weekly`, `doctor`, `wandb-smoke`.
+- [x] 🤖 `nfl doctor` checks and prints a green/red table for:
   - data root present and writable
   - `.env` loaded
   - Neo4j reachable with plugins loaded
   - W&B authenticated
   - nflreadpy importable
   - LLM provider = placeholder (OK) or a configured provider reachable
-- [ ] 🤖 Short repo `README.md` (root): what the project is, link to `documentation/`, setup steps (uv, Docker, `.env`, `nfl doctor`).
+- [x] 🤖 Short repo `README.md` (root): what the project is, link to `documentation/`, setup steps (uv, Docker, `.env`, `nfl doctor`).
 
 ### Wrap-up
-- [ ] 🤖 `uv run pytest` and `uv run ruff check` are clean.
+- [x] 🤖 `uv run pytest` and `uv run ruff check` are clean.
 - [ ] ✋ **Checkpoint:** show Rishi the `nfl doctor` output and the repo tree, and get approval to close P00.
 
 ## Rishi-in-the-loop moments

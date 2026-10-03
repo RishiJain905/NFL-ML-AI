@@ -1,0 +1,53 @@
+[project]
+name = "nflengine"
+version = "0.1.0"
+description = "NFL Analytics Engine: weekly ML-driven NFL digest + Big Data Bowl research track"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "nflreadpy",
+    "polars",
+    "pyarrow",
+    "duckdb",
+    "pydantic>=2",
+    "pydantic-settings>=2",
+    "pyyaml",
+    "typer",
+    "rich",
+    "neo4j>=5",
+    "wandb",
+    "scikit-learn",
+    "lightgbm",
+    "shap",
+    "httpx",
+    "python-dotenv",
+]
+
+[project.scripts]
+nfl = "nflengine.cli:app"
+
+[dependency-groups]
+dev = ["pytest", "ruff"]
+
+[build-system]
+requires = ["uv_build>=0.9,<0.10"]
+build-backend = "uv_build"
+
+[tool.uv]
+# Deliberately machine-specific: the package cache lives on the D: data drive
+# (documentation/02 -> Storage, decision D27). The venv stays on F:, so packages are
+# copied rather than hard-linked across drives.
+cache-dir = "D:/nfl-ml-data/cache/uv"
+link-mode = "copy"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: needs Docker / network / credentials (deselect with -m 'not integration')"]
+addopts = "-m 'not integration'"

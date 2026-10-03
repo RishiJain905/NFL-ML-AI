@@ -1,0 +1,47 @@
+# Non-secret application config. Secrets and machine paths live in the env file
+# (see .env.example). Values marked "tuned in Pxx" are starting points.
+
+seasons:
+  history_start: 2010   # play-by-play history used for training (documentation/04)
+  graph_start: 2018     # first season loaded into Neo4j (documentation/05)
+  current: 2026
+
+wandb:
+  project: nfl-analytics-engine
+
+llm:
+  provider: placeholder   # placeholder | anthropic | openai_compatible (connected in P09)
+  model: null
+
+# Optional data sources (documentation/03 -> Additional free sources). All fail soft.
+sources:
+  espn: true
+  ngs_site: true
+  espn_win_rates: true
+  pfr_scrape: true
+  open_meteo: true
+  odds_api: false         # needs ODDS_API_KEY
+
+flags:
+  injury_update_enabled: false   # Saturday injury update (P07)
+
+ratings:                  # tuned in P02
+  half_life_weeks: 4
+  prior_regression: 0.33
+  ridge_alpha: 1.0
+
+training:                 # tuned in P03 / P06
+  sample_weights:
+    current_season: 3.0
+    last_season: 1.5
+    older: 1.0
+
+digest:                   # prose word budgets per section (documentation/06)
+  word_budgets:
+    report_card: 60
+    game_outlook: 80
+    team_trends: 120
+    under_the_hood: 110
+    players_to_watch: 160
+    matchup_risk: 80
+    non_obvious: 90

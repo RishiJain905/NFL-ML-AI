@@ -18,15 +18,20 @@ CREDENTIAL_FILES = re.compile(
     r"_netrc|\.netrc|kaggle\.json|\.docker[\\/]+config\.json", re.IGNORECASE
 )
 
-# Commands that dump environment variables or resolved secrets.
+# Commands that dump environment variables, load the env file, or unwrap secrets.
 ENV_DUMP = re.compile(
     r"\bprintenv\b"
-    r"|(?:^|[;&|]\s*)env\s*(?:$|[;&|])"
-    r"|\b(?:Get-ChildItem|gci|dir|ls)\s+env:"
+    r"|(?:^|[;&|]\s*)env\s*(?:$|[;&|>])"
+    r"|(?:^|[;&|]\s*)set\s*(?:$|[;&|>])"
+    r"|\bexport\s+-p\b|\bdeclare\s+-[a-z]*x"
+    r"|\bcmd(?:\.exe)?\s+/c\s+set\b"
+    r"|\b(?:Get-ChildItem|gci|dir|ls|Get-Item|gi)\s+env:"
+    r"|\[(?:System\.)?Environment\]::"
     r"|docker(?:-|\s+)compose\s+config"
     r"|docker\s+inspect"
     r"|docker\s+exec\b.*\b(?:env|printenv)\b"
-    r"|os\.environ|getenv\(",
+    r"|\benviron\b|getenv\("
+    r"|dotenv_values|load_dotenv|find_dotenv|get_secret_value",
     re.IGNORECASE,
 )
 
@@ -64,10 +69,13 @@ def violation(tool: str, text: str) -> str | None:
 def main() -> int:
     try:
         data = json.load(sys.stdin)
-    except Exception:
-        return 0  # never break tooling on malformed input
-    tool = data.get("tool_name", "")
-    reason = violation(tool, text_to_check(tool, data.get("tool_input") or {}))
+        tool = data.get("tool_name", "")
+        reason = violation(tool, text_to_check(tool, data.get("tool_input") or {}))
+    except Exception as exc:  # fail closed: an unparseable call is blocked, not allowed
+        print(
+            f"BLOCKED by block_secrets.py: could not inspect tool call ({exc!r}).", file=sys.stderr
+        )
+        return 2
     if reason:
         print(
             f"BLOCKED by .claude/hooks/block_secrets.py: this {tool} call {reason}. "

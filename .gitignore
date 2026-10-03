@@ -4,3 +4,31 @@
 .env.local
 # The template has variable names only (no values) and should be committed
 !.env.example
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Data never lives in the repo (it is on D:, see documentation/02 -> Storage)
+data/
+*.parquet
+*.duckdb
+*.duckdb.wal
+*.csv.gz
+wandb/
+
+# Notebooks
+notebooks/.ipynb_checkpoints/
+.ipynb_checkpoints/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
