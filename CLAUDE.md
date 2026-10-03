@@ -63,7 +63,7 @@ A personal ML system that produces a weekly NFL digest (win probabilities, predi
   - record the waiver in `documentation/plans/PROGRESS.md` (in the Rishi-run steps log for 🧑 steps, and in the session log for standing waivers)
   - run delegated 🧑 steps with `--launched-by agent`
   - a standing waiver holds until Rishi revokes it; if its scope is unclear, apply it narrowly and mention that in the status note
-- **End every run with three headings: Blocked on me, Changed, Found.** These go into the end-of-run summary, alongside the usual content (checkpoint output, commands to run, next step). They don't replace it.
+- **End every task run with three headings: Blocked on me, Changed, Found.** A task run is work: building, running pipelines, editing files, phase work. These go into the end-of-run summary, alongside the usual content (checkpoint output, commands to run, next step). They don't replace it. **Not for plain questions:** when Rishi just asks something, answer it directly without the headings.
   - **Blocked on me:** what needs Rishi before work can continue: decisions, approvals, env-file fixes, 🧑 steps not yet waived. Write "Nothing" if nothing is blocked.
   - **Changed:** what the run changed: code, docs, config, data on D:, the Neo4j graph, W&B runs, commits and pushes (with hashes).
   - **Found:** what the run learned or noticed: data quirks, bugs, surprises, results worth knowing, risks for later phases.
