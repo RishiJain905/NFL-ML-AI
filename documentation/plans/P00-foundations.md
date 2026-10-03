@@ -40,7 +40,7 @@ An empty but fully working skeleton: the project installs, all data paths point 
 ### Neo4j in Docker
 - [x] 🤖 `docker-compose.yml` per [05 → Runtime](../05-knowledge-graph.md#runtime-neo4j-in-docker-local): pinned `neo4j:5.26-community` (or a newer pinned tag), APOC + GDS plugins, a **bind mount to `${NFL_DATA_ROOT}/neo4j/{data,logs}`**, and memory settings.
 - [x] 🤖 `nflengine/graph/client.py`: a driver factory from settings, plus `ping()`.
-- [ ] 🧑 **Rishi runs** `docker compose up -d`, opens `http://localhost:7474`, logs in, and runs `RETURN gds.version(), apoc.version()` in Neo4j Browser.
+- [x] 🧑 **Rishi runs** `docker compose up -d`, opens `http://localhost:7474`, logs in, and runs `RETURN gds.version(), apoc.version()` in Neo4j Browser.
 
 ### W&B
 - [x] 🤖 `nflengine/tracking.py`: `init_run(group, job_type, config, tags)` that sets the project `nfl-analytics-engine` and the `launched-by` tag, with `WANDB_DIR` on D:.

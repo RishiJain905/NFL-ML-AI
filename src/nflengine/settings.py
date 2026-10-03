@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, PrivateAttr, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -43,6 +43,9 @@ class EnvSettings(BaseSettings):
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: SecretStr | None = None
+    # Temporary fallback for a misspelled variable name in Rishi's env file (2026-10-03).
+    # `nfl doctor` warns while it is in use; remove once the line is renamed.
+    neo4js_password: SecretStr | None = None
 
     wandb_api_key: SecretStr | None = None
     wandb_entity: str | None = None
@@ -52,6 +55,20 @@ class EnvSettings(BaseSettings):
     odds_api_key: SecretStr | None = None
     kaggle_username: str | None = None
     kaggle_key: SecretStr | None = None
+
+    _neo4j_password_via_fallback: bool = PrivateAttr(default=False)
+
+    @model_validator(mode="after")
+    def _apply_neo4j_password_fallback(self) -> EnvSettings:
+        if not self.is_set("NEO4J_PASSWORD") and self.is_set("NEO4JS_PASSWORD"):
+            self.neo4j_password = self.neo4js_password
+            self._neo4j_password_via_fallback = True
+        return self
+
+    @property
+    def neo4j_password_via_fallback(self) -> bool:
+        """True when the password came from the misspelled NEO4JS_PASSWORD name."""
+        return self._neo4j_password_via_fallback
 
     def is_set(self, var_name: str) -> bool:
         """Whether a variable has a non-empty value. Never exposes the value itself."""

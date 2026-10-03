@@ -9,7 +9,8 @@ services:
       - "7474:7474"   # Neo4j Browser
       - "7687:7687"   # Bolt
     environment:
-      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:?NEO4J_PASSWORD must be set}
+      # NEO4JS_PASSWORD = temporary fallback for a misspelled env-file line (2026-10-03).
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-${NEO4JS_PASSWORD:?NEO4J_PASSWORD must be set}}
       NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
       NEO4J_dbms_security_procedures_unrestricted: "gds.*,apoc.*"
       NEO4J_dbms_security_procedures_allowlist: "gds.*,apoc.*"

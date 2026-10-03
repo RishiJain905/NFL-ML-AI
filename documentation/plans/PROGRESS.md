@@ -2,8 +2,8 @@
 
 > **Agents: update this file at the end of every session**, even mid-phase. See the protocol in [README.md](README.md).
 
-**Current phase:** P00, Foundations (⏸ waiting on Rishi: `NEO4J_PASSWORD`)
-**Next step:** once Rishi fixes the `NEO4J_PASSWORD` line → `docker compose up -d` → `uv run nfl doctor` all green → ✋ close P00.
+**Current phase:** P00, Foundations (⏸ all exit criteria met; waiting on Rishi's ✋ approval to close)
+**Next step:** Rishi approves closing P00 → start P01 (data ingestion). Rishi to-do whenever convenient: rename the env-file line `NEO4JS_PASSWORD` → `NEO4J_PASSWORD`, then remove the temporary fallback (see Open blockers).
 **Last updated:** 2026-10-03, P00 build session
 
 Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ blocked · ✅ done
@@ -12,7 +12,7 @@ Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ b
 
 | Phase | Title | Status | Started | Completed | Notes |
 |---|---|---|---|---|---|
-| P00 | Foundations | ⏸ | 2026-10-03 | | All tasks done except Neo4j start (needs `NEO4J_PASSWORD`) + checkpoint |
+| P00 | Foundations | ⏸ | 2026-10-03 | | All tasks + exit criteria done; awaiting ✋ approval |
 | P01 | Data ingestion and curation | ⬜ | | | |
 | P02 | Team ratings, Elo, trend | ⬜ | | | |
 | P03 | Game model v0 | ⬜ | | | |
@@ -36,13 +36,25 @@ Every 🧑 step goes here, whether Rishi ran it or delegated it.
 | Date | Phase | Step | Run by | W&B run / link | Notes |
 |---|---|---|---|---|---|
 | 2026-10-03 | P00 | `uv run nfl wandb-smoke` | agent (delegated by Rishi) | [restful-serenity-1](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/pfcqqjfy) | 50 live steps + summary table; local files on D: |
-| 2026-10-03 | P00 | `docker compose up -d` + Neo4j Browser check | agent (delegated by Rishi) | n/a | **Blocked:** `NEO4J_PASSWORD` has no value in the env file (doctor + compose both report it) |
+| 2026-10-03 | P00 | `docker compose up -d` + plugin version check | agent (delegated by Rishi) | n/a | Neo4j 5.26.31 Community, GDS 2.13.13, APOC 5.26.31; ready in ~60 s; data + plugins (613 MB) on `D:/nfl-ml-data/neo4j` |
 
 ## Open blockers
 
-- **`NEO4J_PASSWORD` not set** (P00). Rishi needs the env file line to read exactly `NEO4J_PASSWORD=<8+ chars>`. Agents can't check this beyond `nfl doctor`.
+_None._ One cleanup item (not blocking):
+- **Temporary `NEO4JS_PASSWORD` fallback.** Rishi's env file spells the variable `NEO4JS_PASSWORD`. `settings.py` and `docker-compose.yml` accept it as a fallback, and `nfl doctor` shows a WARN while it's in use. Once Rishi renames the line to `NEO4J_PASSWORD`:
+  1. remove the `neo4js_password` field and validator from `settings.py`
+  2. remove the doctor branch
+  3. remove the related test
+  4. remove the `:-${NEO4JS_PASSWORD...}` default in compose
 
 ## Session log (newest first)
+
+### 2026-10-03: P00 Neo4j up
+- Rishi (away from the computer) said the env file has `NEO4JS_PASSWORD`. Added a temporary fallback for the misspelled name in settings and compose (the correct name wins if both exist), a doctor WARN, and a test. 51 tests pass.
+- The guard hook blocked a `docker inspect` status check during startup monitoring, as designed. Switched to `docker compose ps`.
+- `docker compose up -d` → plugins downloaded → "Started." after ~60 s.
+- `nfl doctor` exits 0: everything OK, plus one WARN (the fallback reminder).
+- **All P00 exit criteria are met.** Waiting on Rishi's ✋ approval to close P00.
 
 ### 2026-10-03: P00 build
 - Rishi delegated every 🧑 step in P00 and asked for subagent help where useful.
