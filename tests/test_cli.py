@@ -8,14 +8,14 @@ runner = CliRunner()
 def test_help_lists_all_commands() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for name in ["doctor", "wandb-smoke", *PLACEHOLDERS]:
+    for name in ["doctor", "wandb-smoke", "ingest", "curate", "data-status", *PLACEHOLDERS]:
         assert name in result.output
 
 
 def test_placeholders_exit_nonzero_with_phase() -> None:
-    result = runner.invoke(app, ["ingest"])
+    result = runner.invoke(app, ["features"])
     assert result.exit_code == 1
-    assert "P01" in result.output
+    assert "P02" in result.output
 
 
 def test_doctor_exit_code_reflects_failures(monkeypatch) -> None:

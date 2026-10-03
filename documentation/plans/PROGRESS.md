@@ -2,9 +2,9 @@
 
 > **Agents: update this file at the end of every session**, even mid-phase. See the protocol in [README.md](README.md).
 
-**Current phase:** P00, Foundations (⏸ all exit criteria met; waiting on Rishi's ✋ approval to close)
-**Next step:** Rishi approves closing P00 → start P01 (data ingestion). Rishi to-do whenever convenient: rename the env-file line `NEO4JS_PASSWORD` → `NEO4J_PASSWORD`, then remove the temporary fallback (see Open blockers).
-**Last updated:** 2026-10-03, P00 build session
+**Current phase:** P01, Data ingestion and curation (⏸ all exit criteria met; waiting on Rishi's ✋ approval to close)
+**Next step:** Rishi approves closing P01 → start P02 (team ratings, Elo, trend). Rishi to-do whenever convenient: rename the env-file line `NEO4JS_PASSWORD` → `NEO4J_PASSWORD`, then an agent removes the temporary fallback (see Open blockers).
+**Last updated:** 2026-10-03, P01 build session
 
 Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ blocked · ✅ done
 
@@ -12,8 +12,8 @@ Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ b
 
 | Phase | Title | Status | Started | Completed | Notes |
 |---|---|---|---|---|---|
-| P00 | Foundations | ⏸ | 2026-10-03 | | All tasks + exit criteria done; awaiting ✋ approval |
-| P01 | Data ingestion and curation | ⬜ | | | |
+| P00 | Foundations | ✅ | 2026-10-03 | 2026-10-03 | Closed with Rishi's approval |
+| P01 | Data ingestion and curation | ⏸ | 2026-10-03 | | All tasks + exit criteria done; awaiting ✋ approval |
 | P02 | Team ratings, Elo, trend | ⬜ | | | |
 | P03 | Game model v0 | ⬜ | | | |
 | P04 | Digest v0 (first live digest) | ⬜ | | | |
@@ -48,6 +48,32 @@ _None._ One cleanup item (not blocking):
   4. remove the `:-${NEO4JS_PASSWORD...}` default in compose
 
 ## Session log (newest first)
+
+### 2026-10-03: P01 build
+- **Explored every source live first**, then built to match. Findings are in [03 → Findings from P01](../03-data-sources.md#findings-from-p01-checked-live-on-2026-10-03); decisions D32–D37.
+- **Ingest** (`nfl ingest`):
+  - snapshot store with per-file manifests (row counts, sha256) and a run manifest per run
+  - polite HTTP client (per-host rate limits, retries, cache)
+  - 22 nflverse datasets, 2010–2026, about 4.3M rows, ~250 MB. Participation goes to `research/` only.
+  - ESPN (scoreboard/odds/weather, news, injuries, QBR, FPI)
+  - NGS-site leader boards
+  - Open-Meteo forecasts (stadiums matched by name first)
+  - The Odds API (wired up, off without a key)
+  - every optional source fails soft
+- **Snapshot policy:** completed seasons pulled once, current season every run (D32). A full refresh takes ~15 s.
+- **Curate** (`nfl curate`):
+  - 31 tables plus `nfl.duckdb` views
+  - canonical team codes (relocations follow the franchise)
+  - `gsis_id` crosswalk: PFR 100%, snaps 99.9%, ESPN injuries 99.9%, QBR 100%
+  - unified weekly depth charts across both nflverse formats
+  - canonical `lines` (+ = home favored; ESPN sign-flipped; matches nflverse exactly)
+  - fantasy news flagged
+- **Quality checks:** all pass. 0 duplicates; all codes canonical; all 4,412 completed games have play-by-play; spread sign agrees on 98.7%; freshness reaches Week 3. Results are saved to `curated/_quality/latest.json`.
+- **Readiness:** `nfl ingest --check-ready --week 3` → READY; `--week 4` → NOT READY (exit 3, lists missing games).
+- **Other commands:** `nfl data-status` (snapshots, seasons, newest week, rows, join rates, disk use).
+- **Tests:** 75 pass, ruff clean.
+- **Disk on D::** raw 249 MB, research 20 MB, curated 239 MB.
+- Nothing needed from Rishi during the build (ingestion is 🤖 by agreement).
 
 ### 2026-10-03: P00 Neo4j up
 - Rishi (away from the computer) said the env file has `NEO4JS_PASSWORD`. Added a temporary fallback for the misspelled name in settings and compose (the correct name wins if both exist), a doctor WARN, and a test. 51 tests pass.

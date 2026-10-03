@@ -82,9 +82,110 @@ def wandb_smoke(
     console.print("[green]Smoke run finished.[/]")
 
 
+def _parse_seasons(value: str | None) -> list[int] | None:
+    """'2018-2025' or '2024,2025' or '2026' -> list of seasons."""
+    if not value:
+        return None
+    out: list[int] = []
+    for chunk in value.split(","):
+        if "-" in chunk:
+            a, b = chunk.split("-")
+            out += list(range(int(a), int(b) + 1))
+        else:
+            out.append(int(chunk))
+    return out
+
+
+def _csv(value: str | None) -> list[str] | None:
+    return [v.strip() for v in value.split(",") if v.strip()] if value else None
+
+
+@app.command()
+def ingest(
+    season: int | None = typer.Option(None, help="Current season (default: config)."),
+    sources: str | None = typer.Option(
+        None, help="Comma list: nflverse,espn,ngs_site,weather,odds_api (default: all)."
+    ),
+    datasets: str | None = typer.Option(None, help="Comma list of nflverse datasets only."),
+    seasons: str | None = typer.Option(None, help="Seasons for nflverse, e.g. 2018-2025."),
+    refresh_history: bool = typer.Option(
+        False, "--refresh-history", help="Re-pull completed seasons too (normally pulled once)."
+    ),
+    check_ready: bool = typer.Option(
+        False, "--check-ready", help="Only check whether --week is complete in the data."
+    ),
+    week: int | None = typer.Option(None, help="Week for --check-ready."),
+) -> None:
+    """Pull every data source into dated Parquet snapshots on D: (P01)."""
+    if check_ready:
+        from nflengine.curate.readiness import check_ready as _check
+
+        report = _check(season, week)
+        style = "green" if report.ready else "yellow"
+        console.print(f"[{style}]{report.summary()}[/]")
+        raise typer.Exit(0 if report.ready else 3)
+
+    from nflengine.ingest.runner import run_ingest
+
+    results, manifest = run_ingest(
+        season=season,
+        sources=_csv(sources),
+        nflverse_datasets=_csv(datasets),
+        seasons=_parse_seasons(seasons),
+        refresh_history=refresh_history,
+        log=console.print,
+    )
+    table = Table(title="ingest summary")
+    for col in ("source", "dataset", "status", "rows", "detail"):
+        table.add_column(col, overflow="fold")
+    style = {"ok": "green", "partial": "yellow", "skipped": "dim", "failed": "red"}
+    for r in results:
+        table.add_row(
+            r.source, r.dataset, f"[{style[r.status]}]{r.status}[/]", f"{r.rows:,}", r.detail[:90]
+        )
+    console.print(table)
+    console.print(f"Run manifest: {manifest}")
+    if any(r.status == "failed" and r.source == "nflverse" for r in results):
+        raise typer.Exit(1)
+
+
+@app.command()
+def curate(
+    skip_checks: bool = typer.Option(False, "--skip-checks", help="Build tables only."),
+) -> None:
+    """Build curated tables + DuckDB views from the latest snapshots, then run quality checks."""
+    from nflengine.curate.build import build_all
+    from nflengine.curate.quality import BLOCK, run_quality_checks
+
+    built = build_all(log=console.print)
+    console.print(f"[green]Curated {len(built)} tables.[/]")
+    if skip_checks:
+        return
+    checks = run_quality_checks()
+    table = Table(title="data-quality checks")
+    for col in ("check", "level", "result", "detail"):
+        table.add_column(col, overflow="fold")
+    for c in checks:
+        res = (
+            "[green]pass[/]"
+            if c.passed
+            else ("[red]FAIL[/]" if c.level == BLOCK else "[yellow]warn[/]")
+        )
+        table.add_row(c.name, c.level, res, c.detail)
+    console.print(table)
+    if any(not c.passed and c.level == BLOCK for c in checks):
+        raise typer.Exit(1)
+
+
+@app.command("data-status")
+def data_status() -> None:
+    """Newest snapshot / season / week per dataset, row counts, join rates, disk use."""
+    from nflengine.curate.status import render_status
+
+    console.print(render_status())
+
+
 PLACEHOLDERS = {
-    "ingest": ("P01", "Pull every data source into dated Parquet snapshots."),
-    "curate": ("P01", "Build curated tables and run data-quality checks."),
     "features": ("P02", "Build feature tables with as-of guarantees."),
     "ratings": ("P02", "Compute / tune team ratings, Elo and trend."),
     "train": ("P03", "Fit models for a given week."),

@@ -16,7 +16,7 @@ All primary data is free. nflverse, loaded with `nflreadpy`, is the backbone. ES
 | `load_nextgen_stats(stat_type=...)` | 2016+ | **Current-season tracking summaries**: passing (time to throw, aggressiveness, completion % over expected, air yards differential), receiving (**average separation**, **cushion**, **yards after catch above expected**, share of team air yards), rushing (**rush yards over expected**, efficiency, % of runs against 8+ in the box) | Weekly; minimum-attempt thresholds apply; check for a season-to-date (week 0) row |
 | `load_pfr_advstats(stat_type=pass/rush/rec/def)` | 2018+ | **Pressures, hurries, QB hits, blitzes** (defense), pressures faced (QB), broken tackles, drops, missed tackles, yards before/after contact | Weekly (week level needs the season given) |
 | `load_ftn_charting()` | 2022+ | Play-level charting: play action, motion, RPO, screens, number of pass rushers, blitz, QB out of pocket, catchable ball, contested catch | Weekly, a short lag after games |
-| `load_snap_counts()` | 2012+ | Snap share for role and usage trends (offense, defense, special teams) | Weekly |
+| `load_snap_counts()` | 2013+ (2012 is empty) | Snap share for role and usage trends (offense, defense, special teams) | Weekly |
 | `load_injuries()` | 2009+ | Practice participation and game status (Out, Doubtful, Questionable) | Updated through the week; **final designations come Friday** |
 | `load_rosters_weekly()` | 2002+ | Who was on which team each week (player–team tenure for the graph) | Weekly |
 | `load_depth_charts()` | 2001+ | Depth order, used for injury ripple (who steps in) | Weekly, but can be noisy |
@@ -89,6 +89,52 @@ Track 2 only. Full detail in [07](07-track2-big-data-bowl.md).
 | Coordinators (OC/DC) and coaching trees | Not in nflverse | Small hand-curated CSV seed (32 teams × 2 roles × season); optional, see [05](05-knowledge-graph.md) |
 
 No paid dataset is currently worth buying. Revisit only if a specific digest section is clearly blocked by missing data.
+
+## Findings from P01 (checked live on 2026-10-03)
+
+These replace the "confirm at build time" notes above.
+
+### nflverse
+
+- **Lines for upcoming games:** `load_schedules()` already has spreads, totals and moneylines for roughly the next 9 weeks (Weeks 4–13 on 2026-10-03). It's the primary source of current lines. **`spread_line` > 0 means the home team is favored.** That agrees with the moneyline favorite on 98.7% of 5,342 historical games (the rest are near pick'em).
+- **PFR advanced defense** (`load_pfr_advstats(stat_type="def")`) already includes **per-defender coverage stats**: targets, completions, yards, TDs and passer rating allowed, average depth of target, air yards, YAC allowed. That's in addition to pressures, hurries, blitzes and missed tackles. **No PFR scraping is needed** (D33).
+- **Participation** is available 2016–2025 (2026 not published). It includes `route`, `defense_coverage_type`, `defense_man_zone_type`, `was_pressure`, `time_to_throw`. It's stored under `research/` only (D14).
+- **Depth-chart format change:** ≤2024 is weekly (`club_code`, `depth_team`, `depth_position`); 2025+ is daily ESPN-sourced snapshots (`dt`, `pos_abb`, `pos_rank`). Curation turns both into one weekly table, using the latest snapshot on or before each game day, for games within 10 days of the snapshot (D36).
+- **Team codes by source:** nflverse uses `LA` for the Rams, NGS uses `LAR`, draft picks use PFR codes (`GNB`, `KAN`, `NWE`, ...), ESPN uses `WSH`. All are mapped to one canonical code per franchise (relocations follow the franchise: OAK→LV, SD→LAC, STL→LA).
+- **Data for the week in progress:** play-by-play, player stats, NGS, snaps and injuries reached the current week within a day. PFR advanced and FTN charting trail by about one week.
+- **Size:** all of nflverse 2010–2026 is about **250 MB** as Parquet. After the first pull, a weekly refresh re-pulls only the current season (about 15 s for every source).
+
+### ESPN (unofficial)
+
+All of these work:
+- **Scoreboard** per week: status, scores, odds (DraftKings), weather, byes.
+- **News.** Mostly fantasy articles, which are flagged `is_fantasy` and kept out of the digest (D37).
+- **Injuries.** About 800 rows. The athlete ID is only in the player-card link, so it's parsed from `/id/NNN/`. Joins to GSIS at 99.9%.
+- **Total QBR**, weekly (`site.web.api.espn.com/apis/fitt/v3/.../qbr`).
+- **FPI** with offense, defense and special-teams parts plus projections (`.../powerindex`).
+- The core API depth charts also work, but nflverse already carries them.
+
+Note: **ESPN spreads use the opposite sign** (favorite negative, e.g. `DAL -9.5` → `-9.5`). The curated `lines` table flips it to the nflverse convention (`home_spread` > 0 = home favored). ESPN and nflverse lines matched exactly for Week 5.
+
+### Next Gen Stats site
+
+- The weekly stat boards (passing, receiving, rushing) **duplicate nflverse's NGS copy**, so they aren't ingested.
+- `passRushing` and most leader boards return **HTTP 403**.
+- Only three play-level boards are open: `speed/ballCarrier`, `distance/tackle`, `time/sack`. They're ingested as `ngs_leaders`, for color in the digest (D34).
+
+### Other sources
+
+- **ESPN win rates** (pass rush / run stop / pass block): no API. They're only published inside articles. **Not available.**
+- **Open-Meteo:** works with no key. Stadiums are matched **by name first** (`config/stadiums.yaml`), because nflverse keeps the home team's `stadium_id` for neutral-site games (2026 PHI@JAX at Tottenham has `JAX00`). Domes and closed roofs are skipped.
+- **The Odds API:** wired up but off (`sources.odds_api: false`) until a key is added. nflverse plus ESPN already supply current lines.
+
+### Curated layout
+
+`{NFL_DATA_ROOT}/curated/` holds one Parquet file per table, plus:
+- `plays/season=YYYY.parquet`
+- `nfl.duckdb` (views over everything)
+- `_joins.json` (player-ID join rates)
+- `_quality/latest.json` (last data-quality run)
 
 ## Storage layout
 

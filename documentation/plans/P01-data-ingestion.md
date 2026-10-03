@@ -18,39 +18,54 @@ One command pulls every data source into **dated Parquet snapshots on D:**, then
 ## Tasks
 
 ### Ingestion framework
-- [ ] 🤖 `ingest/base.py`: a common pattern of `fetch() → DataFrame → write_snapshot(source, dataset, df)` to `raw/{source}/{dataset}/snapshot=YYYY-MM-DD/part.parquet`, with a content hash and row count recorded in a `manifest.json`.
-- [ ] 🤖 Idempotent: a rerun on the same day overwrites that day's snapshot. `--seasons` and `--sources` flags.
-- [ ] 🤖 A shared HTTP client (`httpx`) with retries, rate limiting per host, and on-disk caching under `cache/http/`.
+- [x] 🤖 `ingest/base.py`: a common pattern of `fetch() → DataFrame → write_snapshot(source, dataset, df)` to `raw/{source}/{dataset}/snapshot=YYYY-MM-DD/part.parquet`, with a content hash and row count recorded in a `manifest.json`.
+- [x] 🤖 Idempotent: a rerun on the same day overwrites that day's snapshot. `--seasons` and `--sources` flags.
+- [x] 🤖 A shared HTTP client (`httpx`) with retries, rate limiting per host, and on-disk caching under `cache/http/`.
 
 ### nflverse sources (required)
-- [ ] 🤖 play-by-play (2010+), schedules (all), player stats + team stats (weekly), NGS passing / receiving / rushing (2016+), PFR advanced pass / rush / rec / def (2018+, weekly), FTN charting (2022+), snap counts, injuries, weekly rosters, depth charts, players, teams, officials, trades, draft picks.
-- [ ] 🤖 Participation (2016+) ingested **for research only**. Write it to a separate `research/` area so no live feature can read it by accident ([D14](../10-decisions-log.md)).
+- [x] 🤖 play-by-play (2010+), schedules (all), player stats + team stats (weekly), NGS passing / receiving / rushing (2016+), PFR advanced pass / rush / rec / def (2018+, weekly), FTN charting (2022+), snap counts, injuries, weekly rosters, depth charts, players, teams, officials, trades, draft picks.
+- [x] 🤖 Participation (2016+) ingested **for research only**. Write it to a separate `research/` area so no live feature can read it by accident ([D14](../10-decisions-log.md)).
 
 ### ESPN + extra free sources (optional, fail-soft)
-- [ ] 🤖 ESPN: scoreboard (incl. odds for upcoming games), news, injuries, QBR, FPI, team depth charts. Save raw JSON + parsed tables.
-- [ ] 🤖 **NGS site exploration:** find the JSON endpoints behind nextgenstats.nfl.com. Document in [03](../03-data-sources.md) exactly which fields go **beyond** nflverse's NGS copy. Ingest the useful ones.
-- [ ] 🤖 ESPN pass rush / run stop / pass block win rates, if reachable. Otherwise record "not available" in 03.
-- [ ] 🤖 PFR per-defender coverage stats (careful scraping, ≤ 20 requests/min, cached), only for fields nflverse doesn't already have.
-- [ ] 🤖 Open-Meteo forecasts for upcoming games (stadium coordinates table; skip domes). Stored as data available at that time.
-- [ ] 🤖 The Odds API (if `ODDS_API_KEY` is set): current lines for the coming week. Respect the free-tier quota.
-- [ ] 🤖 Every optional source sits behind a feature flag and **fails soft**: errors are logged, the run continues, and the manifest records `status: skipped/failed`.
+- [x] 🤖 ESPN: scoreboard (incl. odds for upcoming games), news, injuries, QBR, FPI, team depth charts. Save raw JSON + parsed tables.
+- [x] 🤖 **NGS site exploration:** find the JSON endpoints behind nextgenstats.nfl.com. Document in [03](../03-data-sources.md) exactly which fields go **beyond** nflverse's NGS copy. Ingest the useful ones.
+- [x] 🤖 ESPN pass rush / run stop / pass block win rates, if reachable. Otherwise record "not available" in 03.
+- [x] 🤖 PFR per-defender coverage stats (careful scraping, ≤ 20 requests/min, cached), only for fields nflverse doesn't already have.
+- [x] 🤖 Open-Meteo forecasts for upcoming games (stadium coordinates table; skip domes). Stored as data available at that time.
+- [x] 🤖 The Odds API (if `ODDS_API_KEY` is set): current lines for the coming week. Respect the free-tier quota.
+- [x] 🤖 Every optional source sits behind a feature flag and **fails soft**: errors are logged, the run continues, and the manifest records `status: skipped/failed`.
 
 ### Curation
-- [ ] 🤖 Team code normalization (OAK→LV, SD→LAC, STL→LA, LA/LAR spellings) + a `franchise_id` mapping table.
-- [ ] 🤖 Player ID crosswalk: every source mapped to `gsis_id` (using `load_players` IDs plus name/team/position fuzzy matching for ESPN, NGS and PFR scrapes). Log join rates.
-- [ ] 🤖 Curated tables in `curated/`, plus a DuckDB file with views: `games`, `plays`, `player_games`, `team_games`, `ngs_weekly`, `pfr_adv_weekly`, `ftn_plays`, `snaps`, `injuries`, `rosters_weekly`, `depth_charts`, `lines` (historical + current), `weather`, `officials`.
-- [ ] 🤖 A canonical `lines` table: historical closing lines (schedules) + current lines (Odds API → ESPN → schedules, in that order), with `source` and `pulled_at` columns.
+- [x] 🤖 Team code normalization (OAK→LV, SD→LAC, STL→LA, LA/LAR spellings) + a `franchise_id` mapping table.
+- [x] 🤖 Player ID crosswalk: every source mapped to `gsis_id` (using `load_players` IDs plus name/team/position fuzzy matching for ESPN, NGS and PFR scrapes). Log join rates.
+- [x] 🤖 Curated tables in `curated/`, plus a DuckDB file with views: `games`, `plays`, `player_games`, `team_games`, `ngs_weekly`, `pfr_adv_weekly`, `ftn_plays`, `snaps`, `injuries`, `rosters_weekly`, `depth_charts`, `lines` (historical + current), `weather`, `officials`.
+- [x] 🤖 A canonical `lines` table: historical closing lines (schedules) + current lines (Odds API → ESPN → schedules, in that order), with `source` and `pulled_at` columns.
 
 ### Quality checks and readiness
-- [ ] 🤖 Every check in [03 → Data-quality checks](../03-data-sources.md#curation-and-data-quality-checks), as code, with block/warn levels, results saved per run.
-- [ ] 🤖 **Lines sign-convention test** (spread vs moneyline favorite agreement ≥ 95%).
-- [ ] 🤖 `nfl ingest --check-ready --season 2026 --week N`: are all of week N's games final and in play-by-play?
-- [ ] 🤖 A `nfl data-status` command: newest week per source, snapshot dates, row counts, join rates.
-- [ ] 🤖 Tests: normalization, ID crosswalk, the quality-check logic (with small fixtures; no network in unit tests).
+- [x] 🤖 Every check in [03 → Data-quality checks](../03-data-sources.md#curation-and-data-quality-checks), as code, with block/warn levels, results saved per run.
+- [x] 🤖 **Lines sign-convention test** (spread vs moneyline favorite agreement ≥ 95%).
+- [x] 🤖 `nfl ingest --check-ready --season 2026 --week N`: are all of week N's games final and in play-by-play?
+- [x] 🤖 A `nfl data-status` command: newest week per source, snapshot dates, row counts, join rates.
+- [x] 🤖 Tests: normalization, ID crosswalk, the quality-check logic (with small fixtures; no network in unit tests).
 
 ### Wrap-up
-- [ ] 🤖 Update [03](../03-data-sources.md) with findings: what the NGS site and the other extra sources actually returned, and which nflverse fields are filled in for upcoming games (e.g. lines on Tuesday).
+- [x] 🤖 Update [03](../03-data-sources.md) with findings: what the NGS site and the other extra sources actually returned, and which nflverse fields are filled in for upcoming games (e.g. lines on Tuesday).
 - [ ] ✋ **Checkpoint:** show Rishi the `nfl data-status` output, the disk use on D:, and any sources that didn't work out. Get approval to close P01.
+
+### As built: deviations from the task list (all logged in the decisions log)
+
+- **Snapshots:** completed seasons are pulled once, the current season every run (D32).
+- **Franchise mapping:** the canonical team code *is* the franchise ID. The `team_aliases` table holds the mapping.
+- **ID crosswalk:** no fuzzy name matching needed. NGS carries `gsis_id`, PFR tables join on `pfr_id`, ESPN on `espn_id` (join rates 99.9–100%).
+- **Curated table names:**
+  - `ngs_passing` / `ngs_receiving` / `ngs_rushing`, not one `ngs_weekly`
+  - `pfr_pass` / `pfr_rush` / `pfr_rec` / `pfr_def`, not `pfr_adv_weekly`
+  - `weather_forecasts`, not `weather`
+- **Lines:** nflverse schedules first, ESPN as a second source; The Odds API is off until a key exists (D35).
+- **PFR scraping:** not needed (D33).
+- **ESPN depth charts:** not ingested; nflverse already carries them.
+- **Win rates:** not available (D34).
+- **Extra tables:** `espn_scoreboard`, `espn_news` (fantasy flagged, D37), `espn_injuries`, `espn_qbr`, `espn_fpi`, `ngs_leaders`, `players`, `player_ids`, `trades`, `draft_picks`, `teams`, `team_aliases`.
 
 ## Rishi-in-the-loop moments
 

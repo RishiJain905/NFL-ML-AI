@@ -60,7 +60,7 @@ An empty but fully working skeleton: the project installs, all data paths point 
 
 ### Wrap-up
 - [x] 🤖 `uv run pytest` and `uv run ruff check` are clean.
-- [ ] ✋ **Checkpoint:** show Rishi the `nfl doctor` output and the repo tree, and get approval to close P00.
+- [x] ✋ **Checkpoint:** (approved by Rishi 2026-10-03) show Rishi the `nfl doctor` output and the repo tree, and get approval to close P00.
 
 ## Rishi-in-the-loop moments
 
