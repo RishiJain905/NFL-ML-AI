@@ -49,6 +49,15 @@ A personal ML system that produces a weekly NFL digest (win probabilities, predi
 
 - **When a step doesn't need Rishi's input, keep going.** Put status notes in the same message as your next action, not in a separate message that ends your turn.
 - **Stop and ask only** when you can't continue without Rishi, or **before anything destructive**: deleting data, force-pushing, or changing anything outside this repository.
+- **The project's own data counts as inside the repository.** That means everything under `NFL_DATA_ROOT` (`D:/nfl-ml-data`: raw, research, curated, features, models, runs, reports, neo4j, wandb, cache) and the project's Docker Neo4j container (`nfl-neo4j`). Agents may create, write, overwrite and rebuild there without asking:
+  - ingest and curate runs
+  - overwriting same-day snapshots
+  - rebuilding curated tables, features and run folders
+  - wiping and rebuilding the Neo4j graph
+  - clearing caches
+  - starting, stopping or recreating the container
+
+  **Still ask first** before deleting raw or research snapshots (they are the source of truth), or before deleting the data root itself.
 - **Rishi can waive steps that normally need him.** 🧑 "Rishi runs" and ✋ checkpoint steps need his input by default. When Rishi says a step (or a kind of step) no longer needs his input:
   - honor that for the scope he gave (one step, a phase, or "from now on")
   - record the waiver in `documentation/plans/PROGRESS.md` (in the Rishi-run steps log for 🧑 steps, and in the session log for standing waivers)
