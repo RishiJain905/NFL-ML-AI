@@ -27,10 +27,12 @@ The models stack: A feeds B, and A and B feed C.
 
 ### Key terms
 
-- **Expected points (EP):** for any game situation (down, distance, field position, time left, score), the points the offense scores on average from there. For example, 1st-and-10 at your own 25 is worth about +0.5, and 1st-and-goal at the 2 about +5.
-- **EPA (Expected Points Added):** a play's EPA is EP after the play minus EP before it. It measures how much the play helped the offense's scoring chances. Examples: a 20-yard completion into field-goal range ≈ +1.5; a 3rd-down sack ≈ −1.5; an interception ≈ −4 or worse. It beats raw yards because context counts: 4 yards on 3rd-and-3 is a success, on 3rd-and-10 a failure. We don't compute it: nflverse play-by-play carries it (`epa`, from the nflfastR model).
+Short definitions. The formulas, intuition and worked examples (EPA, the ratings, Elo, trend) are in the [model card → The math, step by step](model_cards/team_ratings.md#the-math-step-by-step).
+
+- **Expected points (EP):** for a game situation (down, distance, field position, time, score), the average value of the next score from the offense's point of view. For example, 1st-and-10 at your own 25 is worth 1.21, and 1st-and-goal at the 2 is worth 6.33 (2021–2025 averages).
+- **EPA (Expected Points Added):** EP after a play minus EP before it, i.e. how much the play helped. It's the `epa` column in nflverse play-by-play.
 - **Success rate:** the share of plays with EPA > 0.
-- **Offense / defense / net rating:** a team's opponent-adjusted EPA per play on offense, the EPA per play its defense **allows** (lower is better), and `net = offense − defense`. All are relative to the league average (0 = average).
+- **Offense / defense / net rating:** opponent-adjusted EPA per play gained, EPA per play **allowed** (lower is better), and `net = offense − defense`. All are relative to the league average (0 = average).
 
 ### Ratings
 

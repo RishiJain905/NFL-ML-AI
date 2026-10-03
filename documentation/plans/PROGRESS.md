@@ -54,6 +54,8 @@ _None._
   - EPA, success rate and net rating were never defined. They are now under "Key terms" at the top of doc 04 → A, linked from `documentation/README.md`.
   - Doc 04's weekly-cadence text still said "half-life ~4 weeks, prior gone by week 6". It now gives the tuned values and the real fade: the prior is 52% of the rating in week 4, 38% in week 6, 24% in week 10. The original plan bullets point to the as-built values.
   - The model card has a new "How it works, in plain language" section: what is computed vs learned, what each setting means, how the tables are applied each week, and where P03–P06 use them.
+- At Rishi's request, the math now lives in the model card under "The math, step by step": EP/EPA/success, play weights, the rating equation, the ridge solution with the one-team intuition, the prior fade, home field, the game prediction and MSE, Elo, and trend with its validation. Each step has formulas, an explanation and worked examples from real data. Doc 04's key terms are short definitions that link there.
+- Found while writing it: the play-level home-field term comes out about 0 (−0.004 for 2026), because leading teams, often the home team, run low-EPA clock-killing plays. The game-level home edge is about +0.01, so the effect is about 0.0002 MSE. Documented in the model card's limits; P03 learns its own home-field term.
 
 ### 2026-10-03: P01 closed, P02 built, tuned and closed
 - **Approvals and waivers.**
