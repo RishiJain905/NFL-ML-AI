@@ -89,6 +89,7 @@ class AppConfig(BaseModel):
     sources: dict[str, bool] = Field(default_factory=dict)
     flags: dict[str, bool] = Field(default_factory=dict)
     ratings: dict[str, Any] = Field(default_factory=dict)
+    elo: dict[str, Any] = Field(default_factory=dict)
     training: dict[str, Any] = Field(default_factory=dict)
     digest: dict[str, Any] = Field(default_factory=dict)
 

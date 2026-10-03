@@ -43,7 +43,7 @@ It's rebuilt by `uv run nfl curate` from the raw snapshots (`uv run nfl ingest`)
 | `snaps` | `gsis_id`, `game_id` | 2013–2026 | Offense, defense and special-teams snaps and % |
 | `injuries` | `gsis_id`, `season`, `week` | 2010–2026 | Weekly report: `report_status` (Out/Doubtful/Questionable/Probable; null = listed for practice only), `practice_status`. Final designations come on **Friday** |
 | `rosters_weekly` | `gsis_id`, `season`, `week` | 2010–2026 | Who was on which team each week; all the cross-platform IDs |
-| `depth_charts` | `season`, `week`, `team`, `position`, `depth_rank` | 2010–2026 | Unified: `source_format` `weekly` (≤2024) or `daily_snapshot` (2025+, latest snapshot on or before game day, games within 10 days only). Position labels differ between the formats; check them before filtering |
+| `depth_charts` | `season`, `week`, `team`, `position`, `depth_rank` | 2010–2026 | Unified: `source_format` `weekly` (≤2024) or `daily_snapshot` (2025+, latest snapshot on or before game day, games within 10 days only). `snap_date` = when a daily chart was published (null for the weekly feed). **A game-day snapshot is after Tuesday:** check `snap_date` before using a chart in a Tuesday feature. Position labels differ between the formats; check them before filtering |
 | `officials` | `game_id`, `official_id` | 2015–2026 | Crew by position |
 | `players` / `player_ids` | `gsis_id` | — | Bio, position, draft; `player_ids` = the ID crosswalk |
 | `teams` / `team_aliases` | `team` / `alias` | — | Canonical team metadata; alias → canonical map |
@@ -58,12 +58,37 @@ It's rebuilt by `uv run nfl curate` from the raw snapshots (`uv run nfl ingest`)
 
 Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/participation`, 2016–2025 (routes, coverage, pressure).
 
+**Feature tables (P02, in `{NFL_DATA_ROOT}/features/`, also DuckDB views; rebuilt by `nfl ratings build`).** Key = (`season`, `week`, `team`). **`week` is the as-of week:** the row is built only from games in weeks before `week`, so a week-w game joins the week-w row directly (D44). Rows run from week 1 to the last week with games (for the current season, up to its first unfinished week).
+
+| Table | Content |
+|---|---|
+| `team_ratings` | Opponent-adjusted ratings relative to league average: `off_/def_/net_` × `epa`, `pass_epa`, `rush_epa`, `sr`, `pass_sr`, `rush_sr`. `def_*` = allowed, so **lower is better**; `net = off − def`. Also `mu_epa` / `hfa_epa` (intercept, home field), `off_plays`, `def_plays`, `plays_observed`, `prior_weight` (≈ share of the preseason prior), `qb_change_prior` |
+| `team_elo` | `elo` before week w's games, `elo_games` played this season |
+| `team_trends` | `net_epa`, `net_epa_prev` (3 weeks earlier), `trend_delta` (week ≥ 4), `perf_vs_expected` + `pve_games`, `band_low`/`band_high`, `direction` (up/down/stable; null for 2010–2012), plus evidence: `qb_change`, `qb_now_*`, `qb_before_*`, `key_players_out(_names)`, `off_cpoe_delta`, `off_proe_delta`, `off/def_sack_rate_delta`, `off/def_pressure_rate_delta` (PFR, 2018+), `off_time_to_throw_delta` (NGS, 2016+) |
+| `team_trend_drivers` | Top 3 rating parts that moved over 3 weeks: `part`, `delta`, `change` (+ = better), `contribution`, `effect` |
+
 ## Availability and leakage reminders
-- For a prediction of week N, use only rows from games **strictly before** week N's games (see `documentation/04` → Leakage rules).
+- For a prediction of week N, use only rows from games **strictly before** week N's games (see `documentation/04` → Leakage rules). Use `nflengine.features.asof` (`before_expr`, `as_of`). It also hides the current season's week-0 NGS season totals.
+- **Backtests must see what a Tuesday run saw (D44).** PFR for week N−1 isn't out by Tuesday of week N, so evidence code lags it one week for every key. Apply the same rule to any new late source.
 - Historical `lines` are mostly **closing** lines, so backtests look a bit better than live use. Live runs use the current snapshot.
 - PFR and FTN for the latest week may be missing on Tuesday. Features must handle a missing final week (fall back to earlier weeks).
 - `injuries` for the current week fill in during the week. Use the snapshot the run actually had.
 - `weather_forecasts` are forecasts. Historical `games.temp` / `games.wind` are actual observations.
+
+## Quirks found in P02 (checked live 2026-10-03)
+- **Play types.**
+  - Scrambles are `play_type = 'run'` with `qb_dropback = 1`, `pass = 1`, `rush = 0`. Sacks are `play_type = 'pass'`.
+  - Two-point tries carry `pass`/`run` play types, and `qb_dropback = 1` for passes. Filter them with `two_point_attempt`.
+  - `no_play` rows (penalties) still carry `pass = 1` / `pass_oe`. Drop them by `play_type`.
+  - `cpoe` exists only on `play_type = 'pass'`.
+- **QB columns in `games`.** `home_qb_id` / `away_qb_id` are filled for some **unplayed** games (projected starters). Filter on `completed` before using them as "the starter".
+- **The cancelled 2022 BUF–CIN game isn't in `games` at all** (2022 week 17 has 15 games).
+- **NGS week numbers.** NGS numbers the Super Bowl one week later than `games` (2016–2020: 22 vs 21; 2021+: 23 vs 22) because of the Pro Bowl gap. Wild card, divisional and conference weeks line up.
+- **PFR.** `pfr_pass` has no dropbacks column (use plays). `pfr_def.def_pressures` summed per team correlates 0.975 with the opponent's `pfr_pass.times_pressured`.
+- **Injuries.** `injuries.report_status` also has a rare `Note` value. A player's position label can change between weeks. A few player-weeks appear for two teams (mid-week trades).
+- **Snaps.** `snaps.offense_pct` / `defense_pct` are on a 0–1 scale in every season.
+- **Week-1 depth chart.** The week-1 depth-chart QB1 matches the actual week-1 starter in ~98% of team-seasons (2010–2026).
+- **Home field in EPA terms is small and noisy.** The per-season home EPA/play edge swings from −0.045 to +0.036.
 
 ## Recipes
 

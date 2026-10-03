@@ -233,6 +233,7 @@ class Curator:
             pl.col("depth_team").cast(pl.Int32, strict=False).alias("depth_rank"),
             pl.col("formation") if "formation" in df.columns else pl.lit(None).alias("formation"),
             pl.lit("weekly").alias("source_format"),
+            pl.lit(None, dtype=pl.Date).alias("snap_date"),  # the weekly feed has no date
         ).filter(pl.col("week").is_not_null())
 
     @staticmethod
@@ -269,6 +270,7 @@ class Curator:
                 pl.col("pos_rank").cast(pl.Int32, strict=False).alias("depth_rank"),
                 pl.col("pos_grp").alias("formation"),
                 pl.lit("daily_snapshot").alias("source_format"),
+                "snap_date",  # when this chart was published (availability checks)
             )
             .unique(subset=["season", "week", "team", "position", "depth_rank", "gsis_id"])
         )
@@ -316,28 +318,7 @@ class Curator:
 
     # ---- DuckDB views ------------------------------------------------------------------
     def duckdb_views(self) -> Path:
-        import duckdb
-
-        db = self.out / "nfl.duckdb"
-        tmp = self.out / "nfl.duckdb.tmp"
-        if tmp.exists():
-            tmp.unlink()
-        con = duckdb.connect(str(tmp))
-        try:
-            for p in sorted(self.out.glob("*.parquet")):
-                con.execute(
-                    f"CREATE OR REPLACE VIEW {p.stem} AS "
-                    f"SELECT * FROM read_parquet('{p.as_posix()}')"
-                )
-            plays_glob = (self.out / "plays" / "*.parquet").as_posix()
-            con.execute(
-                "CREATE OR REPLACE VIEW plays AS SELECT * FROM "
-                f"read_parquet('{plays_glob}', union_by_name=true)"
-            )
-        finally:
-            con.close()
-        shutil.move(tmp, db)
-        return db
+        return write_duckdb_views(self.paths)
 
     def write_joins(self) -> None:
         payload = [
@@ -345,6 +326,34 @@ class Curator:
             for j in self.joins
         ]
         (self.out / "_joins.json").write_text(json.dumps(payload, indent=2))
+
+
+def write_duckdb_views(paths: DataPaths) -> Path:
+    """(Re)build `curated/nfl.duckdb`: a view per curated table, `plays`, and the P02+
+    feature tables under `features/` (team_ratings, team_elo, ...) when they exist."""
+    import duckdb
+
+    out = paths.curated
+    db = out / "nfl.duckdb"
+    tmp = out / "nfl.duckdb.tmp"
+    if tmp.exists():
+        tmp.unlink()
+    con = duckdb.connect(str(tmp))
+    try:
+        tables = sorted(out.glob("*.parquet")) + sorted(paths.features.glob("*.parquet"))
+        for p in tables:
+            con.execute(
+                f"CREATE OR REPLACE VIEW {p.stem} AS SELECT * FROM read_parquet('{p.as_posix()}')"
+            )
+        plays_glob = (out / "plays" / "*.parquet").as_posix()
+        con.execute(
+            "CREATE OR REPLACE VIEW plays AS SELECT * FROM "
+            f"read_parquet('{plays_glob}', union_by_name=true)"
+        )
+    finally:
+        con.close()
+    shutil.move(tmp, db)
+    return db
 
 
 def build_all(log: Callable[[str], None] = print) -> list[str]:

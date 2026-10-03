@@ -185,9 +185,120 @@ def data_status() -> None:
     console.print(render_status())
 
 
+# ---- team ratings, Elo, trend (P02) -------------------------------------------------------
+
+ratings_app = typer.Typer(
+    help="Team ratings, Elo and trend (P02): build tables, tune, evaluate, validate trend.",
+    no_args_is_help=True,
+    pretty_exceptions_show_locals=False,
+)
+app.add_typer(ratings_app, name="ratings")
+
+HALF_LIFE = typer.Option(None, help="Recency half-life in weeks (default: settings.yaml).")
+PRIOR_REG = typer.Option(None, help="Pull of last season's rating toward average, 0-1.")
+RIDGE_ALPHA = typer.Option(None, help="Shrinkage strength in recency-weighted plays.")
+QB_REG = typer.Option(None, help="Extra offense pull after a week-1 QB change, 0-1.")
+EVAL_SEASONS_OPT = typer.Option("2015-2025", help="Walk-forward evaluation seasons.")
+LAUNCHED_BY = typer.Option(None, help="rishi | agent (auto-detected if omitted).")
+
+
+def _params(half_life, prior_regression, ridge_alpha, qb_change_regression):
+    from nflengine.models.ratings_build import rating_params
+
+    return rating_params(
+        half_life_weeks=half_life,
+        prior_regression=prior_regression,
+        ridge_alpha=ridge_alpha,
+        qb_change_regression=qb_change_regression,
+    )
+
+
+@ratings_app.command("build")
+def ratings_build(
+    half_life: float | None = HALF_LIFE,
+    prior_regression: float | None = PRIOR_REG,
+    ridge_alpha: float | None = RIDGE_ALPHA,
+    qb_change_regression: float | None = QB_REG,
+    evidence: bool = typer.Option(True, help="Add trend evidence fields (QB, injuries, ...)."),
+) -> None:
+    """Write team_ratings, team_elo, team_trends, team_trend_drivers to features/ on D:."""
+    from nflengine.models.ratings_build import run_build
+
+    params = _params(half_life, prior_regression, ridge_alpha, qb_change_regression)
+    run_build(params, log=console.print, with_evidence=evidence)
+
+
+@ratings_app.command("tune")
+def ratings_tune(
+    half_lives: str | None = typer.Option(None, help="Comma list, e.g. 4,8,16."),
+    prior_regressions: str | None = typer.Option(None, help="Comma list, e.g. 0,0.1,0.33."),
+    ridge_alphas: str | None = typer.Option(None, help="Comma list, e.g. 100,250,400."),
+    qb_change_regressions: str | None = typer.Option(None, help="Comma list (default: off)."),
+    seasons: str = EVAL_SEASONS_OPT,
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Grid sweep over half-life x prior pull x ridge alpha, logged as a W&B sweep."""
+    from nflengine.models.ratings_runs import grid_from_options, grid_size, run_tune
+
+    grid = grid_from_options(
+        half_life_weeks=half_lives,
+        prior_regression=prior_regressions,
+        ridge_alpha=ridge_alphas,
+        qb_change_regression=qb_change_regressions,
+    )
+    console.print(f"Grid ({grid_size(grid)} runs): {grid}")
+    df = run_tune(grid, _parse_seasons(seasons), launched_by, log=console.print)
+    if df.height:
+        cols = [*grid, "objective_mse", "mse_w1_3", "improvement_vs_base_last_season"]
+        console.print(df.select(cols).head(10))
+
+
+@ratings_app.command("eval")
+def ratings_eval(
+    half_life: float | None = HALF_LIFE,
+    prior_regression: float | None = PRIOR_REG,
+    ridge_alpha: float | None = RIDGE_ALPHA,
+    qb_change_regression: float | None = QB_REG,
+    seasons: str = EVAL_SEASONS_OPT,
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Walk-forward check of one configuration vs baselines, plus the Elo Brier score."""
+    from nflengine.models.ratings_runs import run_eval
+
+    params = _params(half_life, prior_regression, ridge_alpha, qb_change_regression)
+    s = run_eval(params, _parse_seasons(seasons), launched_by, log=console.print)
+    for k in (
+        "objective_mse",
+        "mse_base_last_season",
+        "mse_base_to_date",
+        "mse_w1_3",
+        "elo_brier",
+        "elo_brier_reg",
+    ):
+        console.print(f"  {k}: {s[k]:.5f}")
+
+
+@ratings_app.command("validate-trend")
+def ratings_validate_trend(
+    half_life: float | None = HALF_LIFE,
+    prior_regression: float | None = PRIOR_REG,
+    ridge_alpha: float | None = RIDGE_ALPHA,
+    qb_change_regression: float | None = QB_REG,
+    seasons: str = EVAL_SEASONS_OPT,
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Does trend_delta predict the next 3 games beyond the rating? (decides D06)"""
+    from nflengine.models.ratings_runs import run_validate_trend
+
+    params = _params(half_life, prior_regression, ridge_alpha, qb_change_regression)
+    s = run_validate_trend(params, _parse_seasons(seasons), launched_by, log=console.print)
+    for k, v in s.items():
+        if k != "url":
+            console.print(f"  {k}: {v:.5f}" if isinstance(v, float) else f"  {k}: {v}")
+
+
 PLACEHOLDERS = {
-    "features": ("P02", "Build feature tables with as-of guarantees."),
-    "ratings": ("P02", "Compute / tune team ratings, Elo and trend."),
+    "features": ("P03", "Build game-model feature tables with as-of guarantees."),
     "train": ("P03", "Fit models for a given week."),
     "backtest": ("P03", "Walk-forward backtests logged to W&B."),
     "graph": ("P05", "Rebuild the Neo4j graph and run the query library."),

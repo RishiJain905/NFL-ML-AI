@@ -28,9 +28,20 @@ Tool caches are pointed at the data root automatically: `WANDB_DIR` → `D:/nfl-
 ## Commands
 
 ```
-uv run nfl --help        # all commands (most are placeholders until their phase)
-uv run nfl doctor        # health check
-uv run nfl wandb-smoke   # W&B smoke test
-uv run pytest            # tests (integration tests excluded by default)
-uv run ruff check .      # lint
+uv run nfl --help                  # all commands (later phases' commands are placeholders)
+uv run nfl doctor                  # health check
+uv run nfl wandb-smoke             # W&B smoke test
+
+uv run nfl ingest                  # pull every source into dated snapshots on D: (P01)
+uv run nfl curate                  # curated tables + DuckDB views + quality checks (P01)
+uv run nfl data-status             # newest week per source, row counts, join rates (P01)
+uv run nfl ingest --check-ready --week N   # are week N's games final and in play-by-play?
+
+uv run nfl ratings build           # team_ratings / team_elo / team_trends tables (P02)
+uv run nfl ratings tune            # W&B grid sweep over the rating parameters (P02)
+uv run nfl ratings eval            # walk-forward check vs baselines + Elo Brier (P02)
+uv run nfl ratings validate-trend  # does the trend predict beyond the rating? (P02)
+
+uv run pytest                      # tests (integration tests excluded by default)
+uv run ruff check .                # lint
 ```

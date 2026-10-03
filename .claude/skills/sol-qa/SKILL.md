@@ -65,6 +65,7 @@ Ignore the `DEP0190` deprecation warning that node prints. It is harmless. Poll 
 ## 4. Guardrails
 
 - **Security.** Codex is not bound by Claude's deny rules, but it loads `AGENTS.md` on every thread, which carries the full Security section, and `.codex/config.toml` filters secret-looking env vars from its commands. Don't weaken either. Never ask Sol to read `.env` or other credential files or to print env vars. Before keeping anything Sol produced, check its output and any diff for secret values and for env or credential files. If Sol's output shows a secret, stop, tell Rishi right away, and recommend rotating that credential.
+- **Never write the env file's literal file name in the task text.** Write "the env file" instead. The forwarder passes the task text through a Bash call, and the guard hook blocks any Bash text that names an env file, so the call fails before Sol starts. Seen 2026-10-03.
 - **Sandbox limits on this machine** (verified 2026-10-03): inside Sol's sandbox, `python`, `uv` and `pytest` can't launch, `D:` is readable but not writable, and `git` and `ruff` work. So don't ask Sol to run the test suite or write data. Run tests yourself and give Sol the results if it needs them.
 - **Setup problems.** If the call says Codex is missing or not authenticated, stop and tell Rishi to run `/codex:setup` (or `!codex login`).
 

@@ -94,6 +94,8 @@ Before writing code against any data source, API, library or model output, **loo
 - **`nfl doctor` is the only way to check secrets:** it reports set / not set and connectivity, never values.
 - **nflreadpy** builds its config at import time. Call `configure_tool_env(paths)` (which calls `nflreadpy.config.update_config`) before loading data.
 - **Neo4j** runs in Docker (`nfl-neo4j`), with data, logs and plugins bind-mounted on D:. Start it with `docker compose up -d`, then wait for "Started." in `docker compose logs neo4j`.
+- **W&B sweeps** (`tracking.run_sweep`) work in-process on Windows and take about 10–15 s per run, so 175 runs is about 45 minutes. Run them with `run_in_background`, and smoke-test them first with a 2-value grid.
+- **Shared test fixtures** live in `tests/conftest.py`. Tests import helpers from it directly (`from conftest import make_league`).
 
 ## 11. Kickoff prompt for a new session
 Rishi can paste this (edit the phase and approvals):

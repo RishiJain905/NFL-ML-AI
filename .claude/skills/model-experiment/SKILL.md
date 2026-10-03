@@ -7,7 +7,26 @@ description: Recipe for any model training, tuning, backtest or evaluation run i
 
 Applies to P02 (ratings/Elo/trend), P03 and P08 (game model), P06 and P08 (player models) and T00–T04 (Big Data Bowl). The specs live in `documentation/04-track1-models.md`, `11-prediction-targets.md`, `07-track2-big-data-bowl.md` and `08-experiment-tracking.md`. This skill is **how** to run an experiment so results are honest, comparable and reproducible.
 
-> Some building blocks are created by the phases themselves: the as-of framework (`features/asof.py`, P02) and the walk-forward harness (`models/backtest.py`, P03). **When you build or change them, update this skill** with their real function names and usage.
+> Some building blocks are created by the phases themselves. The walk-forward harness (`models/backtest.py`) comes in P03. **When you build or change one, update this skill** with its real function names and usage.
+
+**Building blocks that exist (P02):**
+- **As-of framework** (`nflengine.features.asof`):
+  - `AsOf(season, week)` means "Tuesday before week N": only weeks strictly before it are visible.
+  - `before_expr(key)` is a Polars filter for that.
+  - `asof_keys(games, seasons)` lists every key; an in-progress season stops at its first unfinished week, and cancelled games are ignored.
+  - `as_of(season, week, record=True)` returns an `AsOfView` whose `games()` / `plays()` / `table(name)` reads are pre-filtered and audited.
+- **Leakage tests** (`nflengine.features.leakage`):
+  - `assert_inputs_before(frame, key, games)` checks input rows by season/week and kickoff.
+  - `assert_view_clean(view)` checks everything an audited view handed out.
+  - `assert_future_invariant(build, inputs, key, protect={...ids...})` scrambles every numeric input from the key's week onward, rebuilds, and checks that outputs up to the key didn't move. Use it for bulk builders.
+  - `tests/conftest.py::make_league()` is a synthetic 4-team league with known true effects, for fixtures.
+- **Tracking** (`nflengine.tracking`):
+  - `git_commit()` gives the short hash, with `-dirty` when the tree has changes.
+  - `dataset_version()` gives the pbp snapshot date and the curation `run_at`.
+  - `run_sweep(sweep_config, fn)` runs a W&B grid sweep in-process; `fn` calls `init_run`, and its params arrive in `run.config`. Cost is about 10–15 s per run on this machine.
+- **Ratings features:**
+  - P03+ joins `features/team_ratings`, `team_elo` and `team_trends` on (season, week, team). A row for week w is built from weeks before w (D44).
+  - Recompute with `nfl ratings build`.
 
 ## 1. Define before you code
 Write these down (in the phase file or model card) before any training code:
@@ -38,7 +57,7 @@ Write these down (in the phase file or model card) before any training code:
 ## 4. Weights & Biases
 Always go through `nflengine.tracking.init_run(group, job_type, config, tags, launched_by)`:
 - `group` from `documentation/08` (`track1-ratings`, `track1-game`, `track1-player`, `track2-bdb`, `weekly-pipeline` ...); `job_type` ∈ `tune` / `train` / `eval` / `backtest`
-- `config`: model type, hyperparameters, `feature_hash`, feature list, training window, `dataset_version` (the nflverse pbp snapshot date + `curated/_quality/latest.json` `run_at`, until a helper exists), git commit (`git rev-parse --short HEAD`), sample weights. **`init_run` refuses secret-looking keys; never pass credentials.**
+- `config`: model type, hyperparameters, `feature_hash`, feature list, training window, `dataset_version()` and `git_commit()` (both in `nflengine.tracking`), sample weights. **`init_run` refuses secret-looking keys; never pass credentials.**
 - tags: `season:YYYY`, target, position group, `p0x`
 
 Log **live**, not only at the end:
@@ -85,7 +104,12 @@ Write one card per model family at `documentation/model_cards/<family>.md` (also
 - known biases (closing-line optimism, early-season cold start, small samples)
 - the date it was last tuned, and the current `production` version
 
-## 8. Honesty rules
+## 8. Lessons from P02
+- **Probe the objective locally before a W&B sweep.** A cheap scan of hundreds of configurations, in a scratchpad loop without W&B, shows where the optimum sits. Set the sweep grid so it isn't on an edge. P02's first guess (half-life about 4) was far from the optimum (12–16).
+- **Check each piece of a model against a simple baseline on its own.** The P02 prior lost to "raw last season" in weeks 1–3 until it was seeded from a full-season fit. Its in-season home-field estimate was pure noise until it was pinned.
+- **Make float accumulation order deterministic.** Polars `group_by` output order varies between runs, so sort before summing into matrices. Otherwise outputs differ at about 1e-18, and the future-invariance test flags them.
+
+## 9. Honesty rules
 - Report results that lose to the baseline as well. A model that doesn't beat its baseline doesn't ship (`documentation/11`).
 - A metric that looks too good usually means leakage. Check the as-of logic and feature timing before celebrating.
 - Small differences are probably noise. A gain under ~0.002 Brier, or one that doesn't hold across most seasons, isn't a win.

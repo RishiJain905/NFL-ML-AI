@@ -45,6 +45,48 @@ Separate offense and defense ratings for each team, split by pass and rush, meas
 - **Drivers:** the 2–3 parts that moved most (pass offense, rush defense, and so on), plus supporting evidence (QB change, injuries, NGS or PFR shifts). These go to the payload as structured "drivers".
 - **Validation (keep it honest):** test whether `trend_delta` predicts next-3-week performance *beyond* the current rating. If it adds nothing, the digest presents trends as **descriptive** ("form has improved") rather than predictive. The digest never implies more than the evidence shows.
 
+### As built in P02 (decisions D41–D45)
+
+Code: `features/asof.py`, `features/leakage.py`, `models/ratings.py`, `models/elo.py`, `models/trend.py`, `models/trend_evidence.py`, `models/ratings_eval.py`, `models/ratings_runs.py`, `models/ratings_build.py`. Commands: `nfl ratings build | tune | eval | validate-trend`.
+
+**Model.** For each split (all plays; dropbacks incl. sacks and scrambles; designed runs) and metric (EPA, success), one weighted ridge:
+`y = mu + off[posteam] + def[defteam] + hfa · home`.
+- **Play filter:** pass and run play types with an EPA. That drops kneels, spikes, no-plays and two-point tries.
+- **Play weight:** garbage time × 0.25, multiplied by the recency weight `d^(k-1)` for a play k weeks before the as-of week, where `d = 0.5^(1/half_life)`.
+- **Shrinkage:** every coefficient is pulled toward a target with strength `ridge_alpha`, counted in weighted plays.
+  - A team's target at week 1 is last season's **full-season** rating pulled `prior_regression` toward average. Offense can be pulled further after a week-1 QB1 change.
+  - The target fades with the same `d^(w-1)`. Week 1 equals the prior, and late in the season it is a plain ridge toward average.
+- **Home field** is held at the mean of the previous 3 seasons' full-season estimates.
+- `def` is EPA (or success) **allowed**, so lower is better, and `net = off − def`. Team effects sum to zero every week.
+
+**Objective (tuning).** Ratings as of week w predict week w's per-play EPA margin as `net[home] − net[away] + home field`, where home field is 0 at neutral sites. The score is the MSE on regular-season games, walk-forward over 2015–2025 (2,895 games). Two fixed baselines:
+- last season's raw net EPA/play;
+- this season's raw net EPA/play so far.
+
+**Outputs** (in `features/`, one row per team per as-of week; week w = built from weeks before w):
+- `team_ratings`
+- `team_elo`
+- `team_trends` (with evidence fields)
+- `team_trend_drivers`
+
+**Trend.**
+- `trend_delta` exists from week 4.
+- `perf_vs_expected` uses up to 3 games and starts at week 2.
+- `direction` bands use the 20th/80th percentiles of earlier seasons' regular-season deltas, which needs at least 3 seasons, so it is null for 2010–2012.
+- Drivers rank the 4 parts (pass/rush × offense/defense) by change × the league's as-of share of plays.
+
+**Availability (D44).**
+- A game counts from the week after its scheduled week. Live runs wait for that week to finish (readiness check), so a postponed game counts once it is played.
+- PFR evidence lags one week for every key, historical too.
+- Week-0 NGS season totals of the key's own season are never visible.
+- Dated depth charts count for the week-1 QB check only if published by the Tuesday of week 1.
+
+**Tuned and validated (D46, D47; model card [team_ratings](model_cards/team_ratings.md)).**
+- Settings: `half_life_weeks` 12, `prior_regression` 0.1, `ridge_alpha` 250, no extra QB-change pull.
+- Objective MSE 0.1041 vs 0.1194 (last season) and 0.1249 (season to date). It also beats both baselines in weeks 1–3.
+- Elo walk-forward Brier for 2015–2025: 0.2214.
+- **Trends are descriptive:** `trend_delta` adds no predictive value beyond the rating (ΔR² −0.0002).
+
 ---
 
 ## B. Game model (win probability)
