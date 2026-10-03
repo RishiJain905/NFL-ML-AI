@@ -90,6 +90,7 @@ Before writing code against any data source, API, library or model output, **loo
   - runs `docker inspect` or `docker compose config`
 
   That includes text inside commit messages and heredocs. Write "env file" in commit messages, use `docker compose ps` for container state, and edit docs that mention env files with the Edit tool. A block is the hook working as intended: don't try to get around it.
+- **ruff also formats Python code blocks inside Markdown** (docs and skills). Run `uv run ruff format .` before `ruff format --check`, or the check fails on a doc snippet.
 - **`nfl doctor` is the only way to check secrets:** it reports set / not set and connectivity, never values.
 - **nflreadpy** builds its config at import time. Call `configure_tool_env(paths)` (which calls `nflreadpy.config.update_config`) before loading data.
 - **Neo4j** runs in Docker (`nfl-neo4j`), with data, logs and plugins bind-mounted on D:. Start it with `docker compose up -d`, then wait for "Started." in `docker compose logs neo4j`.
