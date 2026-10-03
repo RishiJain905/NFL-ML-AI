@@ -447,6 +447,68 @@ Validation run [`ae30tzkf`](https://wandb.ai/models-ontario-tech-university/nfl-
 
 So the digest describes form ("has improved") and never forecasts it.
 
+## Reading the W&B charts
+
+All rating runs are in W&B group **`track1-ratings`**. Their curves use **`season`** as the x-axis: one point per evaluated season, 2015–2025, so 11 points. The run's **Overview** tab holds the pooled summary, and the tables and plots are in the media panels.
+
+### The metrics in one minute
+
+| Metric | What it measures | Better | Our values |
+|---|---|---|---|
+| **MSE** (the objective) | For every regular-season game: predict the week's per-play EPA margin (home offense EPA/play minus away offense EPA/play) from the ratings as of that week, square the miss, and average | Lower | Ratings 0.1041 |
+| **Baselines** | `base_last_season`: last season's raw net EPA/play. `base_to_date`: this season's raw net EPA/play so far. Both are scored on the same games | Ours should be lower | 0.1194 and 0.1249 |
+| **Elo Brier / log loss / accuracy** | Elo's win probabilities scored like the game model (see the [game model card](game-model-v0.md#reading-the-wb-charts)) | Brier and log loss lower, accuracy higher | Brier 0.2214, accuracy 64% |
+| **R² / ΔR²** (trend validation) | R² = how much of a team's next-3-week performance a model explains (out of sample). ΔR² = how much adding the trend raises it beyond the rating alone | ΔR² clearly above 0 would make trends predictive | ΔR² −0.0002, so descriptive |
+
+### Tuning sweep (`nfl ratings tune`; job type `tune`)
+
+Each run is one combination of `half_life_weeks`, `prior_regression` and `ridge_alpha`.
+- **Per-run curves:**
+  - `season/mse_pred`: the ratings' MSE in that season;
+  - `season/mse_base_last_season` and `season/mse_base_to_date`: the baselines' MSE in that season;
+  - `season/cum_mse_*`: the pooled MSE from 2015 through that season, so the last point is the final number;
+  - `season/games`: games scored.
+- **Sweep page:**
+  - **Parallel coordinates:** one line per configuration, colored by `objective_mse`. Lines through the best (lowest) values show which settings win.
+  - **Parameter importance:** which setting moves the objective most.
+  - **Scatter of `objective_mse`.** The 175-run sweep `dwyj31wk` was flat around half-life 12 / prior 0.1 / alpha 250: the top 10 were within 0.00005.
+- **Summary:**
+  - `objective_mse`, plus `mae`;
+  - `corr_epa_margin` and `corr_points`: correlation with the EPA margin and with the final point margin;
+  - `mse_w1_3`, `mse_w4_8`, `mse_w9plus`: MSE by part of the season;
+  - `mse_base_*` and `improvement_vs_*`: the share by which we beat each baseline (0.13 = 13% lower MSE);
+  - `mse_base_*_w1_3`: the baselines in weeks 1–3, where the preseason prior matters most.
+
+### Evaluation (`nfl ratings eval`, run name `ratings-eval`; job type `eval`)
+
+- **Curves:** the same `season/mse_*` and `season/cum_mse_*` curves as the sweep (ratings vs both baselines), plus Elo per season:
+  - `season/elo_brier_all`, `season/elo_log_loss_all`, `season/elo_accuracy_all` (all game types);
+  - the `*_reg` versions (regular season only).
+- **Panels:**
+
+  | Panel | What it shows | How to read it |
+  |---|---|---|
+  | `by_week_mse` | MSE by week of season for the ratings and both baselines | The season-to-date baseline is terrible in weeks 1–3 (almost no data) and catches up late. The ratings should be lowest everywhere, which shows the preseason prior working early |
+  | `by_week_table` | The numbers behind that chart | |
+  | `by_season_table` | MSE per season for all three | The ratings won all 11 seasons |
+  | `elo_by_season` | Elo's Brier, log loss and accuracy per season, plus a pooled row | Elo is the bar the game model has to beat |
+
+- **Summary:** the tuning summary plus `elo_brier`, `elo_log_loss`, `elo_accuracy`, `elo_brier_reg`, and `ratings_beat_last_season` / `ratings_beat_to_date` (1 = beat it).
+
+### Trend validation (`nfl ratings validate-trend`; job type `eval`)
+
+- **Curves:**
+  - `season/r2_rating`: out-of-sample R² of the next-3-week performance from the rating alone;
+  - `season/r2_rating_trend`, `season/r2_rating_pve`, `season/r2_rating_both`: R² with `trend_delta`, with `perf_vs_expected`, or with both added;
+  - `season/delta_r2_trend` and `season/delta_r2_pve`: the gain from each addition (hovering around 0 = no help);
+  - `season/rows`: the number of team-weeks.
+- **Panel:** `by_season` (the same numbers as a table).
+- **Summary:**
+  - `delta_r2_*`, with a 90% bootstrap interval in `*_ci90_low` / `*_ci90_high`;
+  - `seasons_improved_*`: the share of seasons where the addition helped;
+  - `corr_*_vs_rating_miss`: how well each trend measure tracks what the rating missed;
+  - `decision_trend_delta` / `decision_perf_vs_expected`: "predictive" only if ΔR² ≥ 0.005, its interval excludes 0, and it helps in at least 2/3 of seasons. Both came out "descriptive".
+
 ## Known limits and biases
 
 - **Early season:** weeks 1–3 are mostly the prior (`prior_weight` ≈ 1 in week 1). The digest shows lower confidence there.

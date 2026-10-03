@@ -118,6 +118,113 @@ Every week of every season was predicted by a model trained only on earlier week
 
 **W&B (group `track1-game`):** model-only backtest [5x33rk56](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/5x33rk56) · market backtest [ekz4277b](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/ekz4277b) · weight sweep [aoflnafa](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/sweeps/aoflnafa) · listed-starter oracle [3ots68nz](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/3ots68nz) · live 2026 week 4 fit [ump6sftd](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/ump6sftd). The first round of runs (r9gmo5rd, rkv43aot, goh98ltt, l5dmbew2, yv2rntfq) used a configuration with a sign bug the code review found (see below) and is superseded.
 
+## Is 64% accuracy good? (Why NFL winners top out around 65–70%)
+
+Short answer: **yes. 64–66% is close to the ceiling for picking NFL winners, and no honest model reaches 82%.** The 80–90% numbers common in machine learning come from tasks where the inputs nearly determine the answer (spam filters, image recognition). An NFL game is decided by one noisy afternoon: fumbles, tipped passes, injuries during the game, officiating, a missed field goal.
+
+**The evidence, from our own data (2018–2025, 2,227 games):**
+
+| Predictor | Accuracy | Notes |
+|---|---|---|
+| Home team always | 54.3% | The floor |
+| Elo | 63.5% | |
+| **Our model-only** | **64.0%** | Football data only |
+| **Our market-informed** | **66.3%** | |
+| Closing betting market | 66.2% | The best public predictor. It knows every injury and moves with millions of dollars of informed money. Its best season was 70.5% (2024), its worst 62.3% (2021) |
+
+**Why the ceiling is so low:**
+- **Many games are near coin flips.** 37% of games had a closing spread of 3 points or less: even the market thought they were close to 50/50. Nobody can call those at 82%.
+- **The randomness is large.** Final margins scatter about 13 points around the best available prediction (that is the sigma in the math below). If the market's probabilities are honest, its expected accuracy is just **65%**, and that's what it gets.
+- **Even a perfect model can't escape it.** Suppose the randomness were cut from 13 to 8 points, far beyond anything achievable. Accuracy would still only reach about **73%**.
+- **A full-season accuracy above ~72% almost always means leakage** (the model saw something from after kickoff).
+
+**Where high hit rates do show up: confident picks.** Accuracy depends on how sure the model is. The share of games is how many fall in each band:
+
+| Model's confidence | Model-only: share of games | Model-only: right | Market-informed: share | Market-informed: right |
+|---|---|---|---|---|
+| Toss-up (< 55%) | 21% | 51% | 10% | 50% |
+| Lean (55–65%) | 38% | 60% | 45% | 59% |
+| Solid (65–80%) | 34% | 73% | 36% | 75% |
+| Strong (≥ 80%) | 7% | **81%** | 10% | **87%** |
+
+That's what a *calibrated* model looks like: it says 60% and is right about 60% of the time. It says 85% and is right about 85% of the time. If a "toss-up" pick were right 80% of the time, the model would be under-confident. That would be a bug too.
+
+**This is why accuracy isn't the main metric.** Brier score and log loss reward honest probabilities. A model that says 55% on a toss-up and loses hasn't made a mistake. One that says 95% and loses has made a big one.
+
+**Will it improve as we iterate?** A little, in accuracy terms. Expected gains, roughly:
+- **Saturday QB / injury update (P07):** about +0.0016 Brier, worth roughly +0.5–1 point of accuracy.
+- **LightGBM with injuries, weather and the unused features, plus a trailing home-field term (P08):** maybe another point.
+- **Realistic target for model-only:** 65–66%. Market-informed should stay at or near the market (~66%) and be better calibrated.
+
+The real gains we can still make are in **probability quality** (Brier, calibration), margins and scores, and in the parts the market doesn't price for us: player projections (P06), trends and the graph insights.
+
+## Reading the W&B charts
+
+All game-model runs are in W&B group **`track1-game`**. Open a run and the **Charts** tab shows the curves below. The **Overview** tab's summary holds the pooled numbers, and the **Tables** / media panels hold the end-of-run tables and plots.
+
+### The metrics in one minute
+
+| Metric | What it measures | Better | Our 2018–2025 values |
+|---|---|---|---|
+| **Brier score** | Mean of (predicted probability − outcome)², with the outcome 1 for a home win, 0 for a loss, 0.5 for a tie. Saying 70% and winning scores (0.3)² = 0.09; saying 70% and losing scores (0.7)² = 0.49 | Lower. 0.25 = always saying 50% | Model-only 0.2199, Elo 0.2221, market 0.2104 |
+| **Log loss** | Mean of −log(probability given to what actually happened). It punishes confident wrong calls much harder than Brier (95% and losing costs 3.0; 60% and losing costs 0.92) | Lower. 0.693 = always 50% | 0.632, Elo 0.637, market 0.610 |
+| **Accuracy** | Share of games where the side given > 50% won (ties excluded) | Higher | 64.0%, Elo 63.5%, market 66.2% |
+| **ECE** (expected calibration error) | Group games by predicted probability (10 bins), compare each bin's average prediction with how often the home team actually won, and average the gaps (weighted by games) | Lower. About 0.02–0.03 is the noise floor at ~2,000 games | 0.032, Elo 0.032, market 0.029 |
+| **MAE** (mean absolute error) | Average miss in points (margin, total, or each team's points) | Lower | Margin 10.2 points, total 10.6, per team 7.5 |
+| **Sigma** | Spread of margin misses (their RMSE), used to turn a margin into a win probability | Stable | ≈ 13.1–13.4 |
+
+**"Model", "elo", "market", "home"** in a chart name are the four predictors, always scored on the same games: our model, Elo as of Tuesday, the closing spread turned into a probability, and "home team always" (the historical home win rate).
+
+### Backtest runs (`backtest-model_only`, `backtest-market`; job type `backtest`)
+
+The x-axis of every `bt/*` curve is **`bt/step`**: the count of reported weeks predicted so far. Step 1 is 2018 week 1, and the last step (about 170) is the 2025 Super Bowl. Use the `bt/season` and `bt/week` charts to translate a step into a week.
+
+| Chart | What it shows | How to read it |
+|---|---|---|
+| `bt/brier_model`, `bt/brier_elo`, `bt/brier_market`, `bt/brier_home` | Brier score of **that week's games only** (about 13–16 games) | Very jumpy: one upset-heavy week spikes everyone. Compare the lines week by week (the model line should usually sit near or below Elo), but don't read anything into one week |
+| `bt/cum_brier_model` (and `_elo`, `_market`, `_home`) | Brier score of **every game so far**, from 2018 week 1 to this step | **The main chart.** It smooths out as games accumulate. The final value is the pooled result. Good: the model line ends below Elo (0.2199 < 0.2221) and above the market (0.2104). Home-always sits far above at ~0.248 |
+| `bt/cum_log_loss_model` | Cumulative log loss of the model | Should settle around 0.63. A sudden jump means confident wrong calls (a 90% favorite losing) |
+| `bt/cum_accuracy_model` | Cumulative share of winners picked | Settles around 64%; early steps swing because there are few games. See "Is 64% accuracy good?" |
+| `bt/cum_margin_mae_model` vs `bt/cum_margin_mae_market` | Cumulative average miss on the final margin, model vs the closing spread | Model ≈ 10.2 points, market ≈ 9.8. The gap is how much the market knows that we don't |
+| `bt/cum_total_mae_model` | Cumulative average miss on total points | ≈ 10.6 (closing total ≈ 10.4) |
+| `bt/sigma` | The sigma used that week (RMSE of all earlier walk-forward margin misses) | Should be flat around 13. A drift up means margins are getting harder to predict |
+| `bt/games` | Games scored that week | Sanity check: about 13–16 in the regular season, fewer in the playoffs |
+| `bt/season`, `bt/week` | Which season and week each step is | Lookup only |
+
+**End-of-run panels** (logged once, after the last week):
+
+| Panel | What it shows | How to read it |
+|---|---|---|
+| `reliability_diagram` | The model's predicted probability (x) vs how often the home team actually won (y), in 10 bins. The second line is the perfect-calibration diagonal | Points on the diagonal = honest probabilities. Points below it = over-confident for the home team (ours sit 2–6 points low in the 0.3–0.6 range: shrinking home field since 2020). The end bins have few games, so they wobble |
+| `reliability_table` | The numbers behind the diagram for all four predictors (`n`, `mean_prob`, `mean_outcome` per bin) | Compare a bin's `mean_prob` with its `mean_outcome` |
+| `brier_by_season` | Brier per season for each predictor | Look for one bad season dragging the average. The model beats Elo in 5 of 8 seasons |
+| `by_season` | Table: per season, games and Brier / log loss / accuracy / ECE for every predictor, plus margin and total MAE | The source for the by-season table above |
+| `by_week_bucket` | Table: the same metrics for weeks 1–4, 5–9, 10+ and playoffs | Weeks 1–4 are hardest for everyone (preseason uncertainty). The model should still beat Elo there |
+| `predictions` | Every game: probabilities, expected margin, spread, actual margin, predicted and actual scores | For digging into specific games |
+
+**Run summary (Overview tab):**
+- **Pooled metrics:** `brier_<p>`, `log_loss_<p>`, `accuracy_<p>`, `ece_<p>` for p = model, elo, market, home.
+- **Gains:** `brier_gain_vs_elo` / `_market` / `_home` (the baseline's Brier minus ours: positive = we're better). `beats_elo` is 1 when the model wins.
+- **Season counts:** `seasons_beating_elo` out of `seasons`.
+- **Margin and points:** `mae_margin_model` / `_elo` / `_market`, `mae_total_model` / `_market` / `_rolling`, `mae_points_model` / `_rolling` / `_market` (per-team points), `margin_rmse_model`.
+- **Checks:** `score_margin_max_gap` should be 0, meaning the predicted scores always match the margin.
+- **Cohort:** `games` and `games_dropped` (games left out because a baseline was missing; 0 in backtests). `reg_brier_<p>`, `reg_brier_gain_vs_<p>` and `reg_games` are the Brier scores for regular-season games only. `market_ml_brier` is the vig-free moneyline (reference).
+
+### Weight sweep (`nfl backtest game-weights`; job type `tune`)
+
+- **One run per current-season weight** (1×, 2×, 3×, 5×). Each has the same `bt/*` curves as a backtest.
+- **On the sweep page**, the parallel-coordinates and scatter charts plot `current_season_weight` against `brier_model`. A flat line means the weight doesn't matter, which is what we saw: 0.21992 / 0.21984 / 0.21985 / 0.21989.
+- **The summary adds `brier_model_w01-04`, `brier_model_w05-09`, `brier_model_w10+` and `brier_model_post`.** Use them to check whether heavier current-season weight helps early weeks and hurts late ones. It did, very slightly, in both directions (−0.0008 and +0.0004), which is noise.
+
+### Weekly fit (`train-<season>-w<NN>`; job type `train`)
+
+- **`predictions_games` table:** the week's predictions, both variants (the same rows as the parquet file).
+- **Summary:**
+  - `games` (games predicted);
+  - `market_fallback_games` (games without a complete line, so model-only is shown);
+  - `sigma_model_only` / `sigma_market` (the sigma used this week).
+- **Artifacts tab:** the `game-model` artifact, with version aliases `<season>-w<NN>` and, when promoted, `production`. Its description is this model card.
+
 ## Code review
 
 Sol (Codex `gpt-6.1-sol`) reviewed the code before commit. **No leakage was found.** Every finding was fixed:

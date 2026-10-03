@@ -88,6 +88,8 @@ These set expectations. **Our own measured baselines from P03 and P06 replace th
 | Total-points MAE | 10.63 | 10.44 | 10.42 (total) | rolling team average 10.86 |
 | Points MAE per team | 7.46 | 7.28 | 7.27 (implied team total) | rolling team average 7.65 |
 
+Why ~65% accuracy is near the ceiling (and 80%+ isn't reachable for winners over a season) is explained, with evidence, in the game model card's ["Is 64% accuracy good?"](model_cards/game-model-v0.md#is-64-accuracy-good-why-nfl-winners-top-out-around-6570) section.
+
 ## The accuracy scoreboard
 
 One row per target per week, logged to a W&B Table (`accuracy_scoreboard`) and kept season-long:

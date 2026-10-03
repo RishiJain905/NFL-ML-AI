@@ -55,6 +55,17 @@ _None._
 
 ## Session log (newest first)
 
+### 2026-10-03: P03 docs follow-up (W&B chart guides, accuracy)
+- Rishi asked what the W&B charts track (for example `cum_log_loss`) and whether 60–65% accuracy is low.
+- Both model cards now have a **"Reading the W&B charts"** section: a metric glossary, then every curve, panel and summary key per run type, with how to read it and our real values. That is the game model (backtest, sweep, weekly fit) and the ratings (sweep, eval, validate-trend).
+- The game card has a new **"Is 64% accuracy good?"** section, with evidence from 2018–2025:
+  - the closing market itself picks 66.2% (best season 70.5%);
+  - 37% of games have a spread ≤ 3;
+  - a calibrated market expects 65%;
+  - even with far less randomness, the ceiling is about 73%;
+  - our ≥ 80%-confidence picks hit 81% (model-only) and 87% (market-informed).
+- The `model-experiment` skill §7 now requires both sections in every future model card.
+
 ### 2026-10-03: P03 built, run and closed
 - **Waiver (scope: P03 only).**
   - Rishi's kickoff asked to finish all of P03 with a Sol review before the commit. I read that as waiving the 🧑 runs and ✋ checkpoints and started them myself without asking.

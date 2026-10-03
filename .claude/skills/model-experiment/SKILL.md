@@ -122,6 +122,8 @@ Write one card per model family at `documentation/model_cards/<family>.md` (also
 - calibration notes
 - known biases (closing-line optimism, early-season cold start, small samples)
 - the date it was last tuned, and the current `production` version
+- **"Reading the W&B charts"** (Rishi asked for this in every card): a one-minute table of the metrics, then every chart / panel / summary key the run logs, with what it shows, how to read it, and what good looks like with this model's real numbers. Check each name against the code that logs it. Examples: `documentation/model_cards/game-model-v0.md` and `team_ratings.md`
+- **an honest "is this number good?" note** whenever the headline metric looks low or high to a newcomer, with our own evidence (P03: 64% accuracy vs the market's 66%)
 
 ## 8. Lessons from P02
 - **Probe the objective locally before a W&B sweep.** A cheap scan of hundreds of configurations, in a scratchpad loop without W&B, shows where the optimum sits. Set the sweep grid so it isn't on an edge. P02's first guess (half-life about 4) was far from the optimum (12–16).
