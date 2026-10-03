@@ -50,7 +50,7 @@ One command pulls every data source into **dated Parquet snapshots on D:**, then
 
 ### Wrap-up
 - [x] 🤖 Update [03](../03-data-sources.md) with findings: what the NGS site and the other extra sources actually returned, and which nflverse fields are filled in for upcoming games (e.g. lines on Tuesday).
-- [ ] ✋ **Checkpoint:** show Rishi the `nfl data-status` output, the disk use on D:, and any sources that didn't work out. Get approval to close P01.
+- [x] ✋ **Checkpoint:** show Rishi the `nfl data-status` output, the disk use on D:, and any sources that didn't work out. Get approval to close P01. *(Approved by Rishi 2026-10-03.)*
 
 ### As built: deviations from the task list (all logged in the decisions log)
 
