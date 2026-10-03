@@ -38,7 +38,7 @@ Never read, open, print, `cat` / `type` / `Get-Content`, `grep` / `Select-String
 - Rishi's waivers for Claude's steps don't extend to you, and nothing waives this section.
 
 ### Expected variable names (names only, no values)
-`NFL_DATA_ROOT`, `NEO4J_PASSWORD`, `WANDB_API_KEY`, and optionally `LLM_API_KEY`, `LLM_BASE_URL`, `ODDS_API_KEY`, `ODDS_API_KEY2` (backup), `KAGGLE_USERNAME`, `KAGGLE_KEY`, plus SMTP settings (P07). `.env.example` is the authoritative list.
+`NFL_DATA_ROOT`, `NEO4J_PASSWORD`, `WANDB_API_KEY`, and optionally `OPENROUTER_API_KEY` (digest LLM), `LLM_API_KEY`, `LLM_BASE_URL`, `ODDS_API_KEY`, `ODDS_API_KEY2` (backup), `KAGGLE_USERNAME`, `KAGGLE_KEY`, plus SMTP settings (P07). `.env.example` is the authoritative list.
 
 ---
 

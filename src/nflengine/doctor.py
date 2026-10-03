@@ -123,10 +123,36 @@ def check_nflreadpy() -> Check:
 
 
 def check_llm() -> Check:
-    provider = get_config().llm.provider
+    cfg = get_config().llm
+    provider = cfg.provider
     if provider == "placeholder":
-        return Check("llm", OK, "placeholder provider (no API needed until P09)")
+        return Check("llm", OK, "placeholder provider (no API needed)")
+    if provider == "openrouter":
+        return check_openrouter(cfg.model)
     return Check("llm", WARN, f"provider '{provider}' not implemented until P09")
+
+
+def check_openrouter(model: str | None) -> Check:
+    """Key set + accepted (GET /key, status only: the reply is never shown) + model listed."""
+    env = get_env()
+    if not env.is_set("OPENROUTER_API_KEY"):
+        return Check("llm", FAIL, "provider openrouter but OPENROUTER_API_KEY is NOT SET")
+    try:
+        import httpx
+
+        headers = {"Authorization": f"Bearer {env.openrouter_api_key.get_secret_value()}"}
+        key = httpx.get("https://openrouter.ai/api/v1/key", headers=headers, timeout=20)
+        if key.status_code != 200:
+            return Check("llm", FAIL, f"openrouter rejected the key (HTTP {key.status_code})")
+        listed = httpx.get(f"https://openrouter.ai/api/v1/models/{model}/endpoints", timeout=20)
+        if listed.status_code != 200:
+            return Check(
+                "llm", WARN, f"key OK; model {model} not found (HTTP {listed.status_code})"
+            )
+        n = len((listed.json().get("data") or {}).get("endpoints") or [])
+        return Check("llm", OK, f"openrouter key accepted; {model} has {n} endpoints")
+    except Exception as exc:
+        return Check("llm", FAIL, f"openrouter unreachable: {type(exc).__name__}")
 
 
 def run_checks(init_data_root: bool = False) -> list[Check]:

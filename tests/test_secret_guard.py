@@ -37,6 +37,8 @@ CASES = [
     (True, "Bash", {"command": "uv run python -c 's.neo4j_password.get_secret_value()'"}),
     (True, "PowerShell", {"command": "Get-Item env:WANDB_API_KEY"}),
     (True, "Bash", {"command": "echo $ODDS_API_KEY2"}),
+    (True, "PowerShell", {"command": "Write-Output $env:OPENROUTER_API_KEY"}),
+    (True, "Bash", {"command": "echo ${OPENROUTER_API_KEY}"}),
     (True, "PowerShell", {"command": "[Environment]::GetEnvironmentVariable('X')"}),
     (False, "Bash", {"command": "set -euo pipefail; uv run nfl doctor"}),
     (False, "PowerShell", {"command": "Set-Location F:/Personal/NFL/NFL-ML-AI"}),

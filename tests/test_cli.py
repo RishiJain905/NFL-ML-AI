@@ -18,6 +18,8 @@ def test_help_lists_all_commands() -> None:
         "features",
         "backtest",
         "train",
+        "digest",
+        "weekly",
         *PLACEHOLDERS,
     ]:
         assert name in result.output

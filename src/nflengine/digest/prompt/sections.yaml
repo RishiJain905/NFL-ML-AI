@@ -1,0 +1,53 @@
+# Prose sections the LLM writes (documentation/06 -> Digest layout). Code renders the
+# header, the game outlook table, the report card numbers and the footer around them.
+# Word budgets live in config/settings.yaml (digest.word_budgets); `phase` marks sections
+# that later phases switch on.
+sections:
+  - id: report_card
+    title: Report card
+    payload: [report_card]
+    instructions: >-
+      One or two sentences on last week's picks: the pick record, the Brier score next to
+      Elo's, the average score error, and the biggest_miss game (say plainly that the model
+      got it wrong). Mention the season-to-date numbers and one calibration bucket when
+      present. If status is not "scored", say so in one sentence using the note. Don't
+      repeat these instructions in the text.
+  - id: game_outlook
+    title: Game outlook
+    payload: [games, game_highlights]
+    instructions: >-
+      A short blurb under the table: one to three games where the model (without market
+      data) disagrees most with consensus, each described with its model_vs_consensus.text,
+      plus game_highlights (most lopsided, closest) with their rank_note. Name games by
+      their matchup string. Never quote lines. Don't repeat these instructions in the text.
+  - id: team_trends
+    title: Team trend shifts
+    payload: [team_trends]
+    instructions: >-
+      Two to four teams trending up or down: what moved (the drivers, with their display
+      strings) and the supporting evidence. Descriptive, not predictive.
+  - id: under_the_hood
+    title: Last week under the hood
+    payload: [under_the_hood]
+    instructions: >-
+      Three to five tracking / charting notes from last week: who rose or fell against
+      their own norm, using last_week, season_avg and rank_note. Flag small samples.
+  - id: players_to_watch
+    title: Players to watch
+    payload: [players_to_watch]
+    instructions: >-
+      Four to six players: recent usage change, the opponent's defense, the baseline for
+      the target stat. Copy opp_def_rank's display exactly ("3rd-weakest" = one of the
+      worst defenses, a good matchup; "4th-strongest" = a tough one); never shorten it to
+      a bare ordinal. These are heuristic picks with low confidence until the player
+      model ships (P06): say so.
+  - id: matchup_risk
+    title: Matchup / risk to watch
+    payload: [graph_insights]
+    phase: P05
+    instructions: One graph-derived angle (injury ripple, style matchup, QB change).
+  - id: non_obvious
+    title: Non-obvious insights
+    payload: [graph_insights]
+    phase: P05
+    instructions: One or two multi-hop graph findings.

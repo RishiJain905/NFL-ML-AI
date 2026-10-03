@@ -28,7 +28,7 @@ Tool caches are pointed at the data root automatically: `WANDB_DIR` → `D:/nfl-
 ## Commands
 
 ```
-uv run nfl --help                  # all commands (later phases' commands are placeholders)
+uv run nfl --help                  # all commands (`graph` is a placeholder until P05)
 uv run nfl doctor                  # health check
 uv run nfl wandb-smoke             # W&B smoke test
 
@@ -47,6 +47,11 @@ uv run nfl backtest game --variant model-only --seasons 2018-2025   # walk-forwa
 uv run nfl backtest game --variant market --seasons 2018-2025
 uv run nfl backtest game-weights   # W&B sweep over the current-season sample weight (P03)
 uv run nfl train game --season 2026 --week N   # weekly fit -> runs/<season>/week<NN>/predictions_games.parquet (P03)
+
+uv run nfl weekly run --season 2026 --week N   # ingest -> ready -> curate -> ratings -> game -> digest (P04)
+uv run nfl weekly run --season 2026 --week N --from-step digest   # resume from a failed step
+uv run nfl digest --season 2026 --week N       # payload -> LLM -> checks -> reports/<season>/week<NN>-digest.md (P04)
+uv run nfl digest --season 2025 --weeks 8-9 --backtest   # past weeks as if live on their Tuesday (P04)
 
 uv run pytest                      # tests (integration tests excluded by default)
 uv run ruff check .                # lint

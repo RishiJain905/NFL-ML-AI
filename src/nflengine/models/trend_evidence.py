@@ -30,8 +30,10 @@ PFR publishes about a week late, so PFR rows from week w - 1 never count for key
 Tuesday run saw. NGS can also miss the latest week; that only shrinks the window.
 Every `*_delta` is recent - before and is null when either window has no data.
 
-QB change: `qb_now` starts the team's latest played game before week w; the comparison
-QB (`qb_before_*`) starts its latest game of season s before the recent window. With no
+QB change: a played game's QB is the passer with the most dropbacks (the curated listed-QB
+columns are wrong for some games; P04). `qb_now` is the QB of the team's latest played game
+before week w; the comparison QB (`qb_before_*`) is the QB of its latest game of season s
+before the recent window. With no
 such game, the comparison QB is last season's main starter: most completed REG starts
 in s - 1, latest start breaking ties (as in `ratings.qb_changes`), so a backup who
 started the last game of s - 1 (a rested week 18) doesn't count as a change.
@@ -46,6 +48,7 @@ team-game on a 0-1 scale (a game whose shares exceed 1.5 is read as percent).
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 import polars as pl
 
@@ -69,6 +72,7 @@ PLAY_COLS = [
     "cpoe",
     "pass_oe",
 ]
+OPTIONAL_PLAY_COLS = ["passer_id"]  # read when present: each game's QB by dropbacks
 # Columns read per table (only those present are read).
 TABLE_COLS: dict[str, list[str]] = {
     "games": [
@@ -152,8 +156,13 @@ def load_evidence_tables(paths: DataPaths, min_season: int) -> dict[str, pl.Data
             ]
             if not files:
                 raise FileNotFoundError(f"no play-by-play parquet files under {cur / 'plays'}")
+
+            def cols(f: Path) -> list[str]:
+                present = pl.scan_parquet(f).collect_schema().names()
+                return PLAY_COLS + [c for c in OPTIONAL_PLAY_COLS if c in present]
+
             lf = pl.concat(
-                [pl.scan_parquet(f).select(PLAY_COLS) for f in files], how="vertical_relaxed"
+                [pl.scan_parquet(f).select(cols(f)) for f in files], how="diagonal_relaxed"
             )
             out[name] = lf.filter(pl.col("season") >= first).collect()
             continue
@@ -192,6 +201,50 @@ def _team_games(games: pl.DataFrame) -> pl.DataFrame:
             )
         )
     return pl.concat(sides).with_columns(pl.col("season", "week").cast(pl.Int32))
+
+
+def _played_qbs(tg: pl.DataFrame, plays: pl.DataFrame, games: pl.DataFrame) -> pl.DataFrame:
+    """Each played team-game's QB = the passer with the most dropbacks (as `features/qb.py`
+    does), not the schedule's listed QB: the curated listed-QB columns are wrong for some
+    games (2024 IND weeks 8, 11, 12, 13, 16 list Flacco, while Richardson took every
+    dropback; found by the P04 fact-check). The listed QB is kept when a game has no
+    dropbacks. Names come from the listed-QB columns of any game."""
+    if "passer_id" not in plays.columns:
+        return tg
+    top = (
+        plays.filter((pl.col("qb_dropback") == 1) & pl.col("passer_id").is_not_null())
+        .group_by("game_id", pl.col("posteam").alias("team"), "passer_id")
+        .agg(pl.len().alias("n"))
+        .sort(["game_id", "team", "n", "passer_id"], descending=[False, False, True, False])
+        .group_by("game_id", "team", maintain_order=True)
+        .first()
+        .select("game_id", "team", pl.col("passer_id").alias("_qb"))
+    )
+    names = (
+        pl.concat(
+            [
+                games.select(pl.col(f"{s}_qb_id").alias("_qb"), pl.col(f"{s}_qb_name").alias("_n"))
+                for s in ("home", "away")
+            ]
+        )
+        .drop_nulls()
+        .unique("_qb", keep="last")
+    )
+    return (
+        tg.join(top, on=["game_id", "team"], how="left")
+        .join(names, on="_qb", how="left")
+        .with_columns(
+            pl.when(pl.col("_qb").is_not_null() & pl.col("_n").is_not_null())
+            .then(pl.col("_qb"))
+            .otherwise(pl.col("qb_id"))
+            .alias("qb_id"),
+            pl.when(pl.col("_qb").is_not_null() & pl.col("_n").is_not_null())
+            .then(pl.col("_n"))
+            .otherwise(pl.col("qb_name"))
+            .alias("qb_name"),
+        )
+        .drop("_qb", "_n")
+    )
 
 
 def _sum_or_null(col: str) -> pl.Expr:
@@ -571,7 +624,7 @@ def trend_evidence(
     if kt.is_empty():
         return pl.DataFrame(schema=OUTPUT_SCHEMA)
 
-    tg = _team_games(games)
+    tg = _played_qbs(_team_games(games), tables["plays"], games)
     stats = _game_stats(tg, tables)
     rows, info, qbs = _windows(kt, tg, window)
     rates = _rates(rows, stats)

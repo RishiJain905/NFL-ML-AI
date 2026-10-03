@@ -98,12 +98,12 @@ Before writing code against any data source, API, library or model output, **loo
 - **W&B sweeps** (`tracking.run_sweep`) work in-process on Windows and take about 10–15 s per run, so 175 runs is about 45 minutes. Run them with `run_in_background`, and smoke-test them first with a 2-value grid.
 - **Shared test fixtures** live in `tests/conftest.py`. Tests import helpers from it directly (`from conftest import make_league`).
 - **Subagents in parallel (P03).** Give each subagent its own new files only (it must not touch `cli.py`, `settings.yaml` or modules you are editing) and a precise interface: function names, output columns. Integrate yourself. If a subagent goes idle without its final report reaching you, ask it with SendMessage.
+- **Late subagent reports (P04).** Both parallel subagents showed as idle long before their final reports arrived (about 20 minutes later, after a SendMessage). Don't block on them: read and review their files yourself, run their tests, and measure the numbers you need (P04: the watch-list hit rate); fold in the report when it lands.
+- **Smoke-testing a 🧑 step's code path.** If a test of the live path writes the outputs Rishi's run should produce (P04: `reports/2026/week04-digest.md`), delete those derived files afterwards and say so, so his run is the first real one.
+- **The secret-guard / deny rules can block a shell `grep` whose text names `.env.example` alongside other files.** Read `.env.example` with the Read tool (it's the one env file agents may read) and search the other files with Grep.
+- **Heredoc-driven Python edits can corrupt regexes (P04).** Inside a `python - << 'EOF'` script, a regex written as `"\b..."` in a normal (non-raw) string becomes a literal backspace character in the file. It happened twice, and a test caught it both times. Prefer the Edit tool for regex lines; after any scripted edit, scan for control characters (`[\x00-\x08\x0b\x0c\x0e-\x1f]`) in changed files.
+- **Real LLM calls are slow at high reasoning effort** (minutes per digest). Run them with `run_in_background`, keep `--no-wandb` for the first try, and keep the placeholder as the fallback writer.
 - **Smoke-test W&B logging before the real runs.** Do one short backtest tagged `smoke` (2 seasons, `save=False`). It checks that the tables and plots log correctly before the runs that count (P03: `e9ex7x3q`).
-
-## 11. Kickoff prompt for a new session
-Rishi can paste this (edit the phase and approvals):
-
-> Read `CLAUDE.md`, then use the `phase-workflow` skill. Pxx is approved, so close it, then start Pyy following its phase file. You can use the opus-high and sonnet-xhigh subagents if useful.
 
 ## 12. Improving this workflow
 Any agent may improve this skill when a session teaches something reusable: a new quirk, a better verification step, a recurring mistake.

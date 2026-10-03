@@ -6,6 +6,8 @@ Status → see [PROGRESS.md](PROGRESS.md)
 - **Unlocks:** nothing (quality upgrade to the digest prose)
 - **Read first:** [06 → LLM provider interface, Prompt structure, Automated checks](../06-weekly-digest.md#llm-provider-interface)
 
+> **Partly done in P04 (2026-10-03, D56).** At Rishi's request the `openrouter` provider is already connected and the default: `z-ai/glm-5.3-flash`, reasoning `max`, routed to the cheapest of `baseten/fp8` / `relace` / `novita/fp8` / `deepinfra/fp4`. It has retries, sanitized errors, partial-reply rejection, usage/cost/latency logging, `nfl doctor` reachability, and the regenerate-once flow with feedback. On the final round of 2025 backtests (2025 weeks 4/8/9/14) it passed every check on the first try in 4 of 4, and the first live digest passed too. What's left here: an `anthropic` / `openai_compatible` adapter if ever wanted, Rishi's side-by-side review, prompt iteration, and latency (19–21 minutes per live digest at max effort).
+
 ## Goal
 
 Replace the placeholder template writer with a real LLM of Rishi's choosing (a Claude model, or an open-source model behind an OpenAI-compatible endpoint), **changing only config**, with every check still enforced.

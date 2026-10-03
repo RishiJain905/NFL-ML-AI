@@ -9,9 +9,17 @@ seasons:
 wandb:
   project: nfl-analytics-engine
 
-llm:
-  provider: placeholder   # placeholder | anthropic | openai_compatible (connected in P09)
-  model: null
+llm:                      # digest prose writer (documentation/06; D56)
+  provider: openrouter    # placeholder | openrouter (anthropic / openai_compatible: P09)
+  model: z-ai/glm-5.3-flash
+  reasoning_effort: max   # OpenRouter reasoning.effort
+  max_tokens: 64000       # whole completion, reasoning included
+  timeout_seconds: 600
+  retries: 2              # extra attempts on timeouts, 429 and 5xx
+  openrouter:             # provider routing: only these endpoints, cheapest first
+    only: [baseten/fp8, relace, novita/fp8, deepinfra/fp4]
+    sort: price
+    allow_fallbacks: true
 
 # Optional data sources (documentation/03 -> Additional free sources). All fail soft.
 sources:

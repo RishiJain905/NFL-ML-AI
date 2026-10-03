@@ -47,6 +47,12 @@ Applies to P02 (ratings/Elo/trend), P03 and P08 (game model), P06 and P08 (playe
 - **Feature tables:** `features/game_features` (`nfl features game`), built by `features.game.build_game_features` from the P02 tables plus `features.qb.team_qb_features` (QB status) and `features.venues.game_travel` (travel).
 - **Outputs:** backtest predictions for every week go to `runs/backtests/game/<label>/`; the weekly `predictions_games.parquet` goes to the run folder; models go to `models/game-model/<season>-w<NN>/` and the W&B artifact `game-model`.
 
+**Building blocks that exist (P04):**
+- **Report card** (`nflengine.digest.report_card`): `grade_games(preds, games)` grades saved `predictions_games` rows (`is_primary`; ungraded when made at or after kickoff), `week_metrics`, `calibration`, and `build_report_card(run_root, season, week, games, score_watch=...)`. Reuse it in P06 for the player scoreboard: grade only what was saved before kickoff.
+- **Season scorecard**: `digest.run.update_scorecard(path, row)` upserts one graded week into `runs/<season>/season_scorecard.parquet` (`SCORECARD_SCHEMA`); every digest run logs the whole table to W&B as `season_scorecard`. P06 fills `player_mae_vs_baseline`.
+- **Watch-list scoring**: `digest.watchlist.score_watchlist(df)` adds `actual` / `played` / `hit` (actual > baseline). The P04 heuristic hits 40% vs a 43% base rate for all eligible players (2024–2025): **a hit rate means nothing without the base rate**, because yardage is right-skewed.
+- **W&B groups**: `weekly-pipeline` / `main` (live digests), `digest-dev` / `backtest` (past weeks; `nfl digest --backtest`).
+
 ## 1. Define before you code
 Write these down (in the phase file or model card) before any training code:
 - **Target:** exact column and grain (for example `receiving_yards` per player-game, regular season, only players who played).

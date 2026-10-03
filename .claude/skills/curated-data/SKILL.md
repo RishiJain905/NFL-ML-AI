@@ -106,6 +106,20 @@ Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/particip
 - **Rest days:** 7 is normal; 4 = Thursday after Sunday; 10 = mini-bye after Thursday; 13–15 = bye. Week 1 is always 7.
 - **Lines:** closing spread, total and moneylines exist for every 2010–2025 game, except one 2017 game without moneylines.
 
+## Quirks found in P04 (checked live 2026-10-03)
+- **Weekly NGS minimum volumes are built in.** Weekly rows only exist for receivers with 5+ targets, rushers with 10+ carries and passers with 20+ attempts, so the pool is already filtered.
+- **Publication timing.** On Saturday 2026-10-03, NGS, PFR and FTN all had week 3 (and NGS / snaps / box scores already had Thursday's week-4 game). Whether PFR and FTN are out by a Tuesday run is still unverified (P07 should log it, D52).
+- **`pfr_pass.times_pressured_pct` is a 0–1 fraction** in every season; the rare value above 1 is a data error.
+- **`rosters_weekly.status == 'RES'`** marks reserve lists (IR, PUP, NFI). Use it with `injuries.report_status` (Out / Doubtful) to drop unavailable players for a week.
+- **Box scores vs snaps.** A player can have snaps and no `player_games` row (a blocking TE) or the reverse. Merge both with a full join on (`gsis_id`/`player_id`, `game_id`) before deciding who played.
+- **Skewed stats.** Yardage is right-skewed, so a player beats his own recent **mean** only about 43% of the time (all eligible WR/TE/RB, 2024–2025). Compare any "beat the baseline" hit rate against that base rate, not 50%.
+- **`injuries.report_status`** is only Out / Doubtful / Questionable / Note / null; **IR isn't in it** (use `rosters_weekly.status == 'RES'`). In 2024–2025, 0 of 677 Out, 0 of 94 Doubtful and 0 of 1,500 RES skill players played that week. `rosters_weekly.status == 'INA'` is the **game-day** inactive list (later than Friday's report): never use it as a pre-game input.
+- **NGS receiving has no RB rows since 2020** (WR and TE only). The weekly passing floor is 15 attempts (P04 uses 20+).
+- **`players.position` labels many edge rushers `LB`** (e.g. Myles Garrett); use `position_group` (DL / LB) for pass-rusher pools.
+- **FTN joins to 100% of REG dropbacks** on (`nflverse_game_id`, `nflverse_play_id`) = (`game_id`, `play_id`); cast `play_id` first (f64 in plays, i32 in FTN). 2025: blitz on 29% of dropbacks, play action on 23%.
+- **`snaps`** has a few rows without `gsis_id` and a few duplicate (player, game) rows since 2024: drop / dedupe. `player_games.target_share` is 0–1 and never null.
+- **`espn_news`** is mostly fantasy content (`is_fantasy`). Team ids are ESPN's (`team_espn_ids`); map them with `espn_injuries` (`team_espn_id` → `team`).
+
 ## Recipes
 
 **Open the data:**

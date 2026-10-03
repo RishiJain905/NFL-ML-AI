@@ -444,10 +444,94 @@ def train_game(
     console.print(f"W&B: {out['url']}  aliases {out['aliases']}")
 
 
+# ---- digest + weekly pipeline (P04) ----------------------------------------------------------
+
+
+@app.command()
+def digest(
+    season: int = typer.Option(..., help="Season of the digest."),
+    week: int | None = typer.Option(None, help="Week of the digest (the upcoming slate)."),
+    weeks: str | None = typer.Option(None, help="Several weeks, e.g. 7-10 (backtests)."),
+    backtest: bool = typer.Option(
+        False, "--backtest", help="Produce past weeks as if live on their Tuesday (as-of data)."
+    ),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Skip the W&B run (local tests)."),
+    llm: str | None = typer.Option(
+        None, "--llm", help="Override llm.provider for this run (e.g. placeholder)."
+    ),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Payload -> LLM -> checks -> render -> reports/<season>/week<NN>-digest.md on D:."""
+    from nflengine.digest.run import run_digest
+
+    if (week is None) == (weeks is None):
+        raise typer.BadParameter("give exactly one of --week or --weeks")
+    todo = [week] if week is not None else _parse_seasons(weeks) or []
+    failed = 0
+    for w in todo:
+        res = run_digest(
+            season,
+            w,
+            mode="backtest" if backtest else "live",
+            launched_by=launched_by,
+            provider=llm,
+            use_wandb=not no_wandb,
+            log=console.print,
+        )
+        final = res.synthesis.final
+        if res.synthesis.fallback_notes:
+            console.print(f"[yellow]writer fallback: {res.synthesis.fallback_notes}[/]")
+        style = "green" if final.passed else "red"
+        console.print(
+            f"[{style}]{season} week {w:02d}: checks "
+            f"{'passed' if final.passed else 'FAILED ' + ', '.join(final.failed)}"
+            f"{' (regenerated)' if res.synthesis.regenerated else ''}"
+            f"{'; warnings: ' + ', '.join(final.warnings) if final.warnings else ''}[/]"
+        )
+        console.print(f"  digest: {res.report_path}")
+        failed += not final.passed
+    if failed:
+        raise typer.Exit(2)
+
+
+weekly_app = typer.Typer(
+    help="The weekly pipeline (manual in P04, scheduled in P07).",
+    no_args_is_help=True,
+    pretty_exceptions_show_locals=False,
+)
+app.add_typer(weekly_app, name="weekly")
+
+
+@weekly_app.command("run")
+def weekly_run(
+    season: int = typer.Option(..., help="Season."),
+    week: int = typer.Option(..., help="The week to preview (week N; week N-1 must be done)."),
+    from_step: str | None = typer.Option(
+        None, help="Resume from this step: ingest | ready | curate | ratings | game | digest."
+    ),
+    promote: bool = typer.Option(
+        False, "--promote", help="Give this week's game-model artifact the `production` alias."
+    ),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """ingest -> readiness -> curate -> ratings -> game model -> digest (resumable)."""
+    from nflengine.weekly import StepFailed, WeeklyOptions, run_weekly, state_path
+
+    opts = WeeklyOptions(season, week, launched_by=launched_by, promote=promote)
+    try:
+        run_weekly(opts, from_step=from_step, log=console.print)
+    except StepFailed as e:
+        console.print(f"[red]{e}[/]")
+        console.print(
+            f"State: {state_path(season, week)}. Fix it, then resume with "
+            f"`nfl weekly run --season {season} --week {week} --from-step {e.step}`."
+        )
+        raise typer.Exit(e.exit_code) from None
+    console.print(f"[green]Weekly run for {season} week {week:02d} finished.[/]")
+
+
 PLACEHOLDERS = {
     "graph": ("P05", "Rebuild the Neo4j graph and run the query library."),
-    "digest": ("P04", "Build the payload and write the weekly digest."),
-    "weekly": ("P04", "Run the full weekly pipeline."),
 }
 
 

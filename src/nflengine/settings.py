@@ -25,6 +25,7 @@ OPTIONAL_ENV_VARS = (
     "WANDB_ENTITY",
     "LLM_API_KEY",
     "LLM_BASE_URL",
+    "OPENROUTER_API_KEY",
     "ODDS_API_KEY",
     "ODDS_API_KEY2",
     "KAGGLE_USERNAME",
@@ -50,6 +51,7 @@ class EnvSettings(BaseSettings):
 
     llm_api_key: SecretStr | None = None
     llm_base_url: str | None = None
+    openrouter_api_key: SecretStr | None = None  # digest LLM via OpenRouter (D56)
     odds_api_key: SecretStr | None = None
     odds_api_key2: SecretStr | None = None  # backup key, used when the first is exhausted
     kaggle_username: str | None = None
@@ -78,6 +80,12 @@ class WandbConfig(BaseModel):
 class LLMConfig(BaseModel):
     provider: str = "placeholder"
     model: str | None = None
+    reasoning_effort: str | None = None  # OpenRouter: max | xhigh | high | medium | low | ...
+    max_tokens: int = 64000
+    timeout_seconds: float = 600.0
+    retries: int = 2  # extra attempts on timeouts / 429 / 5xx
+    temperature: float | None = None
+    openrouter: dict[str, Any] = Field(default_factory=dict)  # provider routing (only, sort ...)
 
 
 class AppConfig(BaseModel):

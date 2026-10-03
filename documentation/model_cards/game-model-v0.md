@@ -219,8 +219,15 @@ The x-axis of every `bt/*` curve is **`bt/step`**: the count of reported weeks p
 ### Weekly fit (`train-<season>-w<NN>`; job type `train`)
 
 - **`predictions_games` table:** the week's predictions, both variants (the same rows as the parquet file).
+- **`slate/*` charts** (added in P04, so the run shows more than system charts, on mobile too): one point per game in kickoff order (x = `slate/game`).
+  - `home_win_prob_shown` (the digest's number);
+  - `home_win_prob_model_only`, `home_win_prob_market`, `home_win_prob_elo`;
+  - `expected_margin`.
+
+  Read them as "where the lines separate": a gap between the model-only and market lines is a consensus disagreement the digest describes in words. **`slate_home_win_pct`** is the same slate as a bar chart (web).
 - **Summary:**
   - `games` (games predicted);
+  - `kept_started_games` (games that kicked off before a re-run keep their saved, gradable prediction; D55);
   - `market_fallback_games` (games without a complete line, so model-only is shown);
   - `sigma_model_only` / `sigma_market` (the sigma used this week).
 - **Artifacts tab:** the `game-model` artifact, with version aliases `<season>-w<NN>` and, when promoted, `production`. Its description is this model card.

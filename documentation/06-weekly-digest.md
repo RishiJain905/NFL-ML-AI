@@ -20,11 +20,12 @@ class LLMClient(Protocol):
 
 | Provider (`llm.provider`) | What it is | When |
 |---|---|---|
-| `placeholder` (**default**) | A deterministic template writer: fills simple sentence templates straight from the payload's display strings | From the start. Lets the full pipeline, checks and report card run end to end with no API key. The checks get tested on predictable text |
+| `placeholder` | A deterministic template writer: fills simple sentence templates straight from the payload's display strings | From the start. Lets the full pipeline, checks and report card run end to end with no API key. The checks get tested on predictable text. Also the automatic fallback when a real provider fails (D56) |
+| `openrouter` (**default since P04**, D56) | Any model on OpenRouter (`OPENROUTER_API_KEY`); configured as `z-ai/glm-5.3-flash`, reasoning effort `max`, routed to the cheapest of `baseten/fp8`, `relace`, `novita/fp8`, `deepinfra/fp4` | Connected in P04 at Rishi's request |
 | `anthropic` | Claude via the Anthropic SDK | When Rishi connects it ([P09](plans/P09-llm-connection.md)) |
 | `openai_compatible` | Any OpenAI-compatible endpoint (`LLM_BASE_URL`), which covers open-source models served by Ollama, vLLM or LM Studio | Same |
 
-- Only `settings.yaml` (`llm.provider`, `llm.model`) and `.env` (`LLM_API_KEY`, `LLM_BASE_URL`) change when switching.
+- Only `settings.yaml` (`llm.*`) and `.env` (`OPENROUTER_API_KEY`, or `LLM_API_KEY` / `LLM_BASE_URL` for the P09 providers) change when switching.
 - **All checks below apply to every provider.** They matter most with smaller open-source models.
 - Writing the prose is a simple task. The intelligence is in the payload, so a modest model is fine.
 
@@ -159,3 +160,28 @@ Before going live, generate digests for **3–4 past weeks of the 2025 season** 
 - check strictness (false positives in number matching).
 
 Rishi scores each backtest digest 1–5 on: *would I read this*, *did I learn something*, *did anything feel wrong or invented*. Prompt changes are versioned (prompt hash logged to W&B).
+
+## As built in P04
+
+The digest v0 lives in `src/nflengine/digest/` (the how-to and debugging guide is the `digest-checks` skill). Deviations and choices are in decisions D52–D55.
+
+| Piece | Module | Notes |
+|---|---|---|
+| Payload | `payload.py` | Pydantic, `extra="forbid"`; every number a `Num {value, display}`. Extra fields beyond the sketch above: `meta.mode` / `run_time` / `sources` (freshness per source) / `early_season`; `report_card.status` (`scored`, `no_saved_predictions`, `first_week`), `not_graded`, `season_to_date`, `calibration`; `games[].status` (`upcoming` / `started`), `kickoff`, `market_fallback`, QB names; `team_trends[].window` / `net_rating` / `people`; `under_the_hood[].kind` (riser / faller / standout), `unit`, `norm_note`, `confidence`; `players_to_watch[].usage_*`, `opp_def_rank` (`source: heuristic` until P06) |
+| Formatting | `format.py` | The only place display strings are made, and the single number parser the checks use (`number_atoms`) |
+| Fact index | `facts.py` | Entity → display strings / number atoms (owners in the `digest-checks` skill); season and week numbers are global |
+| LLM | `llm/` | `LLMClient` protocol, registry keyed by `llm.provider`: `openrouter` (default, D56) and `PlaceholderLLM` (templates fitted to the word budgets; also the fallback when the provider fails). `anthropic` / `openai_compatible` raise "connect in P09". A test checks nothing outside `digest/llm/` imports a provider |
+| Prompt | `prompt/system.md`, `prompt/sections.yaml` | Hash logged to W&B and printed in the footer. Sections tagged `phase: P05` (matchup / risk, non-obvious) stay off until then |
+| Checks | `checks.py`, `synthesize.py` | All seven checks, plus a fail-level `meaning` check (home/road order of "A at B", game superlatives vs `game_highlights`, consensus tier wording) and a warn-only name heuristic; regenerate once with the offending tokens; then a ⚠️ banner and `checks_failed` in W&B |
+| Meaning in the payload | `build.py` | The LLM never derives an order, direction, venue or tier: `games[].matchup`, `game_highlights` (code-ranked), `model_vs_consensus.text`, change-worded trend deltas, complete stat phrases, tiered defense ranks, time-scoped QB evidence (D53) |
+| Report card | `report_card.py` | Grades the previous week's saved `predictions_games.parquet` (`is_primary` rows) and `watchlist.parquet`; predictions made after kickoff are never graded |
+| Under the hood | `under_hood.py` | NGS / PFR / FTN for week N−1 (D54) |
+| Players to watch | `watchlist.py` | Usage-increase × opponent-weakness heuristic, low confidence (D54) |
+| Render | `render.py` | Header, report-card numbers, game table (win % away / home, predicted score, margin, P03 confidence band), footer |
+| Commands | `run.py`, `weekly.py` | `nfl digest` (live or `--backtest`), `nfl weekly run` (resumable with `--from-step`) |
+
+**Section budgets in P04.** Five prose sections are active (530 words); the two graph sections join in P05 (700 words in all). A section more than 25% over budget, or a total more than 5% over the active sum, fails; a section more than 25% short only warns (D53).
+
+**Report card for the first live week.** No week-3 predictions were saved (the pipeline went live in week 4), so the week-4 digest says there is nothing to grade; week 5's grades week 4. Predictions are never backfilled (D55).
+
+**Backtests** (`nfl digest --backtest`): as if live on the Tuesday of the week. Game predictions come from the canonical walk-forward backtests (`runs/backtests/game/{market,model_only}`), materialized into `runs/digest-backtests/<season>/week<NN>/` for that week and every earlier week, so the report card reads "saved" files exactly as it does live. Reports go to `reports/backtests/<season>/`; W&B group `digest-dev`.

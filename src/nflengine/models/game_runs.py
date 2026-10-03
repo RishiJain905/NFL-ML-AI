@@ -663,6 +663,31 @@ def assemble_predictions(
     return out.select(PREDICTION_COLS).sort("kickoff_utc", "game_id", "variant")
 
 
+def keep_started(
+    new: pl.DataFrame, saved: Path, now: dt.datetime
+) -> tuple[pl.DataFrame, list[str]]:
+    """Re-running a week never replaces a game that has already kicked off.
+
+    The report card grades only predictions made before kickoff (D55), so the earlier saved
+    rows of started games are kept and only upcoming games get the new predictions. Returns
+    the merged table and the game ids that were kept.
+    """
+    if not saved.exists():
+        return new, []
+    old = pl.read_parquet(saved)
+    old = old.with_columns(pl.lit(None).alias(c) for c in new.columns if c not in old.columns)
+    kept = old.filter(pl.col("kickoff_utc") <= now)["game_id"].unique().sort().to_list()
+    if not kept:
+        return new, []
+    merged = pl.concat(
+        [
+            old.filter(pl.col("game_id").is_in(kept)).select(new.columns).cast(new.schema),
+            new.filter(~pl.col("game_id").is_in(kept)),
+        ]
+    ).sort("kickoff_utc", "game_id", "variant")
+    return merged, kept
+
+
 def _save_models(fits: dict[str, FittedGameModel], folder: Path, meta: dict[str, Any]) -> None:
     import joblib
 
@@ -732,6 +757,9 @@ def run_train(
     run_dir = paths.run_dir(season, week)
     run_dir.mkdir(parents=True, exist_ok=True)
     pred_path = run_dir / "predictions_games.parquet"
+    table, kept = keep_started(table, pred_path, dt.datetime.now(dt.UTC))
+    if kept:
+        log(f"kept the saved predictions of {len(kept)} game(s) that already kicked off: {kept}")
     table.write_parquet(pred_path, compression="zstd")
     model_dir = paths.models / FAMILY / tag
     meta = {
@@ -765,9 +793,11 @@ def run_train(
     try:
         primary = table.filter(pl.col("is_primary"))
         run.log({"predictions_games": wandb.Table(dataframe=_live_table(table).to_pandas())})
+        log_slate_charts(run, table)
         run.summary.update(
             {
                 "games": primary.height,
+                "kept_started_games": len(kept),
                 "market_fallback_games": int(primary["market_fallback"].sum()),
                 "sigma_model_only": fits["model_only"].sigma,
                 "sigma_market": fits["market"].sigma,
@@ -794,6 +824,42 @@ def run_train(
         "table": table,
         "aliases": aliases,
     }
+
+
+def log_slate_charts(run, table: pl.DataFrame) -> None:
+    """Chart panels for a weekly fit (a one-shot run, so nothing else draws a chart):
+    `slate/*` lines over the week's games in kickoff order (shown, model-only, market and
+    Elo home win probability; expected margin), plus a bar chart of the shown home win %.
+    Standard line panels, so they render in the W&B mobile app too."""
+    import wandb
+
+    shown = table.filter(pl.col("is_primary")).sort("kickoff_utc", "game_id")
+    model_only = {
+        r["game_id"]: r["home_win_prob"]
+        for r in table.filter(pl.col("variant") == "model_only").iter_rows(named=True)
+    }
+    run.define_metric("slate/game")
+    run.define_metric("slate/*", step_metric="slate/game")
+    labels = []
+    for i, r in enumerate(shown.iter_rows(named=True), start=1):
+        labels.append(f"{i:02d} {r['away_team']}@{r['home_team']}")
+        point = {
+            "slate/game": i,
+            "slate/home_win_prob_shown": r["home_win_prob"],
+            "slate/home_win_prob_model_only": model_only.get(r["game_id"]),
+            "slate/home_win_prob_market": r["market_prob"],
+            "slate/home_win_prob_elo": r["elo_prob"],
+            "slate/expected_margin": r["expected_margin"],
+        }
+        run.log({k: v for k, v in point.items() if v is not None})
+    bars = wandb.Table(
+        data=[
+            [lab, round(100 * float(p), 1)]
+            for lab, p in zip(labels, shown["home_win_prob"], strict=True)
+        ],
+        columns=["game", "home win %"],
+    )
+    run.log({"slate_home_win_pct": wandb.plot.bar(bars, "game", "home win %", title="Home win %")})
 
 
 def _live_table(table: pl.DataFrame) -> pl.DataFrame:

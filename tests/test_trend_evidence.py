@@ -403,3 +403,24 @@ def test_load_evidence_tables(tmp_path, tables):
     assert set(got2["plays"]["season"].to_list()) == {2025}
     out = trend_evidence(got, KEYS)
     assert out.height == 8
+
+
+def test_played_qb_comes_from_dropbacks_not_the_listed_qb() -> None:
+    """P04 fact-check: 2024 IND games list Flacco while Richardson took every dropback."""
+    from nflengine.models.trend_evidence import _played_qbs
+
+    tg = pl.DataFrame(
+        {"game_id": ["g1", "g2"], "team": ["IND", "IND"], "qb_id": ["flacco", "flacco"],
+         "qb_name": ["Joe Flacco", "Joe Flacco"]}
+    )  # fmt: skip
+    plays = pl.DataFrame(
+        {"game_id": ["g1"] * 3 + ["g2"] * 2, "posteam": ["IND"] * 5,
+         "qb_dropback": [1, 1, 1, 1, 0], "passer_id": ["ar", "ar", "flacco", "ghost", None]}
+    )  # fmt: skip
+    games = pl.DataFrame(
+        {"home_qb_id": ["ar", "flacco"], "home_qb_name": ["Anthony Richardson", "Joe Flacco"],
+         "away_qb_id": [None, None], "away_qb_name": [None, None]}
+    )  # fmt: skip
+    out = {r["game_id"]: r for r in _played_qbs(tg, plays, games).iter_rows(named=True)}
+    assert out["g1"]["qb_name"] == "Anthony Richardson"  # most dropbacks wins
+    assert out["g2"]["qb_name"] == "Joe Flacco"  # unknown passer name: keep the listed QB

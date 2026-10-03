@@ -44,7 +44,9 @@ def test_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_repo_app_config_loads() -> None:
     cfg = load_app_config()
     assert cfg.wandb.project == "nfl-analytics-engine"
-    assert cfg.llm.provider == "placeholder"
+    assert cfg.llm.provider in ("placeholder", "openrouter")
+    if cfg.llm.provider == "openrouter":  # D56: model + routing come from config only
+        assert cfg.llm.model and cfg.llm.openrouter.get("only")
     assert cfg.seasons.current == 2026
 
 

@@ -22,6 +22,9 @@ class FakeRun:
     def log(self, data):
         self.logged.append(data)
 
+    def define_metric(self, *args, **kwargs):
+        pass
+
     def log_artifact(self, art, aliases):
         self.artifacts.append((art.name, list(aliases)))
 
@@ -120,3 +123,32 @@ def test_train_ignores_rows_after_the_predicted_week(mocked) -> None:
 def test_train_refuses_a_week_that_is_not_ready(mocked) -> None:
     with pytest.raises(ValueError, match="isn't predictable yet"):
         game_runs.run_train(SEASON, WEEK + 2, log=lambda *_: None)
+
+
+def test_rerun_keeps_saved_predictions_of_started_games(tmp_path) -> None:
+    """Re-running a week must not overwrite pre-kickoff predictions the report card grades."""
+    import datetime as dt
+
+    utc = dt.UTC
+    sat, sun = dt.datetime(2026, 10, 3, 18, tzinfo=utc), dt.datetime(2026, 10, 4, 17, tzinfo=utc)
+
+    def table(prob: float, created: dt.datetime) -> pl.DataFrame:
+        return pl.DataFrame(
+            {
+                "game_id": ["early", "late"],
+                "variant": ["market", "market"],
+                "kickoff_utc": [sat - dt.timedelta(hours=2), sun],
+                "home_win_prob": [prob, prob],
+                "created_at": [created, created],
+            }
+        )
+
+    saved = tmp_path / "predictions_games.parquet"
+    new = table(0.7, sat)
+    assert game_runs.keep_started(new, saved, sat)[1] == []  # nothing saved yet
+    table(0.6, sat - dt.timedelta(days=4)).write_parquet(saved)
+    merged, kept = game_runs.keep_started(new, saved, sat)
+    assert kept == ["early"]
+    rows = {r["game_id"]: r for r in merged.iter_rows(named=True)}
+    assert rows["early"]["home_win_prob"] == 0.6  # the Tuesday prediction survives
+    assert rows["late"]["home_win_prob"] == 0.7  # upcoming games are re-predicted

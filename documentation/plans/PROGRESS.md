@@ -2,9 +2,9 @@
 
 > **Agents: update this file at the end of every session**, even mid-phase. See the protocol in [README.md](README.md).
 
-**Current phase:** P04, Digest v0 (⬜ not started; P03 closed ✅)
-**Next step:** Start P04 (first live digest) in a new session. Read `P04-digest-v0.md`. The game section reads `runs/<season>/week<NN>/predictions_games.parquet` (`is_primary` rows; schema in the [game model card](../model_cards/game-model-v0.md)). The report card can be tested on past weeks with `runs/backtests/game/<variant>/predictions_games.parquet`. Weekly order: `nfl ingest` → `nfl curate` → `nfl ratings build` → `nfl train game --season 2026 --week N`.
-**Last updated:** 2026-10-03, P03 session
+**Current phase:** P05, Knowledge graph v1 (⬜ not started; P04 closed ✅)
+**Next step:** Start P05 (read `P05-knowledge-graph.md`). Rishi plans to finish the later phases today; after they land, re-run `uv run nfl weekly run --season 2026 --week 4` (or `--from-step <first new step>`) **before the first week-4 kickoff (Sun 9:30 AM ET)**; a re-run keeps started games' saved predictions. Week 5's report card will grade week 4's last pre-kickoff picks. Runs stay manual until P07.
+**Last updated:** 2026-10-03, P04 session
 
 Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ blocked · ✅ done
 
@@ -16,7 +16,7 @@ Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ b
 | P01 | Data ingestion and curation | ✅ | 2026-10-03 | 2026-10-03 | Closed with Rishi's approval |
 | P02 | Team ratings, Elo, trend | ✅ | 2026-10-03 | 2026-10-03 | Closed with Rishi's approval (params D46, trends descriptive D47) |
 | P03 | Game model v0 | ✅ | 2026-10-03 | 2026-10-03 | 🧑/✋ steps waived by Rishi for P03; config D48; model-only 0.2199 vs Elo 0.2221; market-informed 0.2102 vs market 0.2104 |
-| P04 | Digest v0 (first live digest) | ⬜ | | | |
+| P04 | Digest v0 (first live digest) | ✅ | 2026-10-03 | 2026-10-03 | Closed with Rishi's approval. Backtests approved by Rishi; live run delegated. GLM 5.3 Flash via OpenRouter (D56); fact-checked twice + Sol review (D53–D57); first live digest 2026 week 4 passed all checks |
 | P05 | Knowledge graph v1 | ⬜ | | | |
 | P06 | Player model v1 + accuracy scoreboard | ⬜ | | | |
 | P07 | Automation and weekly operations | ⬜ | | | |
@@ -47,6 +47,8 @@ Every 🧑 step goes here, whether Rishi ran it or delegated it.
 | 2026-10-03 | P03 | `uv run nfl backtest game --variant market --seasons 2018-2025` | agent (delegated: P03 waiver) | [ekz4277b](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/ekz4277b) | 0.2102 vs closing market 0.2104 (log loss 0.6098 vs 0.6102, ECE 0.023 vs 0.029) |
 | 2026-10-03 | P03 | `uv run nfl backtest game-weights --weights 1,2,3,5` | agent (delegated: P03 waiver) | [sweep aoflnafa](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/sweeps/aoflnafa) | Flat: 0.21992 / 0.21984 / 0.21985 / 0.21989. Heavier weight helps weeks 1–4 (−0.0008) and hurts weeks 10+ (+0.0004), both noise. 3× kept (D28) |
 | 2026-10-03 | P03 | `uv run nfl backtest game --qb-mode actual` (research oracle) | agent (delegated: P03 waiver) | [3ots68nz](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/3ots68nz) | With the listed starting QB: 0.2183 (−0.0016), the value of a game-day QB update for P07 |
+| 2026-10-03 | P04 | Review of the 2025 backtest digests (weeks 4, 8, 9, 14; GLM + placeholder) | Rishi | `digest-dev` runs `p3vwl1f1`, `yf45rwhr`, `ar1v132l`, `egbdqx5m` | **Approved.** Verdict (no numeric scores): "really really good outside of the players to watch section", which reads as "gibberish", as expected until P06. Treated as meeting the ≥ 3.5 "would I read this" bar |
+| 2026-10-03 | P04 | `uv run nfl weekly run --season 2026 --week 4` (**first live digest**) | agent (delegated by Rishi: "I'm not home") | train [1vbkvjdj](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/1vbkvjdj), digest [vvit9fdd](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/vvit9fdd) | First pass: ingest (30 datasets), ready (week 3 16/16), curate (32 tables, all checks pass), ratings and game all green (train `hs6am1in`). Stopped during the digest step to add W&B chart panels after Rishi saw only system charts, then resumed with `--from-step game`; `keep_started` kept Thursday's PIT@CLE row. That digest (`0rbvplt9`) failed its checks after one regeneration (a binding false negative, then 151 words on a 150 limit), so two check fixes went in and `--from-step digest` was re-run: **all checks passed first time** (`vvit9fdd`; one GLM call, 19 min, $0.016). Reviewed line by line against the payload: all as intended |
 | 2026-10-03 | P03 | `uv run nfl train game --season 2026 --week 4 --promote` (first live prediction) | agent (delegated: P03 waiver) | [ump6sftd](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/ump6sftd) | 16 games, all with complete lines (market rows primary); artifact `game-model:2026-w04` v1 has aliases `2026-w04` + `production` (checked through the W&B API); table sanity-checked |
 
 ## Open blockers
@@ -54,6 +56,55 @@ Every 🧑 step goes here, whether Rishi ran it or delegated it.
 _None._
 
 ## Session log (newest first)
+
+### 2026-10-03: P04 built, reviewed, run live and closed ✅
+- **Kickoff.** P03 was already closed (✅). **No waivers for P04** (asked at the start): Rishi scores the backtest digests himself, and runs the first live `nfl weekly run` himself; the ✋ close needs his approval. The Sol review comes after that, before the commit.
+- **Built** (`src/nflengine/digest/`, `src/nflengine/weekly.py`):
+  - payload (Pydantic), `format.py` (the one formatter + number parser), fact index;
+  - checks (provenance, spelled-out numbers, entity binding, unknown entities, banned language, length, hedging, plus a warn-only made-up-name heuristic) with regenerate-once and the ⚠️ banner;
+  - LLM layer: `LLMClient`, registry, `PlaceholderLLM`, prompt files with a hash;
+  - report card (grades the saved previous week; never predictions made after kickoff), season scorecard (D: + W&B);
+  - render (header, game table, report-card numbers, footer);
+  - `nfl digest` (live / `--backtest` / `--llm`), `nfl weekly run` (resumable `--from-step`).
+  - Subagents (named by Rishi): opus-high built `under_hood.py` (NGS / PFR / FTN selection), sonnet-xhigh built `watchlist.py` (usage × opponent-weakness heuristic). Their final reports arrived about 20 minutes after they went idle; I had already reviewed both modules and their tests and measured the hit rate myself, and their numbers agree.
+- **Real LLM connected early (D56)**, at Rishi's request mid-session: OpenRouter `z-ai/glm-5.3-flash`, reasoning `max`, `provider.only = [baseten/fp8, relace, novita/fp8, deepinfra/fp4]` + `sort: price`. Key name `OPENROUTER_API_KEY` added to settings, doctor (set + accepted), the guard hook, `.env.example`, CLAUDE.md and AGENTS.md (the Codex `*KEY*` filter already covers it). The placeholder is the fallback writer.
+- **Backtest digests** (🤖, 2025 weeks 4, 8, 9, 14; `reports/backtests/2025/week<NN>-digest-{openrouter,placeholder}.md`; W&B `digest-dev`):
+  - GLM (openrouter), first round: every final digest passed, but only 2 of 4 on the first try (runs `p3vwl1f1`, `yf45rwhr`, `ar1v132l`, `egbdqx5m`, superseded).
+  - GLM, final round after the fact-check and Sol fixes: **4 of 4 pass every check on the first try** (P09's bar is 80%). Runs `y7z1nqy7`, `uhjkeqf4`, `e47kfxhn`, `ltdckmiq`. $0.023 in total; 3–12 minutes per digest; served by Novita. The only warnings are one hedging note and one name-heuristic false positive (possessive; fixed).
+  - Placeholder: all 4 pass first time (`n8ot1jnv`, `fmoegk8e` and the week 9 / 14 runs).
+  - Reading the first GLM draft found a **meaning error the checks can't see**: a bare defense rank "1st" (= weakest) became "1st-ranked pass defense". Displays are now self-describing ("3rd-weakest", "4th-strongest").
+  - Check refinements from real prose (D53): calibration buckets own their counts; the model is the implicit owner in the report card; last-name aliases don't match inside other full names ("Chase Brown"); hyphenated matchups name both teams; a section-wide disclaimer satisfies hedging.
+- **Rishi's review (🧑):** approved ("really really good outside of the players to watch section", which is a heuristic until P06). He then asked for a code check, a "did GLM make anything up" check and the Sol review before his live run.
+- **Independent fact-check** (opus-high, read-only, every LLM claim vs `payload.json`): every number was right, but 4 of 4 digests had material meaning errors. Superlatives GLM computed itself ("tightest call", "right behind"), one home/road swap ("Colts at Titans"), consensus tiers flattened, trend changes reading as levels, and payload wording that misled it ("has taken over from" last season's QB; a bare "1st" defense rank). Fixed at the root: code-made `matchup`, `game_highlights`, `model_vs_consensus.text`, change-worded trends, tiered ranks, position words and time-scoped evidence, plus a fail-level `meaning` check (D53).
+- **Sol code review** (Codex `gpt-6.1-sol`, xhigh, read-only, via `/sol-qa`, job `task-musw9zj2-9l2kox`): 12 findings, all valid and fixed with regression tests:
+  1. (high) provider error text could carry the key into logs and files: now status + code only;
+  2. (high) watch picks lacked a pre-kickoff boundary: timestamps, started games excluded, earlier picks kept on re-run;
+  3. started-game forecasts were still visible to the LLM: now names only;
+  4. partial replies passed as complete: rejected, retried once, plus a `complete` check;
+  5. valid past matchups were rejected;
+  6. consensus agreement was rejected;
+  7. `.999` decimals dodged the number checks;
+  8. each team owned its opponent's predicted score;
+  9. hyphenated betting words slipped through;
+  10. the placeholder wrote the banned word "lines";
+  11. "percent" was flagged as a number word;
+  12. season totals vanished when the previous week was missing.
+- **Also added:** `game_runs.keep_started`, so re-running a week never replaces a game that already kicked off (D55).
+- **Second fact-check** (after the fixes): all six earlier material errors are fixed, and GLM made no material errors. Two false claims came from **our data**, and both are fixed:
+  - the curated listed-QB columns credit Flacco with 2024 Colts games Richardson played, so trend evidence now uses most dropbacks (D57); the trend tables were rebuilt and the Colts / Jets "last season's starter" are now Richardson / Fields;
+  - the watch-list usage windows spanned a trade (Adonai Mitchell), so they now count only games with the player's current team.
+  - Minor wording (qualifiers dropped, "a tough matchup" added) is hardened in the prompt (rules 17–19) and displays ("on offense", "league's weakest").
+- **Verified.**
+  - Backtest digests for 2025 weeks 4, 8, 9, 14 all pass every check.
+  - Exit criterion "the report card scores the previous week from saved predictions": week 9's card matches week 8's saved file graded by hand (11 of 13, Brier 0.1662 vs Elo 0.1722, points MAE 8.85; watch list 1 of 3 played).
+  - The live path ran on 2026 week 4 (smoke, no W&B); its outputs were removed so Rishi's run is the first live digest.
+- **First live digest** (2026 week 4, delegated by Rishi, "I'm not home"):
+  - every step green; `keep_started` kept Thursday's game;
+  - a first digest failed its checks after one regeneration, which led to two check fixes (evidence names bind to their team; regenerations restate the word limits) and a code-written "nothing to grade" report card;
+  - the re-run passed every check on the first attempt;
+  - I reviewed it line by line against the payload; Rishi approved closing P04.
+  - W&B: Rishi saw only system charts for one-shot runs, so the weekly fit now logs `slate/*` charts and every digest logs `season/*` charts (verified: `1vbkvjdj`, `5es0n15u`).
+- **Found.** The placeholder watch list hits 40% (143 played picks, 2024–2025) vs a 43% base rate for all eligible players: no skill yet, and yardage skew makes 43%, not 50%, the par line (P06 must beat it).
 
 ### 2026-10-03: P03 docs follow-up (W&B chart guides, accuracy)
 - Rishi asked what the W&B charts track (for example `cum_log_loss`) and whether 60–65% accuracy is low.

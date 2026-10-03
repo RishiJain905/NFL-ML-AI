@@ -153,3 +153,197 @@ def make_league(
 @pytest.fixture(scope="session")
 def league() -> dict[str, pl.DataFrame]:
     return make_league()
+
+
+# ---- P04 digest fixtures ----------------------------------------------------------------------
+
+
+def make_payload(**overrides):
+    """A small, valid digest payload (2 games, 1 trend, 1 under-the-hood item, 1 watch item,
+    a scored report card) built with the real formatting helpers."""
+    from nflengine.digest import format as F
+    from nflengine.digest.payload import (
+        BiggestMiss,
+        CalibrationBucket,
+        Consensus,
+        GameHighlights,
+        GameItem,
+        HighlightGame,
+        Meta,
+        Payload,
+        PredictedScore,
+        ReportCard,
+        SeasonToDate,
+        TrendDriver,
+        TrendItem,
+        UnderHoodItem,
+        WatchItem,
+    )
+
+    meta = Meta(
+        season=2025,
+        week=8,
+        run_id="2025-w08-backtest",
+        mode="backtest",
+        run_time="2025-10-21T14:00:00+00:00",
+        season_display=F.count(2025),
+        week_display=F.count(8),
+        prev_week_display=F.count(7),
+        data_through="2025-W07",
+        market_data_used=True,
+        model_versions={"game model": "game-model-v0:backtest"},
+    )
+    rc = ReportCard(
+        status="scored",
+        scored_week=7,
+        scored_week_display=F.count(7),
+        picks_correct=F.count(11),
+        picks_total=F.count(15),
+        brier=F.brier(0.2013),
+        brier_elo=F.brier(0.2261),
+        points_mae=F.points_error(7.43),
+        biggest_miss=BiggestMiss(
+            game_id="2025_07_NYJ_BUF",
+            game="Jets at Bills",
+            favored="BUF",
+            favored_name="Bills",
+            prob=F.pct(0.78, cap=True),
+            winner="NYJ",
+            winner_name="Jets",
+            final_score="24–17",
+        ),
+        calibration=[
+            CalibrationBucket(bucket=F.bucket(0.6, 0.7), games=F.count(8), favorite_wins=F.count(6))
+        ],
+        season_to_date=SeasonToDate(
+            weeks=F.count(7),
+            picks_correct=F.count(70),
+            picks_total=F.count(105),
+            brier=F.brier(0.2152),
+            brier_elo=F.brier(0.2231),
+        ),
+    )
+    games = [
+        GameItem(
+            game_id="2025_08_KC_DEN",
+            kickoff="Sun 4:25 PM",
+            status="upcoming",
+            home="DEN",
+            away="KC",
+            home_name="Broncos",
+            away_name="Chiefs",
+            matchup="Chiefs at Broncos",
+            home_win_prob=F.pct(0.41),
+            away_win_prob=F.pct(0.59),
+            favored="KC",
+            expected_margin=F.margin(-2.6, "DEN", "KC"),
+            predicted_score=PredictedScore(home=F.points(20.8), away=F.points(23.4)),
+            confidence="lean",
+        ),
+        GameItem(
+            game_id="2025_08_NE_BUF",
+            kickoff="Sun 1:00 PM",
+            status="upcoming",
+            home="BUF",
+            away="NE",
+            home_name="Bills",
+            away_name="Patriots",
+            matchup="Patriots at Bills",
+            home_win_prob=F.pct(0.73),
+            away_win_prob=F.pct(0.27),
+            favored="BUF",
+            expected_margin=F.margin(7.6, "BUF", "NE"),
+            predicted_score=PredictedScore(home=F.points(28.8), away=F.points(21.2)),
+            confidence="solid",
+            model_vs_consensus=Consensus(
+                direction="higher_on_home",
+                size="notable",
+                team="BUF",
+                team_name="Bills",
+                text="notably higher on the Bills than consensus",
+            ),
+        ),
+    ]
+    highlights = GameHighlights(
+        most_lopsided=[
+            HighlightGame(
+                game_id="2025_08_NE_BUF", matchup="Patriots at Bills", team="BUF",
+                team_name="Bills", prob=F.pct(0.73), rank_note="the most lopsided call",
+            ),
+        ],
+        closest=[
+            HighlightGame(
+                game_id="2025_08_KC_DEN", matchup="Chiefs at Broncos", team="KC",
+                team_name="Chiefs", prob=F.pct(0.59), rank_note="the closest game",
+            ),
+        ],
+    )  # fmt: skip
+    trends = [
+        TrendItem(
+            team="DET",
+            team_name="Lions",
+            direction="down",
+            trend_delta=F.epa_change(-0.049, 3),
+            window=F.weeks(3),
+            net_rating=F.epa(0.015),
+            drivers=[
+                TrendDriver(
+                    unit="pass defense",
+                    change=F.driver_change("pass defense", 0.058),
+                    effect="worse",
+                )
+            ],
+            evidence=["recently without Christian Mahogany (G)"],
+            people=["Christian Mahogany"],
+        )
+    ]
+    uh = [
+        UnderHoodItem(
+            player="Ja'Marr Chase",
+            player_id="00-0036900",
+            team="CIN",
+            team_name="Bengals",
+            position="WR",
+            metric="avg_separation",
+            label="average separation",
+            kind="riser",
+            last_week=F.yards(4.1),
+            season_avg=F.yards(2.9),
+            norm_note="his average over the previous 6 games",
+            volume=F.count(9),
+            volume_label="targets",
+            rank_note="highest among WRs with 5+ targets",
+            source="NGS",
+        )
+    ]
+    watch = [
+        WatchItem(
+            player="Jaylen Warren",
+            player_id="00-0037000",
+            team="PIT",
+            team_name="Steelers",
+            position="RB",
+            opponent="GB",
+            opponent_name="Packers",
+            game_id="2025_08_PIT_GB",
+            target="scrimmage yards",
+            baseline=F.amount(61.3, "scrimmage yards"),
+            usage_metric="carry share",
+            usage_recent=F.share(0.58),
+            usage_before=F.share(0.41),
+            usage_before_note="earlier this season",
+            opp_def_rank=F.text_num("3rd-weakest", 3),
+            opp_def_unit="run defense",
+        )
+    ]
+    data = dict(
+        meta=meta,
+        report_card=rc,
+        games=games,
+        game_highlights=highlights,
+        team_trends=trends,
+        under_the_hood=uh,
+        players_to_watch=watch,
+    )
+    data.update(overrides)
+    return Payload(**data)

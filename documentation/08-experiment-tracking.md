@@ -53,6 +53,15 @@ Metric correction from the original plan: ROC, precision, recall and F1 aren't t
 - Market data: used or fell back to model-only.
 - The payload and digest as files attached to the run.
 
+**As built in P04.** The `weekly-pipeline` / `main` run is logged by the digest step (`nfl digest`, also the last step of `nfl weekly run`); `nfl digest --backtest` logs the same run to `digest-dev` / `backtest`.
+- **Config:** season, week, mode, run time, prompt hash, LLM provider and model, word budgets, followed teams, git commit, dataset version.
+- **Summary:** `checks_passed`, `check/<name>` (1/0) and `check_issues/<name>`, `regenerated`, `banner`, `words/<section>` and `words_total`, `market_data_used`, item counts, the report card numbers (`rc/*`), and for a real LLM `llm/calls`, `llm/latency_s`, `llm/prompt_tokens`, `llm/completion_tokens`, `llm/reasoning_tokens`, `llm/cost_usd`, `llm/providers`, `llm/fallback`, `llm/final_writer`.
+- **Charts** (added after Rishi saw only system charts on mobile: these runs are one-shot, so nothing else draws a chart): `season/*` lines over the graded weeks: `brier_model` / `brier_elo` / `brier_market` and their `cum_*` versions, `pick_accuracy` and `cum_pick_accuracy`, `points_mae`, `watchlist_hit_rate` and its cumulative version. These are standard panels, so they render in the mobile app. Plus bar charts `words_per_section` and `check_issue_counts` (web).
+- **Tables:** `season_scorecard` (the whole season so far), `check_issues`, `game_outlook`.
+- **Artifact:** `digest` (`digest-backtest` for backtests), aliased `<season>-w<NN>`, holding `payload.json`, `raw_llm_output.json`, `checks.json` and `digest.md`.
+
+The game-model refit logs its own `track1-game` / `train` run. Data freshness per source is in the digest header and `payload.meta.sources`. Ingest row counts are in the raw run manifest; logging them to W&B is P07 work.
+
 ## Season scorecard (the long-term view)
 
 At the start of each main run, score the **previous week's saved predictions** and append one row to a W&B Table, `season_scorecard`:

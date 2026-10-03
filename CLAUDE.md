@@ -35,7 +35,7 @@ Never read, open, print, `cat` / `type` / `Get-Content`, `grep` / `Select-String
 - **Codex** (used for code review via the Codex plugin) doesn't read this file or the deny rules above. It gets the same rules from `AGENTS.md` (instructions) and `.codex/config.toml` (env-var filtering). When you change this Security section, update both.
 
 ### Expected variable names (names only, no values)
-`NFL_DATA_ROOT`, `NEO4J_PASSWORD`, `WANDB_API_KEY`, and optionally `LLM_API_KEY`, `LLM_BASE_URL`, `ODDS_API_KEY`, `ODDS_API_KEY2` (backup), `KAGGLE_USERNAME`, `KAGGLE_KEY`, plus SMTP settings (P07). `.env.example` (created in P00) is the authoritative list.
+`NFL_DATA_ROOT`, `NEO4J_PASSWORD`, `WANDB_API_KEY`, and optionally `OPENROUTER_API_KEY` (digest LLM), `LLM_API_KEY`, `LLM_BASE_URL`, `ODDS_API_KEY`, `ODDS_API_KEY2` (backup), `KAGGLE_USERNAME`, `KAGGLE_KEY`, plus SMTP settings (P07). `.env.example` (created in P00) is the authoritative list.
 
 ---
 
@@ -80,8 +80,9 @@ A personal ML system that produces a weekly NFL digest (win probabilities, predi
   | `phase-workflow` | Starting, resuming or closing any phase; picking up from PROGRESS; the end-to-end build routine (session start, probe before building, build/test, Rishi-in-the-loop steps, verify, review, docs, PROGRESS, commit/push, end-of-run report, known quirks) | `.claude/skills/phase-workflow/SKILL.md` |
   | `curated-data` | Reading, joining or aggregating any curated data (games, plays, player/team stats, NGS, PFR, FTN, snaps, injuries, depth charts, lines, weather, ESPN): data dictionary, keys and conventions, quirks, tested query recipes | `.claude/skills/curated-data/SKILL.md` |
   | `model-experiment` | Any feature building for models, training, tuning, walk-forward backtest or evaluation; W&B logging; artifacts and promotion; model cards; 🧑 handoffs with "what to look for" notes | `.claude/skills/model-experiment/SKILL.md` |
+  | `digest-checks` | Changing or debugging the weekly digest: payload, number formatting, LLM providers (placeholder / OpenRouter), prompt files, the automated checks and their false positives, the report card and season scorecard, `nfl digest` / `nfl weekly run` | `.claude/skills/digest-checks/SKILL.md` |
 
-  Planned for later phases (create them at the start of that phase): `digest-checks` (P04), `neo4j-graph` (P05), `weekly-ops` (P07), `adding-a-data-source` (whenever a new source is added).
+  Planned for later phases (create them at the start of that phase): `neo4j-graph` (P05), `weekly-ops` (P07), `adding-a-data-source` (whenever a new source is added).
 - **Pick up work** with the protocol in `documentation/plans/README.md`: read PROGRESS → the phase file → the docs it lists. Update PROGRESS at the end of every session.
 - **Task tags:** 🤖 the agent does it · 🧑 Rishi runs it (prepare the command and "what to look for" notes, then pause) · ✋ checkpoint (stop and ask). Never skip a 🧑 or ✋ step silently.
 - **Data lives on D:** under `NFL_DATA_ROOT` (`D:\nfl-ml-data`). Code stays on F:. All paths go through the `paths` module; no hard-coded paths; no data in git.
