@@ -26,6 +26,7 @@ OPTIONAL_ENV_VARS = (
     "LLM_API_KEY",
     "LLM_BASE_URL",
     "ODDS_API_KEY",
+    "ODDS_API_KEY2",
     "KAGGLE_USERNAME",
     "KAGGLE_KEY",
 )
@@ -50,6 +51,7 @@ class EnvSettings(BaseSettings):
     llm_api_key: SecretStr | None = None
     llm_base_url: str | None = None
     odds_api_key: SecretStr | None = None
+    odds_api_key2: SecretStr | None = None  # backup key, used when the first is exhausted
     kaggle_username: str | None = None
     kaggle_key: SecretStr | None = None
 

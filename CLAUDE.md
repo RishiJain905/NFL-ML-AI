@@ -33,7 +33,7 @@ Never read, open, print, `cat` / `type` / `Get-Content`, `grep` / `Select-String
 - `.gitignore` excludes `.env*` (except `.env.example`). Before every commit, check `git status` to confirm no secret file is staged.
 
 ### Expected variable names (names only, no values)
-`NFL_DATA_ROOT`, `NEO4J_PASSWORD`, `WANDB_API_KEY`, and optionally `LLM_API_KEY`, `LLM_BASE_URL`, `ODDS_API_KEY`, `KAGGLE_USERNAME`, `KAGGLE_KEY`, plus SMTP settings (P07). `.env.example` (created in P00) is the authoritative list.
+`NFL_DATA_ROOT`, `NEO4J_PASSWORD`, `WANDB_API_KEY`, and optionally `LLM_API_KEY`, `LLM_BASE_URL`, `ODDS_API_KEY`, `ODDS_API_KEY2` (backup), `KAGGLE_USERNAME`, `KAGGLE_KEY`, plus SMTP settings (P07). `.env.example` (created in P00) is the authoritative list.
 
 ---
 

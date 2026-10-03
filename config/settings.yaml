@@ -20,7 +20,7 @@ sources:
   espn_win_rates: true
   pfr_scrape: true
   open_meteo: true
-  odds_api: false         # needs ODDS_API_KEY
+  odds_api: true          # needs ODDS_API_KEY (ODDS_API_KEY2 = backup)
 
 flags:
   injury_update_enabled: false   # Saturday injury update (P07)

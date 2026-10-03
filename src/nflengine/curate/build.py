@@ -129,6 +129,19 @@ class Curator:
                     pl.col("completed").alias("is_closing"),
                 )
             )
+        odds = self.read("odds_api", "odds")
+        if odds is not None and odds.height:
+            from nflengine.curate.lines import odds_api_lines
+
+            team_names = normalize_team_cols(
+                self.read(NV, "teams").select(
+                    pl.col("team_name"), pl.col("team_abbr").alias("team")
+                ),
+                ["team"],
+            )
+            rows, matched, total = odds_api_lines(odds, g, team_names)
+            self.joins.append(JoinRate("odds_api_lines", "event->game_id", matched, total))
+            frames.append(rows)
         lines = pl.concat(frames, how="diagonal_relaxed").with_columns(
             pl.lit(self.raw.snapshots(NV, "schedules")[-1]).alias("snapshot_date")
         )

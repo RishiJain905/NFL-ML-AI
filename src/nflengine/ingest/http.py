@@ -42,6 +42,7 @@ class PoliteClient:
         self.cache_ttl_s = cache_ttl_s
         self.max_retries = max_retries
         self._last_call: dict[str, float] = {}
+        self.last_headers: dict[str, str] = {}
         self._client = httpx.Client(
             timeout=timeout, follow_redirects=True, headers={"User-Agent": DEFAULT_UA}
         )
@@ -73,7 +74,12 @@ class PoliteClient:
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
         use_cache: bool = True,
+        retry_429: bool = True,
     ) -> Any:
+        """GET JSON. Response headers of the last network call are kept in `last_headers`.
+
+        `retry_429=False` for quota-limited APIs, where a 429 means the quota is used up.
+        """
         cpath = self._cache_path(url, params) if use_cache else None
         if cpath and cpath.exists() and time.time() - cpath.stat().st_mtime < self.cache_ttl_s:
             return json.loads(cpath.read_text(encoding="utf-8"))
@@ -84,7 +90,8 @@ class PoliteClient:
             self._throttle(host)
             try:
                 resp = self._client.get(url, params=params, headers=headers)
-                if resp.status_code == 429 or resp.status_code >= 500:
+                self.last_headers = dict(resp.headers)
+                if (resp.status_code == 429 and retry_429) or resp.status_code >= 500:
                     raise httpx.HTTPStatusError(
                         f"HTTP {resp.status_code}", request=resp.request, response=resp
                     )
@@ -97,8 +104,8 @@ class PoliteClient:
             except httpx.HTTPStatusError as exc:
                 last_exc = exc
                 code = exc.response.status_code
-                if code < 500 and code != 429:
-                    raise  # 4xx other than 429: retrying will not help
+                if code < 500 and (code != 429 or not retry_429):
+                    raise  # 4xx (or a quota 429): retrying will not help
             except (httpx.TransportError, ValueError) as exc:
                 last_exc = exc
             time.sleep(min(2**attempt, 10))

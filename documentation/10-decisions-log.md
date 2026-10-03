@@ -44,6 +44,7 @@ Record of project decisions, why they were made, and when to revisit them. Add n
 | D36 | 2026-10-03 | **Depth charts** from both nflverse formats are unified into one weekly table (2025+ daily snapshots → latest snapshot on or before game day, for games within 10 days) | Graph injury-ripple queries need one consistent depth table | — |
 | D37 | 2026-10-03 | ESPN news is flagged `is_fantasy` and fantasy items are kept out of the digest payload | Most ESPN NFL news is fantasy content; non-goal per [01](01-project-brief.md) | — |
 | D38 | 2026-10-03 | **Temporary** `NEO4JS_PASSWORD` fallback (settings + compose) for a misspelled env-file variable; `nfl doctor` warns while it's in use | Unblocked P00 while Rishi was away from the computer | Rishi renames the line → remove the fallback |
+| D40 | 2026-10-03 | **The Odds API enabled** with a main key and a backup key (`ODDS_API_KEY`, `ODDS_API_KEY2`; rotation on 401/403/429; key errors never echo the URL). Its per-bookmaker lines are added to `lines` (`source = 'odds_api'`, `provider` = bookmaker). Refines D35: for current lines, use nflverse first, then the Odds API median across books, then ESPN | Multiple books give a consensus and spread of opinion; two free keys double the quota | Quota runs short |
 | D39 | 2026-10-03 | **Supersedes D38:** Rishi renamed the variable to `NEO4J_PASSWORD`; the fallback is removed from settings, doctor, tests and compose | The temporary fix is no longer needed | — |
 
 ## Open questions

@@ -126,7 +126,12 @@ Note: **ESPN spreads use the opposite sign** (favorite negative, e.g. `DAL -9.5`
 
 - **ESPN win rates** (pass rush / run stop / pass block): no API. They're only published inside articles. **Not available.**
 - **Open-Meteo:** works with no key. Stadiums are matched **by name first** (`config/stadiums.yaml`), because nflverse keeps the home team's `stadium_id` for neutral-site games (2026 PHI@JAX at Tottenham has `JAX00`). Domes and closed roofs are skipped.
-- **The Odds API:** wired up but off (`sources.odds_api: false`) until a key is added. nflverse plus ESPN already supply current lines.
+- **The Odds API:** **on** since 2026-10-03, with two keys:
+  - `ODDS_API_KEY` is the main key. `ODDS_API_KEY2` is a backup, used automatically on 401/403/429, i.e. when the first key is rejected or out of quota.
+  - One pull (`h2h,spreads,totals`, US region) costs **3 requests** of the 500/month free quota. The run log shows how many requests are left.
+  - It returns about the next 1–2 weeks of games (28 games on 2026-10-03) from **9 bookmakers**.
+  - Spreads are quoted with the favorite **negative**, so curation flips them to `home_spread`. Events are matched to `game_id` by canonical teams plus kickoff within 36 hours (100% matched).
+  - The median across books agreed with nflverse/ESPN to within 0.5 points for Weeks 4–5.
 
 ### Curated layout
 

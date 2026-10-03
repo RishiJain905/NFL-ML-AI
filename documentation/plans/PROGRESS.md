@@ -3,7 +3,7 @@
 > **Agents: update this file at the end of every session**, even mid-phase. See the protocol in [README.md](README.md).
 
 **Current phase:** P01, Data ingestion and curation (⏸ all exit criteria met; waiting on Rishi's ✋ approval to close)
-**Next step:** Rishi approves closing P01 → start P02 (team ratings, Elo, trend) in a new session (kickoff prompt in the `phase-workflow` skill). Optional for Rishi: add `ODDS_API_KEY` (https://the-odds-api.com/), then set `sources.odds_api: true`.
+**Next step:** Rishi approves closing P01 → start P02 (team ratings, Elo, trend) in a new session (kickoff prompt in the `phase-workflow` skill).
 **Last updated:** 2026-10-03, env-var cleanup session
 
 Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ blocked · ✅ done
@@ -43,6 +43,21 @@ Every 🧑 step goes here, whether Rishi ran it or delegated it.
 _None._
 
 ## Session log (newest first)
+
+### 2026-10-03: The Odds API enabled (D40)
+- Rishi added `ODDS_API_KEY` and a backup `ODDS_API_KEY2`. `nfl doctor` shows both set.
+- Ingest:
+  - key rotation (the backup is used on 401/403/429; failures report only the variable name and status, never the URL)
+  - the quota header is logged
+  - `sources.odds_api: true`
+- First live pull: 223 bookmaker-game rows, 28 games, 9 books, **497 requests left** on the main key (3 per pull).
+- Curation: new `curate/lines.py` adds the per-bookmaker rows to `lines` (`source = 'odds_api'`, sign flipped to + = home favored), matched to `game_id` at 100%. The median across books agrees with nflverse/ESPN to within 0.5 points.
+- Updates elsewhere:
+  - the guard hook covers `ODDS_API_KEY2`
+  - `.env.example` and `CLAUDE.md` list the new name
+  - the `curated-data` skill has the new sources and a consensus-line recipe
+  - doc 03 findings
+- 79 tests pass.
 
 ### 2026-10-03: Env-var cleanup + project skills
 - Rishi renamed the env-file variable to `NEO4J_PASSWORD`. `nfl doctor` confirms it's set directly. Removed the temporary fallback from settings, doctor, tests and compose (D39 supersedes D38). Neo4j stays up with no container recreate needed. 74 tests pass.

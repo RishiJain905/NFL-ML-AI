@@ -104,7 +104,7 @@ def check_join_rates(joins: list[dict], threshold: float = 0.98) -> list[Quality
         thr = threshold if not j["table"].startswith("espn") else 0.85
         out.append(
             QualityResult(
-                f"gsis join: {j['table']}",
+                f"id join: {j['table']}",
                 WARN,
                 j["rate"] >= thr,
                 f"{j['rate']:.1%} of {j['total']:,} rows matched via {j['key']} (min {thr:.0%})",

@@ -58,25 +58,61 @@ def ingest_odds_api(
     log: Callable[[str], None] = print,
 ) -> list[DatasetResult]:
     env = get_env()
-    if not env.is_set("ODDS_API_KEY"):
-        log("  odds_api: skipped (ODDS_API_KEY not set)")
-        return [DatasetResult(SOURCE, "odds", "skipped", detail="ODDS_API_KEY not set")]
+    keys = [
+        (name, getattr(env, name.lower()))
+        for name in ("ODDS_API_KEY", "ODDS_API_KEY2")
+        if env.is_set(name)
+    ]
+    if not keys:
+        log("  odds_api: skipped (no ODDS_API_KEY set)")
+        return [DatasetResult(SOURCE, "odds", "skipped", detail="no ODDS_API_KEY set")]
     pulled_at = dt.datetime.now(dt.UTC)
-    try:
-        events = client.get_json(
-            URL,
-            {
-                "apiKey": env.odds_api_key.get_secret_value(),
-                "regions": "us",
-                "markets": "h2h,spreads,totals",
-                "oddsFormat": "american",
-            },
-            use_cache=False,
-        )
-    except Exception as exc:
-        log(f"  odds_api: FAILED ({type(exc).__name__}) - continuing")
-        return [DatasetResult(SOURCE, "odds", "failed", detail=type(exc).__name__)]
+    events, used, failures = fetch_with_key_rotation(client, keys)
+    if events is None:
+        detail = "; ".join(failures)
+        log(f"  odds_api: FAILED ({detail}) - continuing")
+        return [DatasetResult(SOURCE, "odds", "failed", detail=detail)]
+    quota = client.last_headers.get("x-requests-remaining", "?")
     df = pl.DataFrame(parse_odds(events, pulled_at), infer_schema_length=None)
     store.write_parquet(SOURCE, "odds", f"season={season}", df)
-    log(f"  odds_api: {df.height} bookmaker-game rows")
-    return [DatasetResult(SOURCE, "odds", "ok", df.height, [f"season={season}"])]
+    detail = f"via {used}; {quota} requests left on it" + (
+        f" (fell back: {'; '.join(failures)})" if failures else ""
+    )
+    log(f"  odds_api: {df.height} bookmaker-game rows | {detail}")
+    return [DatasetResult(SOURCE, "odds", "ok", df.height, [f"season={season}"], detail)]
+
+
+def fetch_with_key_rotation(
+    client: PoliteClient, keys: list[tuple[str, Any]]
+) -> tuple[Any | None, str | None, list[str]]:
+    """Try each key in order; fall through on auth/quota errors (401/403/429).
+
+    Failures are reported as '<VAR NAME>: <status or exception type>' only, never
+    with the URL (it contains the key).
+    """
+    import httpx
+
+    failures: list[str] = []
+    for name, secret in keys:
+        try:
+            events = client.get_json(
+                URL,
+                {
+                    "apiKey": secret.get_secret_value(),
+                    "regions": "us",
+                    "markets": "h2h,spreads,totals",
+                    "oddsFormat": "american",
+                },
+                use_cache=False,
+                retry_429=False,
+            )
+            return events, name, failures
+        except httpx.HTTPStatusError as exc:
+            code = exc.response.status_code
+            failures.append(f"{name}: HTTP {code}")
+            if code not in (401, 403, 429):
+                break  # not a key problem; another key won't help
+        except Exception as exc:
+            failures.append(f"{name}: {type(exc).__name__}")
+            break
+    return None, None, failures

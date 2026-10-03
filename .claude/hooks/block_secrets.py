@@ -38,7 +38,7 @@ ENV_DUMP = re.compile(
 # Direct references to secret variables in shell syntax ($X, ${X}, $env:X).
 SECRET_VARS = re.compile(
     r"(?:\$env:|\$\{|\$)(?:WANDB_API_KEY|NEO4J_PASSWORD|NEO4J_AUTH|LLM_API_KEY"
-    r"|ODDS_API_KEY|KAGGLE_KEY|SMTP_PASSWORD)\b",
+    r"|ODDS_API_KEY\d*|KAGGLE_KEY|SMTP_PASSWORD)\b",
     re.IGNORECASE,
 )
 

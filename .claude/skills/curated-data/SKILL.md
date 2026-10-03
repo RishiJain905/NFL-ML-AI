@@ -33,7 +33,7 @@ It's rebuilt by `uv run nfl curate` from the raw snapshots (`uv run nfl ingest`)
 | Table | Grain / key | Seasons | Notes |
 |---|---|---|---|
 | `games` | `game_id` | 1999–2026 | Schedules + results + closing lines + weather + starting QBs + coaches + referee + stadium. Future games already have lines for about 9 weeks ahead |
-| `lines` | `game_id` × `source` | — | `source` ∈ `nflverse_schedules` (historical, mostly closing: `is_closing`), `espn` (current, provider DraftKings). Columns `home_spread`, `total`, moneylines, `snapshot_date` |
+| `lines` | `game_id` × `source` (× `provider`) | — | `source` ∈ `nflverse_schedules` (historical, mostly closing: `is_closing`; upcoming about 9 weeks ahead), `espn` (current, provider DraftKings), `odds_api` (current, one row per bookmaker in `provider`, about the next 1–2 weeks, 9 books). Columns `home_spread` (+ = home favored for **all** sources), `total`, moneylines, `snapshot_date` |
 | `plays` | `game_id`, `play_id` | 2010–2026 | Full nflverse play-by-play (372 cols): `epa`, `success`, `wp`, `vegas_wp`, `pass`, `rush`, `qb_dropback`, `xpass`, `pass_oe`, `cpoe`, `passer/receiver/rusher_player_id`, `posteam`/`defteam`, `down`, `ydstogo`, `yardline_100` ... |
 | `player_games` | `player_id`, `game_id` | 2010–2026 | Weekly box score, offense **and** defense (`def_tackles_*`, `def_sacks`, `def_qb_hits`, `def_interceptions`, `def_pass_defended`), plus `target_share`, `air_yards_share`, `wopr`, EPA. `position_group` ∈ QB RB WR TE OL DL LB DB SPEC |
 | `team_games` | `team`, `game_id` | 2010–2026 | Team weekly box score |
@@ -87,11 +87,14 @@ WHERE season_type = 'REG' AND (pass = 1 OR rush = 1) AND epa IS NOT NULL
 GROUP BY ALL
 ```
 
-**Current line per game** (prefer nflverse, fall back to ESPN):
+**Current line per game** (nflverse, then the Odds API median across books, then ESPN; D40), plus how much the books disagree:
 ```sql
 SELECT game_id,
        coalesce(max(home_spread) FILTER (WHERE source = 'nflverse_schedules'),
-                max(home_spread) FILTER (WHERE source = 'espn')) AS home_spread
+                median(home_spread) FILTER (WHERE source = 'odds_api'),
+                max(home_spread) FILTER (WHERE source = 'espn')) AS home_spread,
+       max(home_spread) FILTER (WHERE source = 'odds_api')
+         - min(home_spread) FILTER (WHERE source = 'odds_api') AS book_spread_range
 FROM lines GROUP BY game_id
 ```
 
