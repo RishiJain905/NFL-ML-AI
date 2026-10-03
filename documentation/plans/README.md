@@ -56,6 +56,8 @@ Rules:
 
 ## How to pick up work (agent protocol)
 
+The full step-by-step routine (probing before building, verification, review, quirks, end-of-run report, kickoff prompt) is the **`phase-workflow` skill**: [`.claude/skills/phase-workflow/SKILL.md`](../../.claude/skills/phase-workflow/SKILL.md). The short version:
+
 1. **Read [PROGRESS.md](PROGRESS.md):** current phase, status, and the last session's "Next step".
 2. **Read the phase file in full**, then the docs in its **Read first** list.
 3. **Check prerequisites:** run the earlier phases' quick verification commands (each phase's *Exit criteria* lists them). If something is broken, fix it first and log it.
@@ -63,7 +65,7 @@ Rules:
 5. **At 🧑 / ✋ steps:** follow the working model above.
 6. **At the end of every session**, even mid-phase:
    - update PROGRESS.md: status, a session log entry (what got done, where you stopped, exact next step, any deviations)
-   - commit with a `[Pxx]` prefix
+   - commit with a `[Pxx]` prefix, then push to `origin dev_rishi`
 7. **Phase done** = every task ticked, every exit criterion verified (with the commands run and their results noted in the session log), the ✋ end-of-phase checkpoint approved by Rishi. Only then start the next phase.
 
 ## Ground rules for all phases
@@ -73,7 +75,7 @@ Rules:
 - **Leakage rules** ([04](../04-track1-models.md)) apply to every feature and every evaluation. Leakage tests must pass.
 - **Every training and evaluation run logs to W&B** ([08](../08-experiment-tracking.md)), with live curves.
 - **Tests:** `uv run pytest` passes before a phase is marked done. `uv run ruff check` is clean.
-- **Git:** work on the current working branch (`dev_rishi` unless Rishi says otherwise). Small logical commits, prefixed `[P03] …`. Don't push unless Rishi asks.
+- **Git:** work on the current working branch (`dev_rishi` unless Rishi says otherwise). Small logical commits, prefixed `[P03] …`. Commit and push at the end of each phase or session. Never force-push, and don't merge to `main` without Rishi's OK.
 - **Ask, don't assume,** when a choice belongs to Rishi (see the open questions in [10](../10-decisions-log.md)).
 
 ## Phase file template

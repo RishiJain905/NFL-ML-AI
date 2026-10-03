@@ -71,10 +71,11 @@ A personal ML system that produces a weekly NFL digest (win probabilities, predi
 
 ## How to work here
 
+- **For any phase work** (starting, resuming or closing a phase, or picking up from PROGRESS), **use the `phase-workflow` skill** (`.claude/skills/phase-workflow/SKILL.md`). It's the step-by-step routine: session start, probing before building, build/test, Rishi-in-the-loop steps, verification, review, docs, PROGRESS updates, commit/push, the end-of-run report, and known quirks. Agents may improve it (rules in its last section).
 - **Pick up work** with the protocol in `documentation/plans/README.md`: read PROGRESS → the phase file → the docs it lists. Update PROGRESS at the end of every session.
 - **Task tags:** 🤖 the agent does it · 🧑 Rishi runs it (prepare the command and "what to look for" notes, then pause) · ✋ checkpoint (stop and ask). Never skip a 🧑 or ✋ step silently.
 - **Data lives on D:** under `NFL_DATA_ROOT` (`D:\nfl-ml-data`). Code stays on F:. All paths go through the `paths` module; no hard-coded paths; no data in git.
 - **Leakage rules** (`documentation/04-track1-models.md`) apply to every feature and evaluation.
 - **Every training and evaluation run logs to W&B** (project `nfl-analytics-engine`) with live curves and the `launched-by` tag.
 - **Quality gates:** `uv run pytest` and `uv run ruff check` must pass before a phase is marked done.
-- **Git:** work on `dev_rishi` unless told otherwise. Small commits prefixed `[Pxx]`. Push only when Rishi asks.
+- **Git:** work on `dev_rishi` unless told otherwise. Small commits prefixed `[Pxx]`. **Commit and push to `origin dev_rishi` at the end of each phase or session.** Never force-push, and don't merge to `main` without Rishi's OK.
