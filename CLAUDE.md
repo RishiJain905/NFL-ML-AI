@@ -45,6 +45,17 @@ A personal ML system that produces a weekly NFL digest (win probabilities, predi
 - **Build plan:** `documentation/plans/README.md`. **Where work stands:** `documentation/plans/PROGRESS.md`.
 - **Decisions:** `documentation/10-decisions-log.md`. If implementation needs to differ from a doc, update the doc and log the decision in the same commit.
 
+## Working style: keep going, stop only when needed
+
+- **When a step doesn't need Rishi's input, keep going.** Put status notes in the same message as your next action, not in a separate message that ends your turn.
+- **Stop and ask only** when you can't continue without Rishi, or **before anything destructive**: deleting data, force-pushing, or changing anything outside this repository.
+- **Rishi can waive steps that normally need him.** 🧑 "Rishi runs" and ✋ checkpoint steps need his input by default. When Rishi says a step (or a kind of step) no longer needs his input:
+  - honor that for the scope he gave (one step, a phase, or "from now on")
+  - record the waiver in `documentation/plans/PROGRESS.md` (in the Rishi-run steps log for 🧑 steps, and in the session log for standing waivers)
+  - run delegated 🧑 steps with `--launched-by agent`
+  - a standing waiver holds until Rishi revokes it; if its scope is unclear, apply it narrowly and mention that in the status note
+- **A waiver never covers the Security section or the destructive actions above.** Those always need an explicit, case-by-case OK.
+
 ## How to work here
 
 - **Pick up work** with the protocol in `documentation/plans/README.md`: read PROGRESS → the phase file → the docs it lists. Update PROGRESS at the end of every session.
