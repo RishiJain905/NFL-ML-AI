@@ -33,7 +33,7 @@ One guide per major technology or component, written for a reader who's new to i
 | Guide | What it explains |
 |---|---|
 | [Knowledge graph (Neo4j)](guides/knowledge-graph.md) | Neo4j in two minutes, what our graph holds, a Neo4j Browser walkthrough, each Cypher query in the library, how graph findings reach the digest (P05) |
-| [Weights & Biases](guides/weights-and-biases.md) | Every W&B run, chart, table and artifact, step by step through the weekly run and the research runs, and what to check each week |
+| [Weights & Biases](guides/weights-and-biases.md) | Every W&B run, chart, table and artifact, step by step through the weekly run and the research runs, what to check each week, and the **2026 Season Dashboard** chart by chart (what each shows, whether higher or lower is better, normal ranges) |
 | [The LLM digest writer](guides/llm-digest-writer.md) | What the LLM does and doesn't do, the prompt, the checks it must pass, cost and latency, and how to switch the model or provider safely |
 | [Player projections](guides/player-projections.md) | The player model (P06): LightGBM, quantile ranges, count distributions, SHAP drivers in a few minutes; how projections become the watch list, tough spots, the look-back and the accuracy scoreboard; files, W&B runs, commands, how to change it safely |
 | [Weekly operations](guides/weekly-operations.md) | How the weekly run is operated (P07, manual-first): the calendar (which week, the deadline, special weeks), `nfl weekly run --auto` and its exit codes, the lock, Neo4j start-up, the run records and W&B pipeline run, alerts, drift checks and their 2019–2025 replay, the season dashboard, the Saturday injury update, time-travel simulations |

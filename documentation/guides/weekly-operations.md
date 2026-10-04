@@ -150,6 +150,8 @@ Two lessons. A flat ECE limit of 0.05 is below the noise floor: a perfectly cali
 
 ## 8. The season dashboard (`src/nflengine/ops/dashboard.py`)
 
+> **Every chart, what it shows and whether higher or lower is better:** [W&B guide → The season dashboard](weights-and-biases.md#the-season-dashboard-p07-every-chart-explained). This section covers how the dashboard is built.
+
 Doc 08 asked for a W&B Report, "2026 Season Dashboard", with the season's Brier vs Elo vs market, the cumulative calibration curve, the watch-list hit rate, the player model's improvement per position group, and pipeline health. W&B reports draw their charts from runs, so the dashboard has two parts:
 
 1. **One run per published weekly run** (`log_season_dashboard`): group `season-dashboard`, job type `dashboard`, name `season-<season>-w<NN>`. It logs the **whole season to date** as line series, then takes the tag `dashboard-current` and removes it from the season's older dashboard runs.

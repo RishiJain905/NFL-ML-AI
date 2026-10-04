@@ -74,6 +74,23 @@ _None._
 
 ## Session log (newest first)
 
+### 2026-10-04: Season dashboard documented chart by chart (P07 docs follow-up)
+- Rishi looked at the 2026 Season Dashboard in W&B, liked it, and asked that the W&B guide document every chart: what it shows and whether higher or lower is better.
+- `guides/weights-and-biases.md` §7 → **"The season dashboard (P07): every chart explained"**:
+  - how it works and updates (the `dashboard-current` tag, `dashboard.json`, the two commands, where each number comes from);
+  - the two x-axes (graded week vs run week); weekly vs season-to-date lines; why the page is mostly empty until the week-5 run;
+  - a table per section: the 8 headline tiles, Game model (5 charts), Calibration (3 + the table and custom chart in the run), Watch list (1), Player model (5), Pipeline health (5). Each chart has its lines, what it shows and how it's computed, **better is** (higher / lower / closer to the diagonal / judged against the chance line / neither), normal values and when to look closer.
+- Normal ranges were computed from the canonical walk-forward backtests on the shown (market-informed) probabilities, 2019–2025:
+  - season Brier: model 0.201–0.217, Elo 0.211–0.234, market 0.202–0.217;
+  - weekly Brier: 0.11–0.33;
+  - pick accuracy: weekly 36–93%, season 63–71%;
+  - points error: 6.9–7.6;
+  - rolling gap vs Elo: −0.031 to +0.009, above 0 in 12% of windows;
+  - season ECE: 0.046–0.083 vs chance 0.056–0.066; the 2025 calibration bins;
+  - 2025 player improvement per group.
+  - The 2026 weeks 1–3 values come from the live dashboard data.
+- Linked from the weekly-operations guide §8, the runbook and the documentation index.
+
 ### 2026-10-04: P07 approved by Rishi; junk W&B runs deleted
 - Rishi reviewed the P07 close-out: "it looks good from my side", approved marking P07 complete (already ✅ in the table and phase file; the row now records his approval), and asked what `ops/dashboard.py` is for (answered: it builds the W&B season dashboard: one season-to-date `season-dashboard` run per published weekly run, tagged `dashboard-current`, plus the "2026 Season Dashboard" report that reads only that tagged run, so it updates itself).
 - **Deleted with Rishi's OK:** the 4 junk W&B runs from the test leak (`g33v96bn`, `hm1xikwg`, `svzf33os`, `t1b1hhuz`; each checked first: `pipeline-2026-w05`, group `weekly-pipeline`, job type `pipeline`, state failed, created 19:57–20:04 UTC). No `pipeline-2026-w05` run remains.

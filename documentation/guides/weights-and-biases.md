@@ -475,19 +475,104 @@ Each digest grades the previous week and keeps one row per graded week in a parq
 
 The newest digest run still draws the `season/*` curves. Since P07 the **season dashboard** (below) gathers them with calibration, the player model and pipeline health. The digest's printed report card and W&B always agree because both come from the same row.
 
-### The season dashboard (P07)
+### The season dashboard (P07): every chart explained
 
-**[2026 Season Dashboard](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/reports/2026-Season-Dashboard--VmlldzoxODA1NTI5MQ==)** is a W&B Report: a **Season at a glance** row of eight numbers (season Brier model / Elo / market, pick accuracy, season ECE, player MAE vs baseline, on-time rate, checks pass rate), then five sections: Game model, Calibration, Watch list, Player model, Pipeline health. Each has a short how-to-read text. Read back on 2026-10-04 (`dashboard.check_report`): with no graded live week yet, only the Player model panels (13 of 18 series, walk-forward weeks 1–3) and one headline have points; the rest fill in from the week-5 run. Current run: `ugjybk9h` (re-logged after the leaked test runs were cleaned up; the first real one was `sqgb0sym`). It **updates by itself**: after each published weekly run, `ops/dashboard.py::log_season_dashboard` logs one run (group `season-dashboard`, job type `dashboard`, name `season-<season>-w<NN>`) holding the whole season so far, tags it `dashboard-current` and removes that tag from the season's older dashboard runs. Every panel in the report reads only the run with that tag (and `season:2026`). Rebuild or re-publish the report with `uv run nfl dashboard build --season 2026`; re-log the run with `uv run nfl dashboard update --season 2026 --week N`. The report's URL is kept in `runs/2026/dashboard.json`.
+**[2026 Season Dashboard](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/reports/2026-Season-Dashboard--VmlldzoxODA1NTI5MQ==)** is a W&B Report: one page that shows how well the whole system has done this season. It has a **Season at a glance** row of eight numbers, then five sections: Game model, Calibration, Watch list, Player model, Pipeline health. Each section starts with a short "how to read this" text. This part of the guide goes through every chart: what it shows, how it's computed, **whether higher or lower is better**, what's normal (from the 2019–2025 walk-forward backtests), and when to look closer.
 
-| Series | x-axis | What |
-|---|---|---|
-| `game/brier_*`, `game/cum_brier_*`, `game/rolling_gap_vs_elo`, `game/pick_accuracy`, `game/cum_pick_accuracy`, `game/points_mae` | `dash/week` (graded week) | The season scorecard, plus the drift check's input (rolling 4-week Brier gap vs Elo; above 0 = behind) |
-| `cal/ece`, `cal/ece_chance`, `cal/games`; `calcurve/observed`, `calcurve/perfect` | graded week; `calcurve/predicted` | Season ECE next to what a perfectly calibrated model shows on the same games; the calibration curve with its diagonal |
-| `watch/hit_rate`, `watch/cum_hit_rate` | graded week | Watch-list hit rate (base rate about 42%) |
-| `player/improvement_<group>`, `player/cum_improvement_<group>`, `player/rolling_improvement_<group>`, `player/improvement_all`, `player/live` | graded week | MAE improvement over the baseline per position group (%); `player/live` 0 for walk-forward weeks (2026 weeks 1–3) |
-| `pipe/on_time`, `pipe/cum_on_time_rate`, `pipe/hours_before_deadline`, `pipe/run_minutes`, `pipe/checks_passed`, `pipe/cum_checks_pass_rate`, `pipe/regenerated`, `pipe/degraded_steps`, `pipe/drift_alerts` | `pipe/week` (run week) | Pipeline health from `pipeline_history.parquet` |
+#### How it works and updates
 
-**In week 4 of 2026 it is mostly empty**: no live week has been graded yet, so only the player series (walk-forward weeks 1–3) have points; it fills in from the week-5 run. Smoke runs live in the group `season-dashboard-smoke` (tag `smoke`), which the report never shows.
+- **One run per weekly run.** After each published weekly run, `ops/dashboard.py::log_season_dashboard` logs one W&B run: group `season-dashboard`, job type `dashboard`, name `season-<season>-w<NN>`. It holds the **whole season so far**, rebuilt each time from the files on D:. It then takes the tag `dashboard-current` from the season's older dashboard run.
+- **The report reads only the run with that tag** (and `season:2026`), so it redraws itself after each weekly run; nobody edits it. A manual re-run of an older week doesn't move it back. Smoke runs live in the group `season-dashboard-smoke` and never appear.
+- **Commands:**
+  - `uv run nfl dashboard update --season 2026 --week N` re-logs the run (the weekly run does this by itself).
+  - `uv run nfl dashboard build --season 2026` re-publishes the report in place. Only needed to change its layout or text, which live in `ops/dashboard.py` → `report_sections` and `HEADLINES`.
+  - The report's URL and the current run id are kept in `runs/2026/dashboard.json`.
+- **Where the numbers come from:**
+  - Game and watch-list charts: the season scorecard (`runs/2026/season_scorecard.parquet`), the same numbers as the digest's report card, so the two always agree.
+  - Calibration and the rolling gap: each graded week's saved predictions (`predictions_games.parquet`) plus the final scores.
+  - Player charts: the accuracy scoreboard (`runs/2026/accuracy_scoreboard.parquet`).
+  - Pipeline charts: the run history (`runs/2026/pipeline_history.parquet`).
+
+#### Reading any chart: the x-axis and the two kinds of lines
+
+- **Graded week** (`dash/week`, most charts): the week whose games are being scored. The run of week N grades week N−1, so Tuesday's week-5 run adds the point at x = 4.
+- **Run week** (`pipe/week`, Pipeline health only): the week the run was for. The week-5 run adds the point at x = 5.
+- Most charts show two kinds of line:
+  - a **weekly** value, one week on its own: jumpy, because a week has only 13–16 games or 10–20 picks;
+  - a **season-to-date** (cumulative) value: smooth, and the one to judge.
+
+  Only a run of bad weeks, or a cumulative line drifting the wrong way, matters.
+- **Better is** in the tables below means the direction you want the line to go. A "Normal" column gives what the canonical walk-forward backtests showed on the probabilities the digest actually shows (market-informed where lines exist).
+- **Early in the season the page is mostly empty.** Week 4 of 2026 is the first live week. So until Tuesday's week-5 run, only the Player model charts have points (2026 weeks 1–3 are walk-forward rows) and one headline tile (player MAE vs baseline: +6.1%). Everything else fills in from the week-5 run.
+
+#### Season at a glance (the eight number tiles)
+
+Each tile is the latest season-to-date value from the current dashboard run (its W&B summary).
+
+| Tile | What it is | Better is | Normal (season end, 2019–2025) |
+|---|---|---|---|
+| Season Brier: model | The digest's win probabilities scored over every graded game this season (Brier: the average squared miss of a probability; 0 = perfect, 0.25 = a coin flip) | **Lower** | 0.201–0.217 |
+| Season Brier: Elo | The same games scored with the Elo baseline's probabilities | Lower, and the model's tile should be **below** it | 0.211–0.234 (the model beat Elo in all 7 seasons) |
+| Season Brier: market | The same games scored with the betting market's implied probabilities (where a line existed) | Lower; the model's tile should be **close to** it (the market is the toughest benchmark) | 0.202–0.217 (within ±0.002 of the model each season) |
+| Season pick accuracy | Share of games where the side given more than 50% won (ties and exact 50% calls left out) | **Higher** | 63–71% (all seasons 66.6%). A season above ~73% is luck; see the game model card's "Is 64% accuracy good?" |
+| Season ECE | Season calibration error of the win probabilities (see Calibration below) | **Lower**, judged against the chance level | 0.046–0.083, against a perfect model's 0.056–0.066 on the same games |
+| Player MAE vs baseline (%) | How much smaller the player model's average miss is than the rolling baseline's, all targets together | **Higher**; 0 = no better than the baseline, below 0 = worse | 2025: +5.3%. 2026 weeks 1–3 (walk-forward): +6.1% |
+| On-time rate | Share of the season's weekly runs that published before the week's first kickoff | **Higher**; it should be 1.0 (100%) | New in P07: no history yet |
+| Checks pass rate | Share of the season's digests whose final checks passed (no ⚠️ banner) | **Higher**; 1.0 is the norm | New in P07 |
+
+#### Game model (5 charts)
+
+| Chart (title in the report) | Lines | What it shows | Better is | Normal (2019–2025) | Look closer when |
+|---|---|---|---|---|---|
+| **Brier by week: model, Elo, market** | `game/brier_model`, `game/brier_elo`, `game/brier_market` | Each graded week's Brier score for the three predictors, on that week's games | **Lower** | Weekly model 0.11–0.33 (median 0.21); most seasons have a week near 0.30 | The model line sits above the Elo line for several weeks running |
+| **Season-to-date Brier** | `game/cum_brier_*` | The same, accumulated over the season (weighted by games; each predictor divided by the games it covered) | **Lower**; model below Elo, near the market | Season end model 0.201–0.217, Elo 0.211–0.234, market 0.202–0.217 | The model's line crosses above Elo's and stays there |
+| **Rolling 4-week Brier gap, model minus Elo** | `game/rolling_gap_vs_elo` | Model Brier minus Elo Brier over the last 4 graded weeks (game-weighted); the drift check's input | **Lower (below 0)**: below 0 = the model beats Elo; above 0 = behind | −0.031 to +0.009, median −0.012; above 0 in 12% of windows | Above 0 for 3 windows in a row: that raises the `game_vs_elo` drift alert |
+| **Pick accuracy: each week and season to date** | `game/pick_accuracy`, `game/cum_pick_accuracy` | Share of winners called, weekly and season to date | **Higher** | Weekly 36–93% (median 67%); season 63–71% | The season line falls below ~60% |
+| **Points error** | `game/points_mae` | The average miss, in points, of each team's predicted score (both teams of every graded game) | **Lower** | Weekly 5.1–10.1 points (median 7.2); season 6.9–7.6 | Several weeks above ~9 |
+
+Brier and pick accuracy disagree on purpose: accuracy only asks "right side?", while Brier also punishes overconfidence (a 90% call that loses costs far more than a 55% call that loses). Judge the model by Brier first.
+
+#### Calibration (3 charts, plus a table in the run)
+
+"Calibrated" means a 70% call wins about 70% of the time. Games are put in ten equal probability bins (0–10%, 10–20%, …) by the predicted **home** win probability.
+
+| Chart | Lines | What it shows | Better is | Normal | Look closer when |
+|---|---|---|---|---|---|
+| **Calibration curve, season to date** | `calcurve/observed` against `calcurve/perfect`; x = predicted home win probability | Each point is one bin: across = the bin's average predicted probability, up = how often the home team actually won. `calcurve/perfect` is the diagonal | **Closer to the diagonal**: neither higher nor lower. Above the diagonal = home teams won more often than predicted (too cautious in that band); below = they won less often (too confident) | 2025, all 272 games: the 60–70% bin was predicted 0.65 and won 0.59 (6 points too confident); 80–90% predicted 0.86, won 0.92. Bins with fewer than ~20 games wobble a lot | Several well-filled bins sit on the same side of the diagonal by 10+ points |
+| **Season ECE against the chance level** | `cal/ece`, `cal/ece_chance` | ECE = the average gap between predicted and observed across bins, weighted by games (0 = perfect). `cal/ece_chance` = the average ECE a **perfectly calibrated** model would show on the same games (simulated), the noise floor | **Lower**, but judge it **relative to the chance line**: at or below it means as calibrated as the sample can show | Season end 0.046–0.083 vs chance 0.056–0.066. Early season both are higher (few games) | `cal/ece` stays clearly above `cal/ece_chance`. The drift alert fires above the higher of 0.05 and the chance level's 90th percentile (about 0.16 after five weeks, 0.08 by week 18; D75) |
+| **Graded games so far** | `cal/games` | How many games the calibration numbers rest on | Neither: a count. It should rise by 13–16 a week | 272 by the end of a regular season | It stays flat for a week: no saved predictions for that week, or they were made after kickoff (not graded) |
+
+Two more items are in the dashboard **run** itself (open the run from the report, web only): the table `calibration_curve` (each bin's range, games, predicted, observed) and the chart `calibration_curve_chart` (the same curve as a custom chart).
+
+#### Watch list (1 chart)
+
+| Chart | Lines | What it shows | Better is | Normal | Look closer when |
+|---|---|---|---|---|---|
+| **Watch-list hit rate: each week and season to date** | `watch/hit_rate`, `watch/cum_hit_rate` | Share of the players to watch (10 offense + 10 defense a week, D70) whose actual stat **beat their own rolling baseline**; only players who played count | **Higher** | The base rate is about **42%**: an average eligible player beats his baseline only 42% of the time, because these stats are skewed. The model's list hit **65.3%** over 2019–2025 (every season 60.8–69.4%). One week of ~20 picks swings by about ±10 points by chance | The season line drifts down toward 42%: the picks would be no better than picking at random |
+
+#### Player model (5 charts)
+
+Every number here is a **percentage improvement of the player model's average miss (MAE) over the rolling baseline**. For each target (passing yards, receptions, tackles …) it's (baseline MAE − model MAE) ÷ baseline MAE, weighted by how many players were scored; a position group averages its targets. Counts (receptions, carries, tackles, pressures) are compared with the baseline's median (D65). **+5 means the model misses by 5% less than the baseline; 0 means no better; below 0 means worse.** Lines per group: `qb`, `rb`, `wrte`, `edge` (EDGE/DL), `lbs` (LB/S).
+
+| Chart | Lines | What it shows | Better is | Normal (2025 walk-forward) | Look closer when |
+|---|---|---|---|---|---|
+| **MAE improvement over the baseline, by week and position group (%)** | `player/improvement_<group>` | Each graded week on its own | **Higher** | QB −10.6 to +13.9 (few QBs a week: the noisiest; below 0 in 11% of weeks), RB +0.3 to +12.1, WR/TE +2.4 to +10.2, EDGE/DL −5.3 to +9.7, LB/S 0.0 to +11.7 | A group below 0 several weeks running |
+| **MAE improvement, season to date (%)** | `player/cum_improvement_<group>` | All of the season's graded weeks together | **Higher** | 2025 season: QB +6.0, RB +6.3, WR/TE +5.6, EDGE/DL +3.9, LB/S +4.7. 2026 weeks 1–3: QB +6.9, RB +4.7, WR/TE +8.2, EDGE/DL +4.2, LB/S +4.3 | A group's season line falls toward 0 |
+| **MAE improvement, rolling 4 weeks (%): the drift check's input** | `player/rolling_improvement_<group>` | The last 4 graded weeks per group | **Higher**; **below 0 for 3 windows in a row raises the `player_vs_baseline` drift alert** | Never below 0 in 2019–2025 (2025's lowest: EDGE/DL +0.3) | Any group dipping below 0 |
+| **All groups together (%)** | `player/improvement_all`, `player/cum_improvement_all` | Every target and group pooled, weekly and season to date | **Higher** | 2025: +5.3% for the season. 2026 weeks 1–3: +4.7, +7.6, +6.1 weekly; +6.1 season to date | The season line falls toward 0 |
+| **Live (1) or walk-forward backtest (0) rows** | `player/live` | A label, not a score: 1 for weeks scored from live projections, 0 for walk-forward rows (2026 weeks 1–3, before the live player model started in week 4) | Neither | 0, 0, 0 for weeks 1–3; 1 from week 4 on | Only to tell live weeks from backtest weeks |
+
+#### Pipeline health (5 charts; x = run week)
+
+One point per weekly run (the last real run of each week, preferring the run that published), from `pipeline_history.parquet`.
+
+| Chart | Lines | What it shows | Better is | Normal | Look closer when |
+|---|---|---|---|---|---|
+| **Delivered before the first kickoff (1 = on time) and the running rate** | `pipe/on_time`, `pipe/cum_on_time_rate` | 1 when the digest was published before the week's first kickoff, 0 when after; and the season's on-time share | **Higher**; always 1 | 1 | Any 0: the run was late; games that had started kept earlier predictions or got none |
+| **Hours before the deadline** | `pipe/hours_before_deadline` | Hours between publishing and the week's first kickoff | **Higher** (more margin); must stay above 0 | About 58 h for a Tuesday 10:00 ET run before a Thursday 20:15 ET kickoff; Thanksgiving week about 50 h | It shrinks toward 0 (a late or retried run), or goes negative (late) |
+| **Run time (minutes)** | `pipe/run_minutes` | Wall time of the whole weekly run | **Lower** is nicer, but it's not a quality measure: watch for jumps | About 5 minutes of pipeline plus 2.5–40 minutes of LLM writing | A big jump: open that week's `pipeline-S-wNN` run → `step_seconds` to see which step was slow |
+| **Digest checks passed (1 = yes) and the running rate** | `pipe/checks_passed`, `pipe/cum_checks_pass_rate` | 1 when the published digest passed every check (no ⚠️ banner), and the season's pass share | **Higher**; always 1 | 1 (every live digest so far passed) | Any 0. More than 20% failed over 4 weeks raises the `checks` drift alert |
+| **Second writer pass, degraded steps, drift alerts** | `pipe/regenerated`, `pipe/degraded_steps`, `pipe/drift_alerts` | 1 when the writer needed a second draft; how many fail-soft steps fell back (graph without Neo4j, player refit); how many drift alerts the run raised | **Lower**; 0 is ideal | A second draft is common (week 4 of 2026 needed one) and harmless if the checks then passed. Degraded steps and drift alerts should be 0 | Degraded steps or drift alerts above 0: read that run's alerts (runbook → "What each alert means") |
 
 ### Drift signals (doc 08): as built in P07
 
