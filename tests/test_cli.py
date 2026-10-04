@@ -20,15 +20,14 @@ def test_help_lists_all_commands() -> None:
         "train",
         "digest",
         "weekly",
+        "graph",
         *PLACEHOLDERS,
     ]:
         assert name in result.output
 
 
-def test_placeholders_exit_nonzero_with_phase() -> None:
-    result = runner.invoke(app, ["graph"])
-    assert result.exit_code == 1
-    assert "P05" in result.output
+def test_no_placeholders_left_after_p05() -> None:
+    assert PLACEHOLDERS == {}
 
 
 def test_game_model_subcommands_listed() -> None:
@@ -36,6 +35,7 @@ def test_game_model_subcommands_listed() -> None:
         ("features", ["game"]),
         ("backtest", ["game", "game-weights"]),
         ("train", ["game"]),
+        ("graph", ["build", "query"]),
     ):
         result = runner.invoke(app, [group, "--help"])
         assert result.exit_code == 0

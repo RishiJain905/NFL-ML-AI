@@ -253,6 +253,24 @@ def test_started_games_are_names_only_and_placeholder_avoids_banned_words() -> N
     assert "Kicked off before this run (not predicted here): Steelers at Browns" in md
 
 
+def test_season_series_cumulative_brier_divides_by_its_own_games() -> None:
+    """A week without a market Brier doesn't dilute the market's cumulative curve (found
+    while writing the W&B guide)."""
+    from nflengine.digest.run import SCORECARD_SCHEMA, season_series
+
+    rows = [
+        {"season": 2026, "week": 5, "games": 10, "brier_model": 0.2, "brier_market": 0.1},
+        {"season": 2026, "week": 6, "games": 10, "brier_model": 0.3, "brier_market": None},
+    ]
+    sc = pl.DataFrame(
+        [{k: r.get(k) for k in SCORECARD_SCHEMA} for r in rows], schema=SCORECARD_SCHEMA
+    )
+    last = season_series(sc)[-1]
+    assert last["season/cum_brier_model"] == pytest.approx(0.25)
+    assert "season/cum_brier_market" not in last  # no market value that week
+    assert season_series(sc)[0]["season/cum_brier_market"] == pytest.approx(0.1)
+
+
 def test_season_series_weekly_and_cumulative() -> None:
     from nflengine.digest.run import SCORECARD_SCHEMA, season_series
 
@@ -291,8 +309,18 @@ def test_fixed_report_card_and_length_feedback() -> None:
     s = synthesize(payload, build_fact_index(payload), llm, load_prompt(), budgets, fixed=fixed)
     assert s.sections["report_card"].startswith("Report card: no predictions")
     assert "report_card" not in [x["id"] for x in llm.specs[0]["sections"]]
+    # the code-written card isn't measured against the LLM's word budget (no length_short)
+    assert not any(i.section == "report_card" for i in s.final.result("length_short").issues)
     fb = length_feedback({"team_trends": "word " * 149}, {"team_trends": 120})
     assert fb == ["[length] team_trends: 149 words now; aim for 120, never more than 150"]
+    # the whole digest's cap is restated too (P05: 740 words on a 735 cap, sections all fine)
+    both = length_feedback(
+        {"team_trends": "word " * 149, "report_card": "word " * 20},
+        {"team_trends": 120},
+        {"team_trends": 120, "report_card": 60},
+    )
+    assert both[-1].startswith("[length] whole digest: 169 words now; aim for 180")
+    assert "never more than 189 in all" in both[-1]
 
 
 def test_evidence_person_names_their_team() -> None:

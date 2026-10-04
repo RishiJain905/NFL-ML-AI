@@ -459,6 +459,12 @@ def digest(
     llm: str | None = typer.Option(
         None, "--llm", help="Override llm.provider for this run (e.g. placeholder)."
     ),
+    graph: str = typer.Option(
+        "auto",
+        "--graph",
+        help="Graph sections: auto (backtest builds, live reads / builds if missing) | "
+        "build | read | off.",
+    ),
     launched_by: str | None = LAUNCHED_BY,
 ) -> None:
     """Payload -> LLM -> checks -> render -> reports/<season>/week<NN>-digest.md on D:."""
@@ -477,6 +483,7 @@ def digest(
             provider=llm,
             use_wandb=not no_wandb,
             log=console.print,
+            graph=graph,
         )
         final = res.synthesis.final
         if res.synthesis.fallback_notes:
@@ -507,17 +514,21 @@ def weekly_run(
     season: int = typer.Option(..., help="Season."),
     week: int = typer.Option(..., help="The week to preview (week N; week N-1 must be done)."),
     from_step: str | None = typer.Option(
-        None, help="Resume from this step: ingest | ready | curate | ratings | game | digest."
+        None,
+        help="Resume from this step: ingest | ready | curate | ratings | game | graph | digest.",
     ),
     promote: bool = typer.Option(
         False, "--promote", help="Give this week's game-model artifact the `production` alias."
     ),
+    llm: str | None = typer.Option(
+        None, "--llm", help="Override llm.provider for the digest step (e.g. placeholder)."
+    ),
     launched_by: str | None = LAUNCHED_BY,
 ) -> None:
-    """ingest -> readiness -> curate -> ratings -> game model -> digest (resumable)."""
+    """ingest -> readiness -> curate -> ratings -> game model -> graph -> digest (resumable)."""
     from nflengine.weekly import StepFailed, WeeklyOptions, run_weekly, state_path
 
-    opts = WeeklyOptions(season, week, launched_by=launched_by, promote=promote)
+    opts = WeeklyOptions(season, week, launched_by=launched_by, promote=promote, llm=llm)
     try:
         run_weekly(opts, from_step=from_step, log=console.print)
     except StepFailed as e:
@@ -530,9 +541,83 @@ def weekly_run(
     console.print(f"[green]Weekly run for {season} week {week:02d} finished.[/]")
 
 
-PLACEHOLDERS = {
-    "graph": ("P05", "Rebuild the Neo4j graph and run the query library."),
-}
+# ---- knowledge graph (P05) ---------------------------------------------------------------------
+
+graph_app = typer.Typer(
+    help="The Neo4j knowledge graph: weekly rebuild and the query library (P05).",
+    no_args_is_help=True,
+    pretty_exceptions_show_locals=False,
+)
+app.add_typer(graph_app, name="graph")
+
+
+@graph_app.command("build")
+def graph_build(
+    season: int = typer.Option(..., help="Season."),
+    week: int = typer.Option(..., help="The week the graph is built for (as of its run)."),
+    backtest: bool = typer.Option(
+        False, "--backtest", help="Build as of that week's Tuesday (past weeks, leakage-free)."
+    ),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Skip the W&B run."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Wipe -> schema -> load -> model outputs -> queries -> graph_results.json."""
+    from nflengine.graph.build import run_graph_build
+
+    res = run_graph_build(
+        season,
+        week,
+        mode="backtest" if backtest else "live",
+        use_wandb=not no_wandb,
+        launched_by=launched_by,
+        fail_soft=True,  # errors are reported sanitized (type + reason), never raw driver text
+        log=console.print,
+    )
+    if res.status != "ok":
+        console.print(f"[red]graph build failed: {res.error}[/]")
+        console.print(f"results: {res.results_path}")
+        raise typer.Exit(2)
+    table = Table(title=f"Graph {season} week {week:02d} ({res.key.mode})")
+    table.add_column("label / type")
+    table.add_column("count", justify="right")
+    for k, v in res.counts.items():
+        table.add_row(k, f"{v:,}")
+    console.print(table)
+    sel = res.selection
+    for c in sel.picked if sel else []:
+        console.print(f"[bold]{c.section}[/] {c.insight_type} ({c.strength:.2f}): {c.headline}")
+    console.print(f"results: {res.results_path}")
+    if res.url:
+        console.print(f"W&B: {res.url}")
+
+
+@graph_app.command("query")
+def graph_query(
+    name: str = typer.Argument(..., help="Query name, e.g. q2_injury_ripple."),
+    season: int = typer.Option(..., help="Season."),
+    week: int = typer.Option(..., help="Week."),
+    limit: int = typer.Option(10, min=1, help="Rows to print."),
+) -> None:
+    """Run one library query against the current graph and print its rows (read-only)."""
+    import json
+
+    from nflengine.graph.client import get_driver
+    from nflengine.graph.queries import run_query
+
+    driver = get_driver()
+    try:
+        res = run_query(driver, name, season, week)
+    finally:
+        driver.close()
+    if res.error:
+        console.print(f"[red]{res.error}[/]")
+        raise typer.Exit(1)
+    console.print(f"{name}: {len(res.rows)} rows in {res.seconds:.2f} s")
+    for row in res.rows[:limit]:
+        console.print_json(json.dumps(row, default=str))
+
+
+PLACEHOLDERS: dict[str, tuple[str, str]] = {}
 
 
 def _register_placeholder(name: str, phase: str, summary: str) -> None:

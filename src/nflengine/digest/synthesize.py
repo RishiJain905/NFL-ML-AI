@@ -81,17 +81,31 @@ def _generate(
         return fallback.generate(system, data, spec), fallback.name
 
 
-def length_feedback(out: dict[str, str], budgets: dict[str, int]) -> list[str]:
+def length_feedback(
+    out: dict[str, str], budgets: dict[str, int], total_budgets: dict[str, int] | None = None
+) -> list[str]:
     """Every section's word count and limit, sent with any regeneration: fixing one issue
     must not push another section over its limit (the first live digest went 149 -> 151
-    words on a 150-word limit while fixing a binding issue)."""
-    from nflengine.digest.checks import LENGTH_TOLERANCE, word_count
+    words on a 150-word limit while fixing a binding issue). With `total_budgets` (every
+    active section, code-written ones included) the whole digest's cap is restated too:
+    the per-section limits add up to more than it (a P05 backtest regenerated to 740 words
+    on a 735-word cap with every section within its own limit)."""
+    from nflengine.digest.checks import LENGTH_TOLERANCE, TOTAL_TOLERANCE, word_count
 
-    return [
+    lines = [
         f"[length] {sec}: {word_count(out.get(sec, ''))} words now; aim for {b}, "
         f"never more than {int(b * (1 + LENGTH_TOLERANCE))}"
         for sec, b in budgets.items()
     ]
+    if total_budgets:
+        total = sum(total_budgets.values())
+        now = sum(word_count(out.get(sec, "")) for sec in total_budgets)
+        lines.append(
+            f"[length] whole digest: {now} words now; aim for {total}, never more than "
+            f"{int(total * (1 + TOTAL_TOLERANCE))} in all (stay near each section's aim, "
+            "not its maximum)"
+        )
+    return lines
 
 
 def synthesize(
@@ -103,11 +117,13 @@ def synthesize(
     lexicon: Lexicon | None = None,
     fallback: LLMClient | None = None,
     fixed: dict[str, str] | None = None,
+    enabled_phases: tuple[str, ...] = (),
 ) -> Synthesis:
     """`fixed`: sections written by code instead of the LLM (e.g. a report card with
-    nothing to grade); they are left out of the LLM's output spec but checked like the rest."""
+    nothing to grade); they are left out of the LLM's output spec but checked like the rest.
+    `enabled_phases`: phase-tagged sections to switch on (("P05",): the graph sections)."""
     fixed = fixed or {}
-    spec = prompt.output_spec(budgets)
+    spec = prompt.output_spec(budgets, enabled_phases)
     expected = [s["id"] for s in spec["sections"]]
     spec = {
         **spec,
@@ -117,6 +133,8 @@ def synthesize(
         ),
     }
     active_budgets = {k: v for k, v in budgets.items() if k in expected}
+    # length is the LLM's job: code-written sections (a 23-word "nothing to grade" card) are
+    # left out of the length checks, or every such week warned `length_short`
     llm_budgets = {k: v for k, v in active_budgets.items() if k not in fixed}
     data = payload.model_dump(mode="json")
     notes: list[str] = []
@@ -126,10 +144,10 @@ def synthesize(
 
     raw, writer = _generate(llm, fallback, prompt.system, data, spec, notes)
     first_out = with_fixed(raw)
-    first = run_checks(first_out, facts, budgets=active_budgets, lexicon=lexicon)
+    first = run_checks(first_out, facts, budgets=llm_budgets, lexicon=lexicon)
     if first.passed:
         return Synthesis(first_out, first, first, False, [first_out], [writer], notes)
-    feedback = first.feedback() + length_feedback(first_out, llm_budgets)
+    feedback = first.feedback() + length_feedback(first_out, llm_budgets, llm_budgets)
     previous = {k: v for k, v in first_out.items() if k not in fixed}
     retry_spec = {**spec, "feedback": feedback, "previous": previous}
     writer2 = writer
@@ -146,7 +164,7 @@ def synthesize(
     except Exception as e:  # the regeneration itself failed: keep the first draft
         notes.append(f"regeneration failed ({type(e).__name__}); kept the first draft")
         second_out = first_out
-    final = run_checks(second_out, facts, budgets=active_budgets, lexicon=lexicon)
+    final = run_checks(second_out, facts, budgets=llm_budgets, lexicon=lexicon)
     return Synthesis(
         second_out, first, final, True, [first_out, second_out], [writer, writer2], notes
     )

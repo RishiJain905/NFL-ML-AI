@@ -9,12 +9,15 @@ Named, idempotent steps, in order:
 | curate | rebuild curated tables + quality checks (`nfl curate`); a blocking check fails the run |
 | ratings | team ratings, Elo, trends (`nfl ratings build`) |
 | game | refit + predict week N (`nfl train game`) |
+| graph | rebuild the Neo4j graph + query library (`nfl graph build`); fail-soft (P05) |
 | digest | payload -> LLM -> checks -> render (`nfl digest`) |
 
 Ingest comes before the readiness check because the check reads the newest raw snapshots
 (documentation/02 lists "readiness -> ingest"; D52). Each step records its status in
 `runs/<season>/week<NN>/weekly_run.json`; `--from-step <name>` resumes from a failed step.
-P05 (graph) and P06 (players) add their steps to `STEPS`.
+A fail-soft step that can't do its job raises `StepDegraded`: it is recorded as `degraded`
+and the run goes on (the graph: Neo4j down -> the digest goes out without its graph
+sections, with a banner). P06 (players) adds its step to `STEPS`.
 """
 
 from __future__ import annotations
@@ -28,7 +31,7 @@ from typing import Any
 
 from nflengine.paths import ensure_data_root
 
-STEPS = ("ingest", "ready", "curate", "ratings", "game", "digest")
+STEPS = ("ingest", "ready", "curate", "ratings", "game", "graph", "digest")
 
 
 class StepFailed(RuntimeError):
@@ -37,12 +40,21 @@ class StepFailed(RuntimeError):
         self.step, self.detail, self.exit_code = step, detail, exit_code
 
 
+class StepDegraded(RuntimeError):
+    """A fail-soft step couldn't do its job; the pipeline continues without it."""
+
+    def __init__(self, step: str, detail: str):
+        super().__init__(f"step {step!r} degraded: {detail}")
+        self.step, self.detail = step, detail
+
+
 @dataclass
 class WeeklyOptions:
     season: int
     week: int
     launched_by: str | None = None
     promote: bool = False
+    llm: str | None = None  # override llm.provider for the digest step (e.g. placeholder)
 
 
 def _ingest(o: WeeklyOptions, log: Callable[[str], None]) -> str:
@@ -91,10 +103,23 @@ def _game(o: WeeklyOptions, log: Callable[[str], None]) -> str:
     return f"predictions {out['predictions']}; W&B {out['url']}; aliases {out['aliases']}"
 
 
+def _graph(o: WeeklyOptions, log: Callable[[str], None]) -> str:
+    from nflengine.graph.build import run_graph_build
+
+    res = run_graph_build(
+        o.season, o.week, mode="live", launched_by=o.launched_by, fail_soft=True, log=log
+    )
+    if res.status != "ok":
+        raise StepDegraded("graph", f"{res.error}; the digest skips its graph sections")
+    return f"{res.summary}; W&B {res.url}"
+
+
 def _digest(o: WeeklyOptions, log: Callable[[str], None]) -> str:
     from nflengine.digest.run import run_digest
 
-    res = run_digest(o.season, o.week, mode="live", launched_by=o.launched_by, log=log)
+    res = run_digest(
+        o.season, o.week, mode="live", launched_by=o.launched_by, log=log, provider=o.llm
+    )
     passed = res.synthesis.final.passed
     return f"{res.report_path} (checks {'passed' if passed else 'FAILED'}); W&B {res.url}"
 
@@ -105,6 +130,7 @@ STEP_FUNCS: dict[str, Callable[[WeeklyOptions, Callable[[str], None]], str]] = {
     "curate": _curate,
     "ratings": _ratings,
     "game": _game,
+    "graph": _graph,
     "digest": _digest,
 }
 
@@ -144,6 +170,11 @@ def run_weekly(
         path.write_text(json.dumps(state, indent=2))
         try:
             detail = funcs[name](opts, log)
+        except StepDegraded as e:
+            state["steps"][name].update(status="degraded", finished=_now(), detail=e.detail)
+            path.write_text(json.dumps(state, indent=2))
+            log(f"[yellow]{name}: degraded ({e.detail}); continuing[/]")
+            continue
         except StepFailed as e:
             state["steps"][name].update(status="failed", finished=_now(), detail=e.detail)
             path.write_text(json.dumps(state, indent=2))

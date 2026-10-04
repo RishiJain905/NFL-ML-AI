@@ -45,9 +45,22 @@ sections:
     title: Matchup / risk to watch
     payload: [graph_insights]
     phase: P05
-    instructions: One graph-derived angle (injury ripple, style matchup, QB change).
+    instructions: >-
+      The graph_insights item(s) with section "matchup_risk" (usually one): an injury
+      ripple, a QB change or a trend mismatch. Name the game with its matchup string. Say
+      what is happening with the headline's wording, then what happened before by copying
+      fact texts whole (their numbers, units and time words such as "listed out for this
+      week", "was ruled out of the team's last game", "since the start of the 2024
+      season", "without him"). If confidence is low, the item's note says what is
+      uncertain: put the hedge on that claim (for a QB change, the receivers' history with
+      him), never on the headline's facts. Describe; don't predict the result.
   - id: non_obvious
     title: Non-obvious insights
     payload: [graph_insights]
     phase: P05
-    instructions: One or two multi-hop graph findings.
+    instructions: >-
+      The graph_insights items with section "non_obvious" (one or two): a player facing a
+      former team, common opponents, or a trend mismatch. Copy fact texts whole, keep
+      each item's note (for example "Descriptive: ..." or "A small sample: ..."), and
+      say plainly when confidence is low. A player facing his former team is a fact, not a
+      motive: never invent revenge, grudges or what he wants to prove.

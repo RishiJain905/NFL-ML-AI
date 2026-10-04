@@ -14,6 +14,10 @@ Two modes share one code path:
 Each run folder keeps `payload.json`, `raw_llm_output.json`, `checks.json`, `digest.md` and
 `watchlist.parquet` (next week's report card grades it), plus the season's
 `season_scorecard.parquet` one level up.
+
+Graph sections (P05): `digest/graph_sections.py` reads (or builds, fail-soft) the week's
+`graph_results.json`; the picks fill *Matchup / risk to watch* and *Non-obvious insights*
+and are added to the published-insight log after the digest is written.
 """
 
 from __future__ import annotations
@@ -31,6 +35,12 @@ from nflengine.digest import build
 from nflengine.digest import format as F
 from nflengine.digest.checks import Lexicon
 from nflengine.digest.facts import build_fact_index
+from nflengine.digest.graph_sections import (
+    GraphState,
+    fixed_graph_sections,
+    graph_state,
+    record_published,
+)
 from nflengine.digest.llm import get_llm
 from nflengine.digest.llm.base import LLMClient
 from nflengine.digest.payload import Meta, Payload
@@ -263,7 +273,10 @@ class Built:
 
 
 def build_payload(
-    ctx: DigestContext, games: pl.DataFrame, log: Callable[[str], None] = print
+    ctx: DigestContext,
+    games: pl.DataFrame,
+    log: Callable[[str], None] = print,
+    graph: GraphState | None = None,
 ) -> Built:
     from nflengine.digest.under_hood import select_under_hood
     from nflengine.digest.watchlist import placeholder_watchlist, score_watchlist
@@ -312,6 +325,7 @@ def build_payload(
         except Exception as e:  # ESPN is optional: fail soft
             log(f"[yellow]news skipped: {type(e).__name__}[/]")
     primary = preds.filter(pl.col("is_primary"))
+    graph = graph or GraphState("off")
     meta = Meta(
         season=s,
         week=w,
@@ -331,6 +345,8 @@ def build_payload(
         sources=_sources(ctx, log),
         followed_teams=followed,
         early_season=w <= EARLY_WEEKS,
+        graph_status=graph.status,  # type: ignore[arg-type]
+        graph_note=graph.note,
     )
     payload = Payload(
         meta=meta,
@@ -341,6 +357,7 @@ def build_payload(
         team_trends=trends,
         under_the_hood=build.build_under_hood(uh),
         players_to_watch=build.build_watch(watch),
+        graph_insights=graph.picked,
         news=news,
     )
     return Built(payload, report, watch, preds)
@@ -436,8 +453,10 @@ def run_digest(
     provider: str | None = None,
     use_wandb: bool = True,
     log: Callable[[str], None] = print,
+    graph: str = "auto",
 ) -> DigestResult:
-    """`provider` overrides `llm.provider` (e.g. "placeholder" for a side-by-side backtest)."""
+    """`provider` overrides `llm.provider` (e.g. "placeholder" for a side-by-side backtest).
+    `graph`: auto | build | read | off (see `digest/graph_sections.py`)."""
     paths = ensure_data_root()
     games = read_games(paths)
     llm = llm or get_llm(provider)
@@ -445,8 +464,18 @@ def run_digest(
     if mode == "backtest":
         written = materialize_backtest_predictions(ctx, games)
         log(f"backtest predictions ready ({len(written)} week files written)")
+    state = graph_state(
+        ctx,
+        games,
+        graph,
+        use_wandb=use_wandb and mode == "live",
+        launched_by=launched_by,
+        log=log,
+    )
+    if state.status == "unavailable":
+        log(f"[yellow]graph sections skipped: {state.note}[/]")
     log(f"building the payload for {season} week {week} ({mode}, as of {ctx.run_time}) ...")
-    built = build_payload(ctx, games, log)
+    built = build_payload(ctx, games, log, graph=state)
     payload = built.payload
     ctx.run_dir.mkdir(parents=True, exist_ok=True)
     (ctx.run_dir / "payload.json").write_text(payload.to_json(), encoding="utf-8")
@@ -465,7 +494,8 @@ def run_digest(
         budgets,
         lexicon(paths, season),
         fallback=fallback,
-        fixed=fixed_sections(payload),
+        fixed={**fixed_sections(payload), **fixed_graph_sections(state)},
+        enabled_phases=state.enabled_phases,
     )
     for note in synth.fallback_notes:
         log(f"[yellow]{note}[/]")
@@ -499,6 +529,7 @@ def run_digest(
     ctx.report_path.parent.mkdir(parents=True, exist_ok=True)
     ctx.report_path.write_text(md, encoding="utf-8")
     save_watch(built.watch, ctx.run_dir / WATCH_FILE, ctx.run_time)
+    record_published(ctx, state, log, synth.sections)
     scorecard = update_scorecard(ctx.scorecard_path, built.report.scorecard_row)
     log(f"digest -> {ctx.report_path} (checks {'passed' if synth.final.passed else 'FAILED'})")
 
@@ -513,13 +544,14 @@ def season_series(scorecard: pl.DataFrame) -> list[dict[str, float]]:
     """One point per graded week: weekly and cumulative Brier (model / Elo / market), pick
     accuracy, points error and watch-list hit rate (the doc 08 season-dashboard curves)."""
     points: list[dict[str, float]] = []
-    games = picks = correct = w_hits = w_total = 0
+    picks = correct = w_hits = w_total = 0
     sums = {"brier_model": 0.0, "brier_elo": 0.0, "brier_market": 0.0}
+    # games behind each metric: a week without a market Brier must not add to its divisor
+    covered = dict.fromkeys(sums, 0)
     for r in scorecard.sort("week").iter_rows(named=True):
         n = int(r["games"] or 0)
         if not n:
             continue
-        games += n
         picks += int(r["picks_total"] or 0)
         correct += int(r["picks_correct"] or 0)
         w_hits += int(r["watchlist_hits"] or 0)
@@ -528,8 +560,9 @@ def season_series(scorecard: pl.DataFrame) -> list[dict[str, float]]:
         for k in sums:
             if r[k] is not None:
                 sums[k] += float(r[k]) * n
+                covered[k] += n
                 p[f"season/{k}"] = float(r[k])
-                p[f"season/cum_{k}"] = sums[k] / games
+                p[f"season/cum_{k}"] = sums[k] / covered[k]
         if r["picks_total"]:
             p["season/pick_accuracy"] = r["picks_correct"] / r["picks_total"]
         if picks:
@@ -603,7 +636,14 @@ def log_digest_run(
             "git_commit": git_commit(),
             "dataset_version": dataset_version(ctx.paths),
         },
-        tags=["p04", "digest", f"season:{ctx.season}", f"week:{ctx.week:02d}", f"llm:{llm.name}"]
+        tags=[
+            "p05",
+            "digest",
+            f"season:{ctx.season}",
+            f"week:{ctx.week:02d}",
+            f"llm:{llm.name}",
+            f"graph:{payload.meta.graph_status}",
+        ]
         + (["prod"] if live else ["backtest"]),
         launched_by=launched_by,
         name=f"digest-{tag}" + ("" if live else f"-backtest-{llm.name}"),
@@ -617,6 +657,8 @@ def log_digest_run(
             "regenerated": synth.regenerated,
             "banner": synth.banner is not None,
             "market_data_used": payload.meta.market_data_used,
+            "graph_status": payload.meta.graph_status,
+            "graph_items": len(payload.graph_insights),
             "games": len(payload.games),
             "team_trends": len(payload.team_trends),
             "under_the_hood_items": len(payload.under_the_hood),

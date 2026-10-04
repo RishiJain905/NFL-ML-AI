@@ -16,7 +16,9 @@ from typing import Any
 import yaml
 
 PROMPT_DIR = Path(__file__).resolve().parent
-LIVE_PHASE = "P04"  # sections tagged with a later phase stay off until that phase
+# Sections tagged with a phase are off unless the run enables that phase: the P05 graph
+# sections are enabled when the knowledge graph produced results (`run.graph_state`).
+GRAPH_PHASE = "P05"
 
 
 @dataclass(frozen=True)

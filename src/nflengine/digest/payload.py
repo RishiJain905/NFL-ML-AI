@@ -4,8 +4,8 @@ Every number is a `Num` (`{value, display}`). The display string is made once, i
 `digest/format.py`, and the LLM must copy it exactly: the checks only accept numbers that
 appear in some display string (or in a code-made text field such as `rank_note`).
 
-Slots for later phases stay in the schema now: `graph_insights` (P05) and a real model
-behind `players_to_watch` (P06; v0 fills it with a labelled heuristic).
+`graph_insights` (P05) carry the knowledge-graph sections; `players_to_watch` gets a real
+model in P06 (v0 fills it with a labelled heuristic).
 """
 
 from __future__ import annotations
@@ -43,6 +43,9 @@ class Meta(Model):
     sources: dict[str, str] = Field(default_factory=dict)  # source -> freshness note
     followed_teams: list[str] = Field(default_factory=list)
     early_season: bool = False  # weeks 1-3: ratings lean on last season (documentation/02)
+    # knowledge graph (P05): ok | unavailable (Neo4j down / build failed) | off
+    graph_status: Literal["ok", "unavailable", "off"] = "off"
+    graph_note: str | None = None  # why the graph sections are missing, when they are
 
 
 # ---- report card ------------------------------------------------------------------------------
@@ -227,14 +230,42 @@ class WatchItem(Model):
 # ---- later phases -----------------------------------------------------------------------------
 
 
+class GraphFact(Model):
+    """One code-made, time-scoped phrase with its numbers ("In 5 games without X since the
+    start of the 2024 season, the 49ers defense allowed +0.11 EPA per play ..."). The LLM
+    copies it; its numbers belong to `owners` (team codes and player ids)."""
+
+    text: str
+    owners: list[str] = Field(default_factory=list)
+
+
+class GraphPerson(Model):
+    player: str
+    player_id: str
+    team: str
+    role: str  # out | stepped in | next on chart | former player | expected starter | ...
+
+
 class GraphInsight(Model):
-    insight_type: str
-    section: str
+    """A knowledge-graph finding for *Matchup / risk to watch* or *Non-obvious insights*
+    (P05; built by `graph/insights.py` from the query library)."""
+
+    insight_id: str  # stable across weeks for the same story (novelty)
+    insight_type: Literal[
+        "revenge", "injury_ripple", "qb_change", "common_opponents", "trend_mismatch"
+    ]
+    section: Literal["matchup_risk", "non_obvious"]
     strength: float
-    entities: list[str]
-    facts: list[dict[str, str | int | float | None]] = Field(default_factory=list)
-    confidence: str = "low"
+    confidence: Literal["low", "medium"] = "low"
     graph_query: str
+    game_id: str
+    matchup: str = ""  # code-made "Titans at Colts" (away at home)
+    teams: list[str] = Field(default_factory=list)  # the game's two teams first
+    people: list[GraphPerson] = Field(default_factory=list)
+    headline: str  # code-made, no numbers
+    facts: list[GraphFact] = Field(default_factory=list)
+    sample: Num  # what the main comparison rests on ("5 games without him")
+    note: str = ""  # caveat to keep ("Descriptive: ...")
 
 
 class NewsItem(Model):
@@ -255,7 +286,7 @@ class Payload(Model):
     team_trends: list[TrendItem] = Field(default_factory=list)
     under_the_hood: list[UnderHoodItem] = Field(default_factory=list)
     players_to_watch: list[WatchItem] = Field(default_factory=list)
-    graph_insights: list[GraphInsight] = Field(default_factory=list)  # P05
+    graph_insights: list[GraphInsight] = Field(default_factory=list)  # P05: picked items
     news: list[NewsItem] = Field(default_factory=list)
 
     def to_json(self) -> str:

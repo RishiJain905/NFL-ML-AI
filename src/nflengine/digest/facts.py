@@ -11,6 +11,15 @@ the margin, which names the favourite, to both); report-card numbers to "the mod
 Brier also to "Elo"), except calibration counts, which belong to their bucket ("70-80%");
 trend numbers to the team; under-the-hood and watch-list numbers to the player. `meta`
 numbers (season, week) are global and need no owner.
+
+Graph insights (P05): each fact's numbers belong to the fact's `owners` (team codes and
+player ids). When a fact has several clauses ("the Bucs lost to the Vikings by 7; the
+Packers lost to the Vikings by 17"), an owner the fact names only in another clause doesn't
+own this clause's numbers, so moving the 7 to the Packers fails. The headline's and the
+sample's numbers belong to the game's two teams and the item's subject people (out, former
+player, expected starter). Every team in `teams` (common opponents too) is a known entity;
+every person is a player whose name also names his team. A low-confidence item's subject
+people need a hedge, and its section needs one somewhere (`hedge_sections`).
 """
 
 from __future__ import annotations
@@ -20,8 +29,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from nflengine.digest.format import normalize_text, number_atoms
-from nflengine.digest.names import last_name, team_aliases
-from nflengine.digest.payload import Num, Payload
+from nflengine.digest.names import TEAMS, last_name, team_aliases
+from nflengine.digest.payload import GraphInsight, Num, Payload
 
 MODEL_ALIASES = [
     "the model",
@@ -38,6 +47,8 @@ MODEL_ALIASES = [
     "watch-list",
 ]
 _RANGE_PCT = re.compile(r"(\d+)\s?-\s?(\d+)%")
+# people whose story a graph item tells (insights.SUBJECT_ROLES): they own its headline
+GRAPH_SUBJECT_ROLES = ("out", "former player", "expected starter")
 
 
 @dataclass
@@ -78,6 +89,7 @@ class FactIndex:
     lopsided_teams: set[str] = field(default_factory=set)  # teams in the top lopsided games
     closest_teams: set[str] = field(default_factory=set)  # teams in the closest games
     consensus: dict[str, str] = field(default_factory=dict)  # team -> notable | large
+    hedge_sections: set[str] = field(default_factory=set)  # sections with a low-confidence item
 
     def get(self, key: str, kind: str, aliases: Iterable[str]) -> Entity:
         if key not in self.entities:
@@ -208,4 +220,57 @@ def build_fact_index(payload: Payload) -> FactIndex:
         fx.team(w.opponent)
         if w.confidence == "low":
             fx.low_confidence.append(p.key)
+
+    for g in payload.graph_insights:
+        _add_graph_insight(fx, g)
     return fx.finalize()
+
+
+def _names(text: str, e: Entity) -> bool:
+    """Whether the text names the entity (a team by any alias, a player by full name)."""
+    aliases = e.aliases if e.kind == "team" else e.aliases[:1]
+    for a in aliases:
+        flags = 0 if any(c.isupper() for c in a) else re.IGNORECASE
+        if re.search(rf"(?<!\w){re.escape(a)}(?!\w)", text, flags):
+            return True
+    return False
+
+
+def _add_graph_insight(fx: FactIndex, g: GraphInsight) -> None:
+    """Register one knowledge-graph item (P05; see the module docstring for the owners)."""
+    teams = [fx.team(code) for code in g.teams]  # common opponents become known entities
+    people: dict[str, Entity] = {}
+    for person in g.people:
+        p = fx.player(person.player_id, person.player)
+        p.teams.add(person.team)  # naming him names his team
+        people[person.player_id] = p
+
+    def owner(key: str) -> Entity | None:
+        if key in people:
+            return people[key]
+        if f"player:{key}" in fx.entities:
+            return fx.entities[f"player:{key}"]
+        if key in TEAMS:
+            return fx.team(key)
+        return None  # a player id with no name in the payload can't be named anyway
+
+    for fact in g.facts:
+        owners = [e for e in map(owner, fact.owners) if e is not None]
+        display = normalize_text(fact.text)
+        for e in owners:
+            e.displays.add(display)
+        clauses = [c for c in display.split(";") if c.strip()]
+        in_text = {e.key for e in owners if any(_names(c, e) for c in clauses)}
+        for clause in clauses:
+            named = [e for e in owners if _names(clause, e)]
+            # an owner the fact names only in another clause doesn't own this one's numbers
+            mine = [*named, *(e for e in owners if e.key not in in_text)] if named else owners
+            for e in mine:
+                e.atoms.update(text_atoms(clause))
+
+    subjects = [people[p.player_id] for p in g.people if p.role in GRAPH_SUBJECT_ROLES]
+    for e in [*teams[:2], *subjects]:
+        e.add(g.headline, g.sample, g.note or None)
+    if g.confidence == "low":
+        fx.low_confidence.extend(e.key for e in subjects)
+        fx.hedge_sections.add(g.section)

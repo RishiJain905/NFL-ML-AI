@@ -8,11 +8,14 @@ feedback. Every sentence that carries a number also names the entity that owns i
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from nflengine.digest.names import last_name
 
 TRIM = 1.0  # stop adding optional sentences past the section's budget (the total must fit)
+NO_GRAPH_ITEM = "No graph angle cleared the bar this week."
+LOW_CONFIDENCE_NOTE = "A small sample: treat this as context, not a forecast."
 
 
 def _words(text: str) -> int:
@@ -75,6 +78,8 @@ class PlaceholderLLM:
             "team_trends": self._team_trends,
             "under_the_hood": self._under_the_hood,
             "players_to_watch": self._players_to_watch,
+            "matchup_risk": self._graph_section("matchup_risk"),
+            "non_obvious": self._graph_section("non_obvious"),
         }
         out: dict[str, str] = {}
         for sec in budgets:
@@ -255,3 +260,57 @@ class PlaceholderLLM:
                 "(low confidence)."
             )
         return _fit_items(main, [""] * len(main), budget, minimum=4)
+
+    def _graph_section(self, section: str) -> Callable[[dict[str, Any], int | None], str]:
+        """matchup_risk / non_obvious: the payload's graph items for that section (P05)."""
+
+        def write(p: dict[str, Any], budget: int | None) -> str:
+            items = [g for g in p.get("graph_insights", []) if g["section"] == section]
+            return _graph_items(items, budget)
+
+        return write
+
+
+def _sentence(text: str) -> str:
+    """A code-made fact phrase as a sentence, its words untouched."""
+    text = text.strip()
+    text = text[:1].upper() + text[1:]
+    return text if text.endswith((".", "!", "?")) else text + "."
+
+
+def _graph_items(items: list[dict[str, Any]], budget: int | None) -> str:
+    """Knowledge-graph items (P05), in order. Each item's core is its headline and first
+    fact (plus its note or a small-sample sentence when confidence is low); the first item's
+    core is required, a later item's only when its whole core fits. Then each kept item's
+    other facts and note while the section stays within budget."""
+    if not items:
+        return NO_GRAPH_ITEM
+    cores: list[list[str]] = []
+    hedges: list[str] = []
+    extras: list[list[str]] = []
+    for g in items:
+        facts = [_sentence(f["text"]) for f in g.get("facts", [])]
+        note = _sentence(g["note"]) if g.get("note") else ""
+        lead = f"{g['matchup']}: {g['headline']}" if g.get("matchup") else g["headline"]
+        cores.append([lead, *facts[:1]])
+        low = g.get("confidence") == "low"
+        hedges.append((note or LOW_CONFIDENCE_NOTE) if low else "")
+        extras.append([*facts[1:], *([note] if note and not low else [])])
+    limit = None if budget is None else budget * TRIM
+    used = 0
+    keep: list[int] = []
+    for i, core in enumerate(cores):
+        n = _words(" ".join([*core, hedges[i]]))
+        if i == 0 or limit is None or used + n <= limit:
+            keep.append(i)
+            used += n
+    out: list[str] = []
+    for i in keep:
+        kept = []
+        for s in extras[i]:
+            if limit is None or used + _words(s) <= limit:
+                kept.append(s)
+                used += _words(s)
+        # the note (or the low-confidence sentence) closes the item
+        out += [*cores[i], *kept, *([hedges[i]] if hedges[i] else [])]
+    return " ".join(out)

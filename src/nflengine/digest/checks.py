@@ -1,8 +1,10 @@
 """Automated checks on the LLM's prose (documentation/06 -> Automated checks).
 
 They run on every generation, for every provider, against the fact index built from the
-payload. Fail-level checks trigger one regeneration and then a warning banner:
+payload. Fail-level checks trigger one regeneration and then a warning banner. Eleven
+checks (documentation/guides/llm-digest-writer.md has the full table with examples):
 
+- complete (fail): every requested section has prose (a partial reply must not pass).
 - number_provenance (fail): a number that isn't in any payload display string.
 - spelled_out_numbers (fail): number words ("two-thirds", "a dozen", "doubled", "half")
   that aren't in the payload.
@@ -10,11 +12,16 @@ payload. Fail-level checks trigger one regeneration and then a warning banner:
   player / team).
 - unknown_entities (fail): a team or rostered player named in the prose but absent from
   the payload.
+- meaning (fail): "A at B" must be a real game in that home / road order; game
+  superlatives must match the code-made `game_highlights`; consensus-gap tiers must match.
 - banned_language (fail): betting / fantasy words (allow-list: "offensive line", "line of
   scrimmage" ...).
-- length (fail): a section > 25% over budget, or the total over budget; `length_short`
-  (warn) when a section is > 25% under.
-- hedging (warn): a low-confidence item mentioned without a hedge phrase.
+- length (fail): a section > 25% over budget, or the total > 5% over the sum of the LLM's
+  sections' budgets; `length_short` (warn) when a section is > 25% under. Code-written
+  sections (a report card with nothing to grade, a graph section with no pick) aren't
+  measured.
+- hedging (warn): a low-confidence item mentioned without a hedge phrase, or a graph
+  section holding a low-confidence item with no hedge phrase at all.
 - name_heuristic (warn): a capitalized name that matches nothing known (possible made-up
   player).
 
@@ -145,6 +152,9 @@ HEDGES = [
     "only a",
     "not a projection",
     "no model",
+    "descriptive",
+    "not predictive",
+    "small samples",
 ]
 
 # Capitalized words that aren't names (the name heuristic ignores them).
@@ -582,6 +592,11 @@ def check_hedging(
         if hits and not any(hedge.search(s) for _, s in hits):
             sec, s = hits[0]
             issues.append(Issue(sec, e.aliases[0], "low-confidence item without a hedge", s))
+    # a graph section holding a low-confidence item needs a hedge somewhere, even when the
+    # item has no person to name (common opponents, a trend mismatch)
+    for sec in sorted(fx.hedge_sections & set(sections)):
+        if sections[sec].strip() and not hedge.search(plain(sections[sec])):
+            issues.append(Issue(sec, sec, "section with a low-confidence item has no hedge"))
     return CheckResult("hedging", WARN, not issues, issues)
 
 

@@ -9,7 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from nflengine.cli import app
-from nflengine.weekly import STEPS, StepFailed, WeeklyOptions, run_weekly
+from nflengine.weekly import STEPS, StepDegraded, StepFailed, WeeklyOptions, run_weekly
 
 
 def fake_steps(calls: list[str], fail_at: str | None = None, code: int = 1):
@@ -45,7 +45,7 @@ def test_failure_stops_and_resume_skips_done_steps(tmp_path: Path) -> None:
 
     calls.clear()
     run_weekly(WeeklyOptions(2026, 5), from_step="ratings", funcs=fake_steps(calls), state_file=sf)
-    assert calls == ["ratings", "game", "digest"]
+    assert calls == ["ratings", "game", "graph", "digest"]
     assert json.loads(sf.read_text())["steps"]["ratings"]["status"] == "ok"
 
 
@@ -59,7 +59,26 @@ def test_unexpected_errors_become_step_failures(tmp_path: Path) -> None:
 
 def test_unknown_step_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
-        run_weekly(WeeklyOptions(2026, 5), from_step="graph", state_file=tmp_path / "s.json")
+        run_weekly(WeeklyOptions(2026, 5), from_step="players", state_file=tmp_path / "s.json")
+
+
+def test_graph_step_is_fail_soft(tmp_path: Path) -> None:
+    """Neo4j down: the graph step is recorded as degraded and the digest still runs (P05)."""
+    calls: list[str] = []
+    funcs = fake_steps(calls)
+
+    def graph(opts, log):
+        calls.append("graph")
+        raise StepDegraded("graph", "ServiceUnavailable: Neo4j unreachable")
+
+    funcs["graph"] = graph
+    sf = tmp_path / "s.json"
+    state = run_weekly(WeeklyOptions(2026, 5), funcs=funcs, state_file=sf)
+    assert calls == list(STEPS)
+    assert state["steps"]["graph"]["status"] == "degraded"
+    assert "Neo4j unreachable" in state["steps"]["graph"]["detail"]
+    assert state["steps"]["digest"]["status"] == "ok"
+    assert STEPS.index("game") < STEPS.index("graph") < STEPS.index("digest")
 
 
 def test_cli_weekly_and_digest_wiring(monkeypatch) -> None:

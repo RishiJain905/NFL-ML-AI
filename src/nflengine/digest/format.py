@@ -78,6 +78,11 @@ def margin(home_margin: float, home: str, away: str) -> Num:
     return Num(value=round(float(home_margin), 2), display=f"{nickname(team)} by {m}")
 
 
+def per_game(x: float, unit: str) -> Num:
+    """A per-game average with one decimal: (8.24, "targets") -> "8.2 targets per game"."""
+    return Num(value=round(float(x), 3), display=f"{_round_half_up(x, 1):.1f} {unit} per game")
+
+
 def brier(x: float) -> Num:
     return Num(value=round(float(x), 4), display=f"{_round_half_up(x, 3):.3f}")
 

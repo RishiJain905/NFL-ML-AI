@@ -138,6 +138,7 @@ def footer(p: Payload, f: FooterInfo) -> str:
             else "no (model-only)"
         ),
         f"Injury snapshot: {m.injury_snapshot or 'n/a'}",
+        f"Knowledge graph: {graph_line(p)}",
         f"Checks: {status}",
         f"Writer: {f.llm_name} ({f.llm_model or 'n/a'}), prompt `{f.prompt_hash}`"
         + (" (the configured LLM failed; see raw_llm_output.json)" if f.fallback else ""),
@@ -146,12 +147,36 @@ def footer(p: Payload, f: FooterInfo) -> str:
     return "---\n\n" + "\n".join(f"- {line}" for line in lines)
 
 
+def graph_line(p: Payload) -> str:
+    m = p.meta
+    if m.graph_status == "ok":
+        n = len(p.graph_insights)
+        return f"rebuilt for this run (Neo4j); {n} insight{'s' if n != 1 else ''} used"
+    if m.graph_status == "unavailable":
+        return f"unavailable: {m.graph_note or 'no results'}"
+    return "off"
+
+
+def graph_banner(p: Payload) -> str | None:
+    """Shown when the graph sections are missing because the graph failed (fail-soft)."""
+    if p.meta.graph_status != "unavailable":
+        return None
+    return (
+        "ℹ️ **Graph sections skipped this week:** "
+        f"{p.meta.graph_note or 'the knowledge graph was unavailable'}. The rest of the "
+        "digest is complete."
+    )
+
+
 def render_digest(
     p: Payload, sections: dict[str, str], info: FooterInfo, banner: str | None
 ) -> str:
     out = [header(p)]
     if banner:
         out.append(f"> {banner}")
+    gb = graph_banner(p)
+    if gb:
+        out.append(f"> {gb}")
     order = list(SECTION_TITLES)
     for sec in order:
         if sec not in sections:
