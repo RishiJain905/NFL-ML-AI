@@ -200,11 +200,30 @@ No heavyweight orchestrator such as Prefect or Airflow. `nfl weekly run` is a pl
 | nflverse data not ready (previous week's games missing) | Don't run; retry on schedule; alert if still missing by Wednesday 18:00 |
 | ESPN endpoint changed or down | **Fail soft:** continue without news or current lines and note it in the footer |
 | Current market lines unavailable | Publish model-only probabilities; skip the "disagreement with consensus" item |
-| Neo4j down | Try to start the container once; if it still fails, publish the digest without graph sections and add a banner. As built in P05: the `graph` step fails soft at once (recorded as `degraded`, D61); the restart attempt comes with P07's retries |
+| Neo4j down | Try to start the container once; if it still fails, publish the digest without graph sections and add a banner. As built in P05: the `graph` step fails soft at once (recorded as `degraded`, D61). As built in P07: the step first runs `docker compose up -d` once (starting Docker Desktop if the engine is down) and waits up to 3 minutes |
 | LLM check fails | Regenerate once with the list of failures; if it still fails, publish with a warning banner and mark the run in W&B |
 | Any unhandled exception | Run marked failed in W&B, notification sent, nothing published |
 
 Notifications: email through the SMTP settings in `.env`, or a push notification service. One channel is enough.
+
+## As built in P07: manual-first weekly operations (D71)
+
+Rishi chose **manual-first** at the start of P07: the project isn't deployed, and every manual weekly run so far worked (about 5 minutes plus the LLM). So nothing is scheduled, and no SMTP or push channel was added. Everything a scheduler would need *is* built, so scheduling later only wraps one command. The operator's view is the [runbook](runbook.md); how each piece works is the [weekly operations guide](guides/weekly-operations.md).
+
+| Spec above | As built |
+|---|---|
+| Calendar-driven, not fixed weekdays | `src/nflengine/ops/calendar.py`: from the schedule and a clock it works out the season, the target week (the earliest week with a game still to kick off), whether week N−1 is final, the **deadline** (first kickoff), the retry window (Wednesday 18:00 ET) and the special cases (Thursday, Thanksgiving, Black Friday, Christmas, Friday / Saturday / midweek games, neutral sites and games abroad, morning kickoffs, byes, week 18, playoffs, offseason). Tested over the real 2024–2026 schedules |
+| Main run Tuesday 10:00, retries every 3 h until Wednesday 18:00 | `nfl weekly run --auto`, run by hand. It skips a week already published (exit 0), and exits **3** ("not ready") when week N−1 isn't final (a schedule-only refresh decides first, so a hopeless retry costs no full ingest), so a person, or a scheduler later, simply runs it again. Not ready after Wednesday 18:00 ET (or the first kickoff, if earlier) raises an alert. **No Task Scheduler entries** (D71; the steps to add them are in the runbook) |
+| Injury update Saturday 10:00 | `nfl weekly injury-update --auto`, run by hand (`flags.injury_update_enabled: true`) |
+| Data drive not connected | Exit 5 (2 is a usage error) with "Data drive ... is not connected ... Nothing was written", before anything is written |
+| nflverse not ready | Exit 3 (above) |
+| ESPN / extra source down; lines missing | Unchanged (fail soft since P01 / P03); the run summary's freshness table marks a dataset stale after 7 days and the `data_freshness` drift check alerts |
+| Neo4j down | One `docker compose up -d` (and Docker Desktop if needed), then wait; else `degraded` as in P05. Checked live: up again after 50 s |
+| LLM check fails | Unchanged (regenerate once, banner); the pipeline adds a warn alert |
+| Unhandled exception | The run is `failed` (exit 1), the W&B pipeline run ends with exit code 1, an error alert is printed and recorded; nothing is published |
+| Two runs at once | An operating-system lock on `runs/.weekly.lock` shared by the weekly run and the injury update (exit 4 while held); the OS releases it when the holding process ends, crash included |
+| Notifications | Alerts print at the end of the run, go into `run_summary.json`, and go out as **W&B alerts** (W&B's own email / app notifications; `ops.wandb_alerts`). No SMTP |
+| Time travel | `--as-of` (ISO, Eastern without an offset): in the past it simulates the run (readiness from `kickoff + ops.data_lag_hours`, the digest as a backtest), writing only to the backtest folders |
 
 ## Secrets and config
 

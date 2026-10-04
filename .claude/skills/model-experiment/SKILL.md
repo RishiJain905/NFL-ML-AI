@@ -118,6 +118,7 @@ At the end:
 - Save model files under `paths.models / <family> / <season>-w<NN>/`, and log them as `wandb.Artifact(name="<family>", type="model")` with aliases `<season>-w<NN>`.
 - **`candidate`** = beats production in walk-forward evaluation. **`production`** = what the weekly pipeline uses.
 - Promotion to `production` is a ✋ checkpoint (Rishi), between weeks, never mid-run. Record it in the decisions log.
+- **Since P07 (D72)** the weekly `--auto` run moves `production` to each live fit of `game-model` and `player-model`: it records which fit the published digest used (the pipeline refits weekly and reads files on D:, not the alias). A manual run moves it only with `--promote`. A real model upgrade (P08) still goes through `candidate` and Rishi's ✋.
 - Reproducibility: set seeds (`numpy`, `lightgbm` `seed`, `torch.manual_seed`), and log the config and dataset version.
 
 ## 6. 🧑 Rishi-runs handoff (unless waived)
@@ -168,6 +169,11 @@ Write one card per model family at `documentation/model_cards/<family>.md` (also
 - **Confidence labels need their own check.** Labels built from range width and history length didn't rank relative error at all; measure that before promising "high confidence" means "more accurate".
 - **Run targets in parallel processes**, not threads: 4 CLI chains × 4 LightGBM threads on 16 cores ran 11 walk-forward backtests (~160 weekly refits each) in about 20 minutes. Each chain loads the saved feature table once, so rebuild it only between rounds.
 - **A flat tuning grid is a result:** best-to-worst within 1–3% means the features, not the settings, carry the model. Don't widen the grid hoping for more.
+
+## 9c. Lessons from P07 (alerts on model quality)
+- **Replay an alert rule over history before trusting it** (`ops.drift.replay_drift`): doc 08's "season ECE above 0.05" would have fired in 85% of 2019–2025 weeks, because a perfectly calibrated model averages an ECE of about 0.08 on one season's 100–270 games (10 bins). Compare any calibration number with its chance level (`ops.drift.ece_noise`: simulate outcomes from the model's own probabilities); the drift limit is the higher of 0.05 and that 90th percentile (D75).
+- **Check the probabilities people actually see.** On model-only probabilities "behind Elo over 4 weeks, 3 windows running" fired in 27% of weeks (the season edge is only ~0.002 Brier); on the shown, market-informed probabilities, in 2%.
+- **Unit tests never create real W&B runs:** `tests/conftest.py` sets `WANDB_MODE=disabled` for every non-integration test (a CLI test once reached the real pipeline and logged failed runs). Real W&B smoke runs belong in scratchpad scripts.
 
 ## 10. Honesty rules
 - Report results that lose to the baseline as well. A model that doesn't beat its baseline doesn't ship (`documentation/11`).

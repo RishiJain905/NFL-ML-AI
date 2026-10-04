@@ -280,3 +280,18 @@ Rishi asked for more players: *Players to watch* now holds **10 offense** (QB, R
 | Look-back | One compact table instead of a bullet per pick: Side · Player · Stat · Projected · Range · Actual · In range (✓ / ✗) · Above baseline (✓ / ✗), "did not play" / "no result yet" for unscored picks. The numbers line adds the side split: "watch list 15 of 20 above baseline, 17 inside their range (offense 6 of 10, defense 9 of 10)" (`ReportCard.watchlist_by_side`, owned by the model). `LookbackItem` gained `side`, `projection`, `interval`, `actual`, `status`. Season totals unchanged |
 
 **Backtests (2019–2025, 2,480 picks, with the volume floor):** hit rate **65.3%** against a **42.2%** base rate; offense 65.0% vs 42.0%, defense 65.6% vs 42.3%; every season (60.8–69.4%) and every group (EDGE/DL lowest at 59.8% vs 37.3%) above 50%; no side ever short of 10. Lower than the 8-pick list's 69.5% because picks 9–20 have smaller projected jumps (without the floor: 64.4%). The 2025 week 8 and 9 backtest digests (placeholder writer) pass every fail-level check; week 9's look-back grades all 20 of week 8's picks.
+
+## As built in P07: the Saturday injury update and the run records
+
+**The injury update** (D73; run by hand, `uv run nfl weekly injury-update --auto`; details in the [weekly operations guide §9](guides/weekly-operations.md)):
+
+| Spec above | As built |
+|---|---|
+| "Re-ingest injuries and ESPN news, rerun the game and player predictions" | Re-ingests injuries, weekly rosters, depth charts and the schedule (nflverse), ESPN and the Odds API; re-curates; re-predicts with `run_train(..., output="update")` into `predictions_games_update.parquet` / `predictions_players_update.parquet`. Ratings and the graph aren't rebuilt (no games were played since Tuesday) |
+| "Publish a short addendum only if a win probability moved ≥ 5 points or a watch-list player's status changed" | That rule (`injury_update.min_prob_move: 0.05`, `watch_status_change: true`), over games that haven't kicked off, with "status changed" meaning a change **to or from Doubtful, Out or IR** (D73): Tuesday's watch list usually predates the week's report, so a plain Saturday Questionable would otherwise publish an addendum almost every week |
+| "Same pipeline, a smaller payload and a 120-word prose budget" | **Code-written, no LLM**: a header, a table of the games that moved (win % then → now, predicted score then → now, why: an expected-QB change, a line move of half a point or more, up to 3 players per team newly Doubtful / Out / IR, by snap share), the watch-list status changes, a footer. Every line is a change code can state exactly |
+| Delivery `week{NN}-injury-update.md` | `reports/<season>/week<NN>-injury-update.md` (only when material) + `injury_update.md` in the run folder; `injury_update.json` always |
+| (not specified) | Tuesday's prediction files are never touched: **next week's report card grades Tuesday's numbers**, the ones the digest published |
+
+**Run records.** Every `nfl weekly run` now also writes `run_summary.json`, a `pipeline_history.parquet` row and a `weekly-pipeline` / `pipeline` W&B run, and evaluates the drift checks; alerts (failed step, not ready after Wednesday 18:00 ET, degraded step, checks failed after regeneration, drift) print at the end of the run and go out as W&B alerts (D76). The digest itself is unchanged by P07.
+

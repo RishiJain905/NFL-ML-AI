@@ -16,7 +16,7 @@ This folder turns the design docs (`documentation/01`–`11`) into an ordered, *
 | [P04](P04-digest-v0.md) | Digest v0: **first live digest** | P03 | Payload, placeholder LLM, checks, report card, "Under the hood", first real weekly digest |
 | [P05](P05-knowledge-graph.md) | Knowledge graph v1 | P04 | Full Neo4j schema, weekly rebuild, core multi-hop queries, graph sections in the digest |
 | [P06](P06-player-model.md) | Player model v1 + accuracy scoreboard | P05 | Offense and defense main-stat projections, watch list, accuracy scoreboard |
-| [P07](P07-automation.md) | Automation and weekly operations | P06 | Scheduled hands-off weekly runs, retries, notifications, season dashboard |
+| [P07](P07-automation.md) | Automation and weekly operations | P06 | Manual-first (D71): `nfl weekly run --auto` (calendar, lock, not-ready exit), run records, alerts, drift checks, season dashboard, Saturday injury update, runbook; scheduling deferred |
 | [P08](P08-models-v2.md) | Models v2 + advanced graph | P07 | LightGBM game model, extra targets (TD/sack/INT, coverage, team stats), GDS insights |
 | [P09](P09-llm-connection.md) | Connect a real LLM | P04 (any time after) | Real provider wired into `LLMClient`; Rishi picks the model |
 | [P10](P10-season-operations.md) | Season operations and offseason | P07 | In-season runbook, playoffs, end-of-season review, 2027 pre-season retune |
@@ -52,7 +52,7 @@ Rishi wants to stay hands-on, especially for training runs watched live in W&B. 
 Rules:
 - **Never skip a 🧑 or ✋ step silently.** A pause isn't a failure. Set the phase status to ⏸ in PROGRESS.md and say exactly what's waiting.
 - Data ingestion, scaffolding, loaders, tests and query code are 🤖 and don't need Rishi.
-- Once P07 is done, **the weekly retrain and digest run on their own**. Rishi just watches W&B.
+- Since P07 the weekly retrain and digest are **one command** (`uv run nfl weekly run --auto`, run by hand: manual-first, D71). Rishi reads the digest and watches W&B; scheduling it later only wraps that command ([runbook](../runbook.md)).
 
 ## How to pick up work (agent protocol)
 

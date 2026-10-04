@@ -35,7 +35,7 @@ Never read, open, print, `cat` / `type` / `Get-Content`, `grep` / `Select-String
 - **Codex** (used for code review via the Codex plugin) doesn't read this file or the deny rules above. It gets the same rules from `AGENTS.md` (instructions) and `.codex/config.toml` (env-var filtering). When you change this Security section, update both.
 
 ### Expected variable names (names only, no values)
-`NFL_DATA_ROOT`, `NEO4J_PASSWORD`, `WANDB_API_KEY`, and optionally `OPENROUTER_API_KEY` (digest LLM), `LLM_API_KEY`, `LLM_BASE_URL`, `ODDS_API_KEY`, `ODDS_API_KEY2` (backup), `KAGGLE_USERNAME`, `KAGGLE_KEY`, plus SMTP settings (P07). `.env.example` (created in P00) is the authoritative list.
+`NFL_DATA_ROOT`, `NEO4J_PASSWORD`, `WANDB_API_KEY`, and optionally `OPENROUTER_API_KEY` (digest LLM), `LLM_API_KEY`, `LLM_BASE_URL`, `ODDS_API_KEY`, `ODDS_API_KEY2` (backup), `KAGGLE_USERNAME`, `KAGGLE_KEY`, plus SMTP settings if a notification channel is added when scheduling is set up (deferred in P07, D71). `.env.example` (created in P00) is the authoritative list.
 
 ---
 
@@ -62,7 +62,7 @@ The goal: someone who has never seen the project can read `documentation/` and u
 
 Rules:
 - **Before closing a phase, list what it introduced** (new tech, services, data stages, W&B runs or artifacts, CLI commands, file formats) and make sure each one is explained in a guide or model card. Name the guides in the phase's end-of-run report.
-- Existing guides: `knowledge-graph.md` (Neo4j, P05), `weights-and-biases.md` (every W&B run, chart and artifact across the weekly cycle), `llm-digest-writer.md` (the digest LLM and how to switch models), `player-projections.md` (the player model, watch list and accuracy scoreboard, P06). Model cards so far: team ratings, game model v0, player model v1 (overview + QB / RB / WR/TE / defense). Expected next: a weekly-operations guide (P07: scheduling, retries, notifications), a Track 2 / Big Data Bowl guide (T00+). Keep `documentation/README.md`'s index current.
+- Existing guides: `knowledge-graph.md` (Neo4j, P05), `weights-and-biases.md` (every W&B run, chart and artifact across the weekly cycle), `llm-digest-writer.md` (the digest LLM and how to switch models), `player-projections.md` (the player model, watch list and accuracy scoreboard, P06), `weekly-operations.md` (the calendar, `--auto`, lock, run records, alerts, drift checks, season dashboard, injury update, simulations, P07). The operator's how-to is `documentation/runbook.md` (P07). Model cards so far: team ratings, game model v0, player model v1 (overview + QB / RB / WR/TE / defense). Expected next: a Track 2 / Big Data Bowl guide (T00+). Keep `documentation/README.md`'s index current.
 - New W&B runs, charts or artifacts are added to `guides/weights-and-biases.md` in the same commit that adds them.
 
 ## Working style: keep going, stop only when needed
@@ -100,8 +100,9 @@ Rules:
   | `model-experiment` | Any feature building for models, training, tuning, walk-forward backtest or evaluation; W&B logging; artifacts and promotion; model cards; 🧑 handoffs with "what to look for" notes | `.claude/skills/model-experiment/SKILL.md` |
   | `digest-checks` | Changing or debugging the weekly digest: payload, number formatting, LLM providers (placeholder / OpenRouter), prompt files, the automated checks and their false positives, the report card and season scorecard, `nfl digest` / `nfl weekly run` | `.claude/skills/digest-checks/SKILL.md` |
   | `neo4j-graph` | The Neo4j knowledge graph: schema, as-of loaders and their leakage rules, the query library, insight ranking and novelty, `nfl graph build` / `nfl graph query`, the weekly `graph` step, golden and integration tests, slow or failed builds | `.claude/skills/neo4j-graph/SKILL.md` |
+  | `weekly-ops` | Running, resuming, debugging or changing the weekly run (P07+): `nfl weekly run --auto` and exit codes, the calendar, the lock, Neo4j start-up, run records, alerts, drift checks, the season dashboard, the Saturday injury update, `--as-of` simulations, adding a pipeline step | `.claude/skills/weekly-ops/SKILL.md` |
 
-  Planned for later phases (create them at the start of that phase): `weekly-ops` (P07), `adding-a-data-source` (whenever a new source is added).
+  Planned for later phases (create them at the start of that phase): `adding-a-data-source` (whenever a new source is added).
 - **Pick up work** with the protocol in `documentation/plans/README.md`: read PROGRESS → the phase file → the docs it lists. Update PROGRESS at the end of every session.
 - **Task tags:** 🤖 the agent does it · 🧑 Rishi runs it (prepare the command and "what to look for" notes, then pause) · ✋ checkpoint (stop and ask). Never skip a 🧑 or ✋ step silently.
 - **Data lives on D:** under `NFL_DATA_ROOT` (`D:\nfl-ml-data`). Code stays on F:. All paths go through the `paths` module; no hard-coded paths; no data in git.

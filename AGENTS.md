@@ -38,7 +38,7 @@ Never read, open, print, `cat` / `type` / `Get-Content`, `grep` / `Select-String
 - Rishi's waivers for Claude's steps don't extend to you, and nothing waives this section.
 
 ### Expected variable names (names only, no values)
-`NFL_DATA_ROOT`, `NEO4J_PASSWORD`, `WANDB_API_KEY`, and optionally `OPENROUTER_API_KEY` (digest LLM), `LLM_API_KEY`, `LLM_BASE_URL`, `ODDS_API_KEY`, `ODDS_API_KEY2` (backup), `KAGGLE_USERNAME`, `KAGGLE_KEY`, plus SMTP settings (P07). `.env.example` is the authoritative list.
+`NFL_DATA_ROOT`, `NEO4J_PASSWORD`, `WANDB_API_KEY`, and optionally `OPENROUTER_API_KEY` (digest LLM), `LLM_API_KEY`, `LLM_BASE_URL`, `ODDS_API_KEY`, `ODDS_API_KEY2` (backup), `KAGGLE_USERNAME`, `KAGGLE_KEY`, plus SMTP settings if a notification channel is added when scheduling is set up (deferred in P07, D71). `.env.example` is the authoritative list.
 
 ---
 
@@ -47,7 +47,7 @@ Never read, open, print, `cat` / `type` / `Get-Content`, `grep` / `Select-String
 A personal ML system that produces a weekly NFL digest (win probabilities, predicted scores, team trends, projections for offensive and defensive players, Neo4j graph insights), plus a Big Data Bowl movement-model research track.
 
 - **Design docs:** `documentation/01`–`11` (start at `documentation/README.md`).
-- **Guides:** `documentation/guides/` (knowledge graph, W&B tracking, the LLM writer); **model cards:** `documentation/model_cards/`. A phase that adds a technology, component, W&B run or artifact must also add or update its guide (CLAUDE.md → Documentation).
+- **Guides:** `documentation/guides/` (knowledge graph, W&B tracking, the LLM writer, player projections, weekly operations); the operator's how-to is `documentation/runbook.md`; **model cards:** `documentation/model_cards/`. A phase that adds a technology, component, W&B run or artifact must also add or update its guide (CLAUDE.md → Documentation).
 - **Build plan:** `documentation/plans/README.md`. **Where work stands:** `documentation/plans/PROGRESS.md`.
 - **Decisions:** `documentation/10-decisions-log.md`.
 - **Stack:** Python managed with `uv`, package in `src/nflengine/`, tests in `tests/`, DuckDB + Parquet data, a Neo4j graph in Docker, W&B for experiment tracking. The shell is PowerShell on Windows.

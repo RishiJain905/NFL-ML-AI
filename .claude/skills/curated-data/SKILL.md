@@ -143,6 +143,13 @@ Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/particip
 - **NGS receiving separation barely predicts volume** (rank correlation with receiving yards −0.03 for WRs).
 - **Player feature table (P06):** `features/player_features.parquet` (+ DuckDB view), one row per (player, game), built by `nfl features player`; every column is as of the row's week (`features/player.py`). Model outputs: `runs/<season>/week<NN>/predictions_players.parquet` (live), `runs/backtests/player/<key>/` (walk-forward 2017–2025), `runs/<season>/accuracy_scoreboard.parquet`; schema in `models/player_schema.py`.
 
+## Quirks found in P07 (checked live 2026-10-04)
+- **`location == "Neutral"` isn't "international".** The 2024 wild-card MIN@LA was moved to Glendale by the wildfires (neutral, in the US), and the Super Bowl is always neutral. Decide "abroad" from the venue's time zone in `config/stadiums.yaml`, reading `game_venues` (by `game_id`) before the stadium name, as `ops.calendar` does.
+- **Kickoffs:** schedule `gameday` + `gametime` are US Eastern; `games.kickoff_utc` converts them (DST handled). The raw schedule has no `kickoff_utc`: `ops.calendar.with_kickoffs` adds it the same way, so the calendar works before curation.
+- **Odd 2024–2026 slates** worth testing against: Christmas 2024 on a Wednesday (week 17 deadline Wed 13:00 ET), 2024 Black Friday LV@KC, 2026 week 1 SF@LA in Melbourne on a Wednesday evening ET, 2025 week 4 Monday double-header, Saturday games in weeks 16–18. A fixture with these is `tests/fixtures/schedules_2024_2026.csv`.
+- **Same-day snapshots are overwritten in place**, so "before vs after" comparisons within a day (the Saturday injury update) must read the before state first; the raw snapshot folder only keeps the latest pull of each day.
+- **Newest week per source for freshness** (`ops.summary.freshness`): `max(week)` of `plays`, `player_games`, `snaps`, `injuries`, `depth_charts` for the season, plus `digest.under_hood.source_weeks` (NGS, PFR, FTN). PFR and FTN normally trail by a week on a Tuesday; one week behind isn't stale.
+
 ## Recipes
 
 **Open the data:**

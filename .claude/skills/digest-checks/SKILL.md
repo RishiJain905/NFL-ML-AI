@@ -103,7 +103,10 @@ Team aliases: code, nickname, full name, location (not "New York" / "Los Angeles
 - The scorecard row is for the **graded** week; `checks_passed` comes from that week's own `checks.json`.
 
 ## 9. `nfl weekly run`
-Steps `ingest → ready → curate → ratings → game → graph → digest`; state in `runs/<season>/week<NN>/weekly_run.json`; resume with `--from-step <name>`. Readiness failures exit 3. A fail-soft step raises `StepDegraded` (recorded `degraded`, the run goes on): the `graph` step does when Neo4j is down. `--llm placeholder` runs the digest step with the template writer. New phases add steps to `weekly.STEPS` / `STEP_FUNCS`.
+Steps `ingest → ready → curate → ratings → game → graph → player → digest`; state in `runs/<season>/week<NN>/weekly_run.json`; resume with `--from-step <name>`. Readiness failures exit 3. A fail-soft step raises `StepDegraded` (recorded `degraded`, the run goes on): the `graph` step does when Neo4j can't be started (since P07 it first runs `docker compose up -d` once). `--llm placeholder` runs the digest step with the template writer. New phases add steps to `weekly.STEPS` / `STEP_FUNCS`.
+- **P07 wraps the steps** (`weekly.run_pipeline`, the `weekly-ops` skill): `--auto` picks the week from the calendar and skips a published week; every run writes `run_summary.json` (its `digest` block reads this run's `checks.json` only when the digest step ran in this run), a `pipeline_history.parquet` row and the `weekly-pipeline` / `pipeline` W&B run. A digest that publishes with the ⚠️ banner raises a warn alert "digest checks failed", and the `checks` drift signal alerts when more than 20% of the last 4 digests did.
+- **Simulations** (`--as-of <past>`) run the digest as a backtest at that moment (`run_digest(mode="backtest", run_time=as_of, provider=llm or "placeholder", use_wandb=False, graph="off")`, so no graph sections and the live graph is untouched); the backtest novelty log and scorecard get those weeks, as with `nfl digest --backtest`.
+- **The Saturday addendum** (`week<NN>-injury-update.md`) is code-written, not LLM-written, so the checks don't run on it (D73).
 
 ## Improving this skill
 Add new false-positive patterns, allow-list phrases, owner rules or debugging steps here in the same commit as the fix, and note it in the `PROGRESS.md` session log. Keep it procedural; the spec stays in documentation/06.

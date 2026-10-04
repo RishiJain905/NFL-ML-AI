@@ -25,7 +25,7 @@ Track 2 (parallel, recommended after P04):  T00 Data+baselines ─► T01 GBT �
 |---|---|---|
 | P00–P04 | First live digest: win %, predicted scores, trends, under the hood, report card | Before the Week 6 or 7 slate |
 | P05–P06 | Graph insights + real player projections (offense and defense) + accuracy scoreboard | By around Week 9 |
-| P07 | Fully hands-off weekly runs | By around Week 10–11 |
+| P07 | One-command weekly runs (manual-first, D71; scheduling deferred) | Done 2026-10-04 (week 4) |
 | P08 | Better models, more targets, GDS insights | Mid-to-late season |
 | P09 | Real LLM | Whenever Rishi chooses (after P04) |
 | P10 | Playoffs, season review, 2027 prep | January onward |

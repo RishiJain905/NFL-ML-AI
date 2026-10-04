@@ -55,8 +55,15 @@ uv run nfl tune player --target rec_yds       # W&B grid sweep, scored on 2017-2
 uv run nfl train player --season 2026 --week N   # weekly refit -> runs/<season>/week<NN>/predictions_players.parquet
 uv run nfl scoreboard --season 2026 --week N     # score a played week's projections -> accuracy scoreboard
 
+uv run nfl weekly run --auto                    # THE weekly command (P07): calendar picks the week; exit 3 = not ready yet
+uv run nfl weekly run --auto --dry-run          # show the calendar plan, run nothing
+uv run nfl weekly status                        # calendar now, step states, lock, recent runs
+uv run nfl weekly injury-update --auto          # Saturday: re-pull injuries / lines, addendum only if material
+uv run nfl weekly run --auto --as-of 2025-11-04T10:00   # simulate a past week (ET; writes only backtest folders)
 uv run nfl weekly run --season 2026 --week N   # ingest -> ready -> curate -> ratings -> game -> graph -> player -> digest
 uv run nfl weekly run --season 2026 --week N --from-step digest   # resume from a failed step
+uv run nfl dashboard build --season 2026        # create / update the W&B "2026 Season Dashboard" report (P07)
+# runbook: documentation/runbook.md
 uv run nfl digest --season 2026 --week N       # payload -> LLM -> checks -> reports/<season>/week<NN>-digest.md (P04)
 uv run nfl digest --season 2025 --weeks 8-9 --backtest   # past weeks as if live on their Tuesday (P04)
 
