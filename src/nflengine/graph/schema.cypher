@@ -16,6 +16,9 @@ CREATE INDEX teamweek_team_season_week IF NOT EXISTS FOR (tw:TeamWeek) ON (tw.te
 CREATE INDEX player_pos IF NOT EXISTS FOR (p:Player) ON (p.position_group);
 CREATE INDEX player_name IF NOT EXISTS FOR (p:Player) ON (p.name);
 CREATE INDEX published_insight_id IF NOT EXISTS FOR (pi:PublishedInsight) ON (pi.insight_id);
+// Player projections (P06, `graph/projections.py`): looked up by week and by player.
+CREATE INDEX projection_season_week IF NOT EXISTS FOR (pp:PlayerProjection) ON (pp.season, pp.week);
+CREATE INDEX projection_player IF NOT EXISTS FOR (pp:PlayerProjection) ON (pp.player_id);
 CREATE INDEX played_for_season IF NOT EXISTS FOR ()-[r:PLAYED_FOR]-() ON (r.season);
 CREATE INDEX threw_to_season IF NOT EXISTS FOR ()-[r:THREW_TO]-() ON (r.season);
 CREATE INDEX depth_chart_season_week IF NOT EXISTS FOR ()-[r:DEPTH_CHART]-() ON (r.season, r.week);

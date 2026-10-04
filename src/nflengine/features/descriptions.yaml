@@ -1,0 +1,148 @@
+# Player-model feature -> readable phrase (plan P06; documentation/04 -> C. Drivers).
+# The digest shows a projection's top 3 SHAP drivers with these phrases. Phrases name the
+# thing the feature measures, without numbers or a direction: the driver's sign (pushes the
+# projection up or down) and its value come with it. Features missing here are shown with
+# their name's underscores replaced by spaces, so add a phrase for every new feature.
+
+# ---- his own recent output (the target stat) ----
+own_l1: his output in his last game
+own_l4: his average in recent games
+own_l4_season: his average in recent games this season
+own_ewm: his recent form (recent games weighted most)
+own_std: his season-to-date average
+own_ls: his average last season
+own_n_season: how many games he has played this season
+own_n_career: how many games of history he has
+own_n_ls: how many games he played last season
+
+# ---- usage ----
+use_snap_l1: his snap share in his last game
+use_snap_l2: his snap share in his last couple of games
+use_snap_l3: his snap share in recent games
+use_snap_trend: how his snap share has moved lately
+use_tgt_share_l4: his share of the team's targets lately
+use_tgt_share_std: his share of the team's targets this season
+use_air_share_l4: his share of the team's air yards lately
+use_carry_share_l4: his share of the team's carries lately
+use_carry_share_std: his share of the team's carries this season
+use_db_share_l4: his share of the team's dropbacks lately
+use_targets_l4: his targets per game lately
+use_carries_l4: his carries per game lately
+use_rec_l4: his catches per game lately
+use_dropbacks_l4: his dropbacks per game lately
+use_attempts_l4: his pass attempts per game lately
+use_def_snaps_l4: his defensive snaps per game lately
+use_off_snaps_l4: his offensive snaps per game lately
+use_rz_tgt_share_l8: his share of red-zone targets lately
+use_rz_carry_share_l8: his share of red-zone carries lately
+use_new_team: he is with a new team
+use_weeks_since_game: how long since his last game
+
+# ---- team context ----
+team_proe_l8: how pass-heavy his team is beyond what game situations call for
+team_plays_l8: how many plays his team runs per game
+team_pass_rate_l8: how often his team passes
+team_epa_play_l8: his team's offensive efficiency lately
+team_dropbacks_l8: his team's dropbacks per game
+team_rushes_l8: his team's rushes per game
+team_targets_l8: his team's targets per game
+team_off_epa: his team's offensive rating
+team_off_pass_epa: his team's passing-offense rating
+team_off_rush_epa: his team's rushing-offense rating
+team_def_epa: his team's defensive rating
+team_prior_weight: how early in the season it is (ratings still lean on last season)
+team_mkt_points: the points the betting market expects his team to score
+team_mkt_spread: the market's expected margin for his team
+team_mkt_total: the market's expected total points
+team_pred_points: the points our game model projects for his team
+team_pred_opp_points: the points our game model projects for the opponent
+team_exp_margin: the expected game script (our game model's margin)
+team_home: he plays at home
+
+# ---- ripple effects ----
+rip_vacated_tgt: targets left open by teammates who missed the last game
+rip_vacated_car: carries left open by teammates who missed the last game
+rip_out_tgt: targets left open by teammates ruled out this week
+rip_out_car: carries left open by teammates ruled out this week
+rip_qb_new: a different quarterback is expected to start
+rip_qb_tgt_share: his share of targets in games with this week's quarterback
+rip_qb_games: how many games he has played with this week's quarterback
+
+# ---- availability ----
+avail_status: his injury-report status this week
+avail_dnp: he missed practice this week
+avail_limited: he was limited in practice this week
+avail_listed: he is on this week's injury report
+avail_missed_l3: games he missed among his team's last few
+avail_missed_last: he missed his team's last game
+
+# ---- position flags ----
+pos_te: he is a tight end
+pos_lb: he is a linebacker
+pos_s: he is a safety
+week: the week of the season
+
+# ---- efficiency ----
+eff_yds_per_tgt_l8: his yards per target lately
+eff_catch_rate_l8: his catch rate lately
+eff_epa_per_tgt_l8: his EPA per target lately
+eff_yac_per_rec_l8: his yards after the catch lately
+eff_adot_l8: how far downfield he is targeted
+eff_separation_l4: how much separation he gets (Next Gen Stats)
+eff_cushion_l4: how much cushion defenders give him (Next Gen Stats)
+eff_yac_oe_l4: his yards after the catch beyond expectation (Next Gen Stats)
+eff_drop_rate_l8: his drop rate
+eff_broken_tackle_rate_l8: how often he breaks tackles
+eff_yds_after_contact_per_att_l8: his yards after contact per carry
+eff_yds_per_carry_l8: his yards per carry lately
+eff_epa_per_carry_l8: his EPA per carry lately
+eff_ryoe_per_att_l4: his rushing yards over expected per carry (Next Gen Stats)
+eff_rush_efficiency_l4: how directly he runs (Next Gen Stats)
+eff_stacked_box_pct_l4: how often he faces stacked boxes
+eff_ypa_l8: his yards per pass attempt lately
+eff_epa_per_db_l8: his EPA per dropback lately
+eff_cpoe_l8: his completion rate above expected
+eff_sack_rate_l8: how often he is sacked
+eff_time_to_throw_l4: how long he holds the ball (Next Gen Stats)
+eff_aggressiveness_l4: how often he throws into tight windows (Next Gen Stats)
+eff_cpoe_ngs_l4: his completion rate above expected (Next Gen Stats)
+eff_bad_throw_pct_l8: his bad-throw rate
+eff_pressured_pct_l8: how often he is pressured
+eff_play_action_rate_l8: how often his team uses play action
+eff_blitz_faced_rate_l8: how often he faces a blitz
+eff_tackles_per_snap_l8: his tackles per snap lately
+eff_sacks_tfl_per_game_l8: his sacks and tackles for loss per game
+eff_pressures_per_snap_l8: his pressures per snap lately
+eff_hurries_per_snap_l8: his hurries per snap lately
+eff_qb_hits_per_snap_l8: his QB hits per snap lately
+eff_missed_tackle_pct_l8: his missed-tackle rate
+
+# ---- opponent ----
+opp_rec_yds_allowed_wr_l8: receiving yards the opponent allows to wide receivers
+opp_rec_yds_allowed_wr_oe_l8: receiving yards the opponent allows to wide receivers, beyond what those offenses usually gain
+opp_targets_allowed_wr_oe_l8: targets the opponent allows to wide receivers, beyond normal
+opp_rec_yds_allowed_te_l8: receiving yards the opponent allows to tight ends
+opp_rec_yds_allowed_te_oe_l8: receiving yards the opponent allows to tight ends, beyond what those offenses usually gain
+opp_targets_allowed_te_oe_l8: targets the opponent allows to tight ends, beyond normal
+opp_rec_yds_allowed_rb_oe_l8: receiving yards the opponent allows to running backs, beyond normal
+opp_targets_allowed_rb_oe_l8: targets the opponent allows to running backs, beyond normal
+opp_rush_yds_allowed_rb_l8: rushing yards the opponent allows to running backs
+opp_rush_yds_allowed_rb_oe_l8: rushing yards the opponent allows to running backs, beyond what those offenses usually gain
+opp_carries_allowed_rb_oe_l8: carries the opponent allows to running backs, beyond normal
+opp_pass_yds_allowed_qb_l8: passing yards the opponent allows
+opp_pass_yds_allowed_qb_oe_l8: passing yards the opponent allows, beyond what those quarterbacks usually gain
+opp_pass_epa_allowed_qb_oe_l8: passing EPA the opponent allows, beyond normal
+opp_def_sack_rate_l8: how often the opponent's defense gets sacks
+opp_def_pressure_rate_l8: how often the opponent's defense pressures the quarterback
+opp_def_blitz_rate_l8: how often the opponent blitzes
+opp_def_blitz_rate_ftn_l8: how often the opponent blitzes (charting data)
+opp_off_sack_rate_l8: how often the opponent's quarterbacks get sacked
+opp_off_pass_rate_l8: how often the opponent passes
+opp_off_rush_rate_l8: how often the opponent runs
+opp_off_plays_per_game_l8: how many plays the opponent runs per game
+opp_off_pressure_rate_l8: how often the opponent's quarterbacks are pressured
+opp_def_pass_epa: the opponent's pass-defense rating
+opp_def_rush_epa: the opponent's run-defense rating
+opp_off_epa: the opponent's offensive rating
+opp_off_pass_epa: the opponent's passing-offense rating
+opp_off_rush_epa: the opponent's rushing-offense rating

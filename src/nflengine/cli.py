@@ -444,6 +444,146 @@ def train_game(
     console.print(f"W&B: {out['url']}  aliases {out['aliases']}")
 
 
+# ---- player model (P06) ----------------------------------------------------------------------
+
+PLAYER_SEASONS_OPT = typer.Option("2019-2025", help="Reported walk-forward seasons.")
+TARGET_OPT = typer.Option(
+    ...,
+    help="Target name (rec_yds, receptions ...), key (receptions-rb) or `all`; "
+    "see models/player_schema.py TARGETS.",
+)
+GROUP_OPT = typer.Option(None, help="Only this position group (QB, RB, WR/TE, EDGE/DL, LB/S).")
+
+
+@features_app.command("player")
+def features_player() -> None:
+    """Build features/player_features.parquet (one row per player-game, as of its week)."""
+    from nflengine.models.player_runs import build_player_data, write_feature_table
+
+    data = build_player_data(log=console.print)
+    out = write_feature_table(data.feats)
+    console.print(
+        f"[green]player features: {data.feats.height:,} rows x {len(data.feats.columns)} "
+        f"columns -> {out}[/]"
+    )
+
+
+@backtest_app.command("player")
+def backtest_player(
+    target: str = TARGET_OPT,
+    group: str | None = GROUP_OPT,
+    seasons: str = PLAYER_SEASONS_OPT,
+    threads: int | None = typer.Option(None, help="LightGBM threads per fit (default 4)."),
+    save: bool = typer.Option(True, help="Save predictions + scoreboard rows on D:."),
+    smoke: bool = typer.Option(False, "--smoke", help="Tag the run `smoke` and don't save."),
+    no_market: bool = typer.Option(
+        False, "--no-market", help="Research variant without the closing-line features."
+    ),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Walk-forward backtest of player targets vs the rolling baseline (live W&B curves)."""
+    from nflengine.models.player_runs import load_saved_data, run_backtest
+    from nflengine.models.player_schema import get_target
+
+    data = load_saved_data(log=console.print)
+    reported = _parse_seasons(seasons) or [2019, 2025]
+    table = Table(title="player backtests (reported seasons, pooled)")
+    for col in ("model", "n", "MAE model", "MAE baseline", "improvement", "80% range"):
+        table.add_column(col)
+    for t in get_target(target, group):
+        res = run_backtest(
+            t,
+            data,
+            reported,
+            launched_by,
+            log=console.print,
+            save=save and not smoke,
+            tags=(["smoke"] if smoke else []) + (["no-market"] if no_market else []),
+            num_threads=threads,
+            no_market=no_market,
+        )
+        s = res.summary
+        table.add_row(
+            t.key,
+            f"{int(s.get('n_scored', 0)):,}",
+            f"{s.get('mae_model', float('nan')):.3f}",
+            f"{s.get('mae_baseline', float('nan')):.3f}",
+            f"{s.get('improvement_pct', float('nan')):+.1f}%",
+            f"{100 * s.get('coverage_80', float('nan')):.0f}%",
+        )
+        console.print(f"{t.key}: W&B {res.url}; saved -> {res.saved_to}")
+    console.print(table)
+
+
+tune_app = typer.Typer(
+    help="Hyperparameter sweeps (P06+).", no_args_is_help=True, pretty_exceptions_show_locals=False
+)
+app.add_typer(tune_app, name="tune")
+
+
+@tune_app.command("player")
+def tune_player(
+    target: str = TARGET_OPT,
+    group: str | None = GROUP_OPT,
+    threads: int | None = typer.Option(None, help="LightGBM threads per fit."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """W&B grid sweep over the tree settings, scored on a 2017-2018 walk-forward."""
+    from nflengine.models.player_runs import load_saved_data, run_tune
+    from nflengine.models.player_schema import get_target
+
+    data = load_saved_data(log=console.print)
+    for t in get_target(target, group):
+        df = run_tune(t, data, launched_by=launched_by, log=console.print, num_threads=threads)
+        console.print(df.head(5))
+
+
+@train_app.command("player")
+def train_player(
+    season: int = typer.Option(..., help="Season to predict."),
+    week: int | None = typer.Option(None, help="Week to predict (default: the next one)."),
+    promote: bool = typer.Option(
+        False, "--promote", help="Also give the W&B artifact the `production` alias."
+    ),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Refit every player target through week N-1, project week N, save
+    predictions_players.parquet."""
+    from nflengine.models.player_runs import run_train
+
+    out = run_train(season, week, launched_by, promote=promote, log=console.print)
+    t = out["table"].filter(out["table"]["is_main"]).sort("outperf_z", descending=True)
+    table = Table(title=f"{season} week {week}: biggest projected jumps (main stat per group)")
+    for col in ("player", "team", "vs", "stat", "projection", "80% range", "baseline", "conf"):
+        table.add_column(col)
+    for r in t.head(15).iter_rows(named=True):
+        table.add_row(
+            r["player"] or r["player_id"],
+            r["team"],
+            r["opponent"],
+            r["target_label"],
+            f"{r['p50']:.1f}" if r["kind"] == "amount" else f"{r['mean']:.1f}",
+            f"{r['p10']:.0f}-{r['p90']:.0f}",
+            f"{r['baseline']:.1f}" if r["baseline"] is not None else "?",
+            r["confidence"],
+        )
+    console.print(table)
+    console.print(f"W&B: {out['url']}  aliases {out['aliases']}")
+
+
+@app.command()
+def scoreboard(
+    season: int = typer.Option(..., help="Season."),
+    week: int = typer.Option(..., help="The played week whose projections to score."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Score a played week's saved player projections and update the accuracy scoreboard."""
+    from nflengine.models.player_runs import score_week
+
+    board = score_week(season, week, launched_by, log=console.print)
+    console.print(board.filter(board["week"] == week))
+
+
 # ---- digest + weekly pipeline (P04) ----------------------------------------------------------
 
 
@@ -515,17 +655,20 @@ def weekly_run(
     week: int = typer.Option(..., help="The week to preview (week N; week N-1 must be done)."),
     from_step: str | None = typer.Option(
         None,
-        help="Resume from this step: ingest | ready | curate | ratings | game | graph | digest.",
+        help="Resume from: ingest | ready | curate | ratings | game | graph | player | digest.",
     ),
     promote: bool = typer.Option(
-        False, "--promote", help="Give this week's game-model artifact the `production` alias."
+        False,
+        "--promote",
+        help="Give this week's game-model and player-model artifacts the `production` alias.",
     ),
     llm: str | None = typer.Option(
         None, "--llm", help="Override llm.provider for the digest step (e.g. placeholder)."
     ),
     launched_by: str | None = LAUNCHED_BY,
 ) -> None:
-    """ingest -> readiness -> curate -> ratings -> game model -> graph -> digest (resumable)."""
+    """ingest -> readiness -> curate -> ratings -> game -> graph -> player -> digest
+    (resumable)."""
     from nflengine.weekly import StepFailed, WeeklyOptions, run_weekly, state_path
 
     opts = WeeklyOptions(season, week, launched_by=launched_by, promote=promote, llm=llm)

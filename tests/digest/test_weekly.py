@@ -45,7 +45,7 @@ def test_failure_stops_and_resume_skips_done_steps(tmp_path: Path) -> None:
 
     calls.clear()
     run_weekly(WeeklyOptions(2026, 5), from_step="ratings", funcs=fake_steps(calls), state_file=sf)
-    assert calls == ["ratings", "game", "graph", "digest"]
+    assert calls == ["ratings", "game", "graph", "player", "digest"]
     assert json.loads(sf.read_text())["steps"]["ratings"]["status"] == "ok"
 
 
@@ -78,7 +78,8 @@ def test_graph_step_is_fail_soft(tmp_path: Path) -> None:
     assert state["steps"]["graph"]["status"] == "degraded"
     assert "Neo4j unreachable" in state["steps"]["graph"]["detail"]
     assert state["steps"]["digest"]["status"] == "ok"
-    assert STEPS.index("game") < STEPS.index("graph") < STEPS.index("digest")
+    assert STEPS.index("game") < STEPS.index("graph") < STEPS.index("player")
+    assert STEPS.index("player") < STEPS.index("digest")
 
 
 def test_cli_weekly_and_digest_wiring(monkeypatch) -> None:

@@ -18,6 +18,12 @@ Each run folder keeps `payload.json`, `raw_llm_output.json`, `checks.json`, `dig
 Graph sections (P05): `digest/graph_sections.py` reads (or builds, fail-soft) the week's
 `graph_results.json`; the picks fill *Matchup / risk to watch* and *Non-obvious insights*
 and are added to the published-insight log after the digest is written.
+
+Players to watch (P06): from the week's `predictions_players.parquet` (live: the weekly
+`player` step; backtest: materialized from `runs/backtests/player/<target>/`, earlier weeks'
+watch lists rebuilt from their projections when missing) through `digest/players.py`; the
+P04 heuristic is the fallback when a week has no projections. The report card adds last
+week's look-back and the accuracy-scoreboard highlights.
 """
 
 from __future__ import annotations
@@ -44,6 +50,15 @@ from nflengine.digest.graph_sections import (
 from nflengine.digest.llm import get_llm
 from nflengine.digest.llm.base import LLMClient
 from nflengine.digest.payload import Meta, Payload
+from nflengine.digest.players import (
+    HEURISTIC_VERSION,
+    PLAYER_PRED_FILE,
+    PlayerWatch,
+    WatchScorer,
+    player_watch,
+    read_scoreboards,
+    stamp_model_watch,
+)
 from nflengine.digest.prompt import load_prompt
 from nflengine.digest.render import FooterInfo, render_digest
 from nflengine.digest.report_card import (
@@ -54,6 +69,7 @@ from nflengine.digest.report_card import (
     week_dir,
 )
 from nflengine.digest.synthesize import Synthesis, synthesize
+from nflengine.models.player_watch import select_watchlist
 from nflengine.paths import DataPaths, ensure_data_root
 from nflengine.settings import get_config, load_followed_teams
 
@@ -198,6 +214,61 @@ def materialize_backtest_predictions(
     return written
 
 
+def _model_watch_saved(path: Path) -> bool:
+    if not path.exists():
+        return False
+    df = pl.read_parquet(path)
+    return "source" in df.columns and bool((df["source"] == "model").any())
+
+
+def materialize_backtest_player_predictions(
+    ctx: DigestContext,
+    games: pl.DataFrame,
+    *,
+    n_items: int = 8,
+    followed: list[str] | tuple[str, ...] = (),
+) -> list[Path]:
+    """Write `predictions_players.parquet` for weeks 1..N of the backtest season from the
+    walk-forward player backtests (`runs/backtests/player/<target>/`, main targets only),
+    with `actual` / `played` blanked: on that Tuesday nobody knew them. An earlier week's
+    `watchlist.parquet` is (re)built from its projections when it's missing or heuristic,
+    stamped with that week's Tuesday, so the report card's look-back grades model picks
+    exactly as it does live. An earlier week's copy older than the walk-forward files (the
+    backtests were re-run, e.g. after tuning) is rewritten and its list rebuilt, so a
+    look-back never grades picks from superseded projections. [] when there are no player
+    backtests (heuristic fallback)."""
+    from nflengine.models.player_schema import TARGETS, conform
+
+    base = ctx.paths.runs / "backtests" / "player"
+    files = [p for t in TARGETS if t.main and (p := base / t.key / PLAYER_PRED_FILE).exists()]
+    if not files:
+        return []
+    upto = (pl.col("season") == ctx.season) & (pl.col("week") <= ctx.week)
+    preds = pl.concat(
+        [conform(pl.scan_parquet(f).filter(upto).collect()) for f in files], how="vertical"
+    ).with_columns(
+        pl.lit(None, pl.Float64).alias("actual"), pl.lit(None, pl.Boolean).alias("played")
+    )
+    source_time = max(f.stat().st_mtime for f in files)
+    written = []
+    for w in range(1, ctx.week + 1):
+        wk = preds.filter(pl.col("week") == w)
+        if wk.is_empty():
+            continue
+        folder = week_dir(ctx.run_root, ctx.season, w)
+        folder.mkdir(parents=True, exist_ok=True)
+        out = folder / PLAYER_PRED_FILE
+        stale = not out.exists() or out.stat().st_mtime < source_time
+        if w == ctx.week or stale:
+            wk.write_parquet(out, compression="zstd")
+            written.append(out)
+        if w < ctx.week and (stale or not _model_watch_saved(folder / WATCH_FILE)):
+            stamp = tuesday_before(games, ctx.season, w)
+            picks = select_watchlist(wk, n_items, followed=followed, run_time=stamp)
+            stamp_model_watch(picks, stamp).write_parquet(folder / WATCH_FILE)
+    return written
+
+
 # ---- inputs -----------------------------------------------------------------------------------
 
 
@@ -272,6 +343,57 @@ class Built:
     preds: pl.DataFrame
 
 
+REFIT_FAILED_VERSION = "heuristic-v0 (the player model's refit failed this week)"
+
+
+def heuristic_watch(
+    ctx: DigestContext,
+    games: pl.DataFrame,
+    followed: list[str],
+    n_items: int,
+    version: str = HEURISTIC_VERSION,
+) -> PlayerWatch:
+    """The P04 heuristic list (no usable player projections this week), labelled
+    `heuristic`; `version` says why in the footer."""
+    from nflengine.digest.watchlist import placeholder_watchlist
+
+    watch = placeholder_watchlist(
+        ctx.season,
+        ctx.week,
+        ctx.paths,
+        n_items=n_items,
+        followed=followed,
+        injury_week=ctx.week if ctx.mode == "live" else None,
+    )
+    watch = stamp_watch(watch, games, ctx.run_time)
+    # only picks whose game hasn't started: a Saturday run must not "predict" Thursday
+    watch = watch.filter(pl.col("kickoff_utc").is_null() | (pl.col("kickoff_utc") > ctx.run_time))
+    return PlayerWatch(watch, build.build_watch(watch), [], version)
+
+
+def choose_watch(
+    ctx: DigestContext,
+    games: pl.DataFrame,
+    followed: list[str],
+    n_items: int,
+    log: Callable[[str], None] = print,
+    heuristic: Callable[..., PlayerWatch] = heuristic_watch,
+) -> PlayerWatch:
+    """Model picks from the week's projections; the heuristic when the latest refit failed
+    (`player_status.json` = degraded: an older projection file must not be used) or there
+    are no projections, with a version string that says which."""
+    from nflengine.models.player_schema import read_status
+
+    if read_status(ctx.run_dir) == "degraded":
+        log("[yellow]the player model's refit failed this week: heuristic watch list[/]")
+        return heuristic(ctx, games, followed, n_items, version=REFIT_FAILED_VERSION)
+    pw = player_watch(ctx.run_dir, ctx.run_time, n_items=n_items, followed=followed)
+    if pw is None:
+        log("[yellow]no player projections for this week: heuristic watch list[/]")
+        return heuristic(ctx, games, followed, n_items)
+    return pw
+
+
 def build_payload(
     ctx: DigestContext,
     games: pl.DataFrame,
@@ -279,7 +401,6 @@ def build_payload(
     graph: GraphState | None = None,
 ) -> Built:
     from nflengine.digest.under_hood import select_under_hood
-    from nflengine.digest.watchlist import placeholder_watchlist, score_watchlist
 
     s, w, paths = ctx.season, ctx.week, ctx.paths
     followed = load_followed_teams()
@@ -295,30 +416,25 @@ def build_payload(
     prev_passed = (
         json.loads(prev_checks.read_text()).get("passed") if prev_checks.exists() else None
     )
+    live_sb, backtest_sb = read_scoreboards(paths, s)
     report = build_report_card(
         ctx.run_root,
         s,
         w,
         games,
-        score_watch=lambda df: score_watchlist(df, paths),
+        score_watch=WatchScorer(paths),
         checks_passed=prev_passed,
+        scoreboard=live_sb,
+        backtest_scoreboard=backtest_sb,
+        mode=ctx.mode,
     )
     game_items = build.build_games(preds, ctx.run_time)
     trends = build.build_trends(
         _feature(paths, "team_trends", s, w), _feature(paths, "team_trend_drivers", s, w), followed
     )
     uh = select_under_hood(s, w, paths, followed=followed)
-    watch = placeholder_watchlist(
-        s,
-        w,
-        paths,
-        n_items=int(get_config().digest.get("watchlist_size") or 8),
-        followed=followed,
-        injury_week=w if ctx.mode == "live" else None,
-    )
-    watch = stamp_watch(watch, games, ctx.run_time)
-    # only picks whose game hasn't started: a Saturday run must not "predict" Thursday
-    watch = watch.filter(pl.col("kickoff_utc").is_null() | (pl.col("kickoff_utc") > ctx.run_time))
+    n_items = int(get_config().digest.get("watchlist_size") or 8)
+    pw = choose_watch(ctx, games, followed, n_items, log)
     upcoming = [g for g in game_items if g.status == "upcoming"]
     started = [g.matchup for g in game_items if g.status == "started"]
     teams = {g.home for g in game_items} | {g.away for g in game_items}
@@ -345,7 +461,7 @@ def build_payload(
         market_data_used=bool((primary["variant"] == "market").any()),
         model_versions={
             "game model": str(primary["model_version"][0]) if primary.height else "n/a",
-            "players to watch": "heuristic-v0 (until P06)",
+            "players to watch": pw.version,
         },
         sources=_sources(ctx, log),
         followed_teams=followed,
@@ -361,14 +477,15 @@ def build_payload(
         game_highlights=build.build_highlights(upcoming),
         team_trends=trends,
         under_the_hood=build.build_under_hood(uh),
-        players_to_watch=build.build_watch(watch),
+        players_to_watch=pw.items,
+        tough_spots=pw.tough,
         graph_insights=graph.picked,
         qb_changes=graph.qb_changes,
         starters_out=graph.starters_out,
         graph_more=graph.more,
         news=news,
     )
-    return Built(payload, report, watch, preds)
+    return Built(payload, report, pw.frame, preds)
 
 
 def fixed_sections(payload: Payload) -> dict[str, str]:
@@ -472,6 +589,13 @@ def run_digest(
     if mode == "backtest":
         written = materialize_backtest_predictions(ctx, games)
         log(f"backtest predictions ready ({len(written)} week files written)")
+        player_files = materialize_backtest_player_predictions(
+            ctx,
+            games,
+            n_items=int(get_config().digest.get("watchlist_size") or 8),
+            followed=load_followed_teams(),
+        )
+        log(f"backtest player projections: {len(player_files)} week files written")
     state = graph_state(
         ctx,
         games,
@@ -674,6 +798,8 @@ def log_digest_run(
             "team_trends": len(payload.team_trends),
             "under_the_hood_items": len(payload.under_the_hood),
             "watchlist_items": len(payload.players_to_watch),
+            "watchlist_model": payload.meta.model_versions.get("players to watch", ""),
+            "tough_spots": len(payload.tough_spots),
             "news_items": len(payload.news),
             "words_total": sum(final.word_counts.values()),
             "report_card_status": payload.report_card.status,

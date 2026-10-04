@@ -11,6 +11,9 @@ details; documentation/08 -> Season scorecard).
   never quotes market numbers). Points error = mean absolute error of each team's score.
 - Season to date: every saved week of the season before the digest week, plus calibration
   buckets on the favorite's probability.
+- Player projections (P06): last week's watch-list picks projected vs actual vs range
+  (`watch_lookback`), 2-3 accuracy-scoreboard highlights (`scoreboard_highlights`, always
+  one weak spot) and the scorecard's `player_mae_vs_baseline` (see `digest/players.py`).
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ from nflengine.digest.payload import (
     ReportCard,
     SeasonToDate,
 )
+from nflengine.digest.players import scoreboard_highlights, watch_lookback, week_improvement
 from nflengine.models import metrics as M
 
 PRED_FILE = "predictions_games.parquet"
@@ -201,16 +205,32 @@ def build_report_card(
     games: pl.DataFrame,
     score_watch=None,
     checks_passed: bool | None = None,
+    *,
+    scoreboard: pl.DataFrame | None = None,
+    backtest_scoreboard: pl.DataFrame | None = None,
+    mode: str = "live",
 ) -> ReportCardResult:
     """The report card for the digest of (season, week): grades week - 1.
 
-    `score_watch(df) -> df` adds `played` / `hit` to a saved watch list (from
-    `digest.watchlist.score_watchlist`); injected so tests can run without the data drive.
+    `score_watch(df) -> df` adds `played` / `hit` (and `inside` for model picks) to a saved
+    watch list (`digest.players.WatchScorer`); injected so tests can run without the data
+    drive. `scoreboard` (the live season's accuracy scoreboard) and `backtest_scoreboard`
+    feed the player-projection highlights (P06; `players.scoreboard_highlights`) and the
+    scorecard's `player_mae_vs_baseline`; without either, the card has no highlights.
     """
+    highlights = (
+        scoreboard_highlights(scoreboard, backtest_scoreboard, season, week, mode)
+        if scoreboard is not None or backtest_scoreboard is not None
+        else []
+    )
     prev = week - 1
     if prev < 1:
         return ReportCardResult(
-            ReportCard(status="first_week", note="week 1 has no earlier week to grade.")
+            ReportCard(
+                status="first_week",
+                note="week 1 has no earlier week to grade.",
+                scoreboard_highlights=highlights,
+            )
         )
     preds = load_saved(run_root, season, [prev], PRED_FILE)
     graded = grade_games(preds, games) if preds.height else preds
@@ -231,15 +251,21 @@ def build_report_card(
                 note=f"{why}; next week's report card grades this week's picks.",
                 calibration=calib,
                 season_to_date=std,
+                scoreboard_highlights=highlights,
             )
         )
     wm = week_metrics(graded)
     watch = pre_kickoff(load_saved(run_root, season, [prev], WATCH_FILE))
     watch_scored = score_watch(watch) if (score_watch and watch.height) else pl.DataFrame()
-    w_hits = w_total = None
+    w_hits = w_total = w_inside = w_ranged = None
     if watch_scored.height:
         played = watch_scored.filter(pl.col("played"))
         w_total, w_hits = played.height, int(played["hit"].sum())
+        if "inside" in played.columns:
+            ranged = played.filter(pl.col("inside").is_not_null())
+            w_ranged, w_inside = ranged.height, int(ranged["inside"].sum())
+    lookback = watch_lookback(watch_scored) if "player" in watch_scored.columns else []
+    sb = scoreboard if mode == "live" else backtest_scoreboard
 
     card = ReportCard(
         status="scored",
@@ -256,6 +282,10 @@ def build_report_card(
         not_graded=int(graded.height - n_graded),
         calibration=calib,
         season_to_date=std,
+        scoreboard_highlights=highlights,
+        watch_lookback=lookback,
+        # only when every scored pick had a range (a mixed heuristic week shows none)
+        watchlist_inside=F.count(w_inside) if w_ranged and w_ranged == w_total else None,
     )
     row = {
         "season": season,
@@ -267,7 +297,7 @@ def build_report_card(
         "points_mae": wm["points_mae"],
         "watchlist_hits": w_hits,
         "watchlist_total": w_total,
-        "player_mae_vs_baseline": None,  # player models arrive in P06
+        "player_mae_vs_baseline": week_improvement(sb, season, prev, mode),
         "checks_passed": checks_passed,
         "not_graded": card.not_graded,
     }

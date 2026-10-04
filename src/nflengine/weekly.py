@@ -10,6 +10,7 @@ Named, idempotent steps, in order:
 | ratings | team ratings, Elo, trends (`nfl ratings build`) |
 | game | refit + predict week N (`nfl train game`) |
 | graph | rebuild the Neo4j graph + query library (`nfl graph build`); fail-soft (P05) |
+| player | score week N-1 (`nfl scoreboard`), project week N (`nfl train player`), graph |
 | digest | payload -> LLM -> checks -> render (`nfl digest`) |
 
 Ingest comes before the readiness check because the check reads the newest raw snapshots
@@ -17,7 +18,8 @@ Ingest comes before the readiness check because the check reads the newest raw s
 `runs/<season>/week<NN>/weekly_run.json`; `--from-step <name>` resumes from a failed step.
 A fail-soft step that can't do its job raises `StepDegraded`: it is recorded as `degraded`
 and the run goes on (the graph: Neo4j down -> the digest goes out without its graph
-sections, with a banner). P06 (players) adds its step to `STEPS`.
+sections, with a banner; the player model: a failed refit -> the digest's watch list falls
+back to the labelled P04 heuristic).
 """
 
 from __future__ import annotations
@@ -31,7 +33,7 @@ from typing import Any
 
 from nflengine.paths import ensure_data_root
 
-STEPS = ("ingest", "ready", "curate", "ratings", "game", "graph", "digest")
+STEPS = ("ingest", "ready", "curate", "ratings", "game", "graph", "player", "digest")
 
 
 class StepFailed(RuntimeError):
@@ -114,6 +116,43 @@ def _graph(o: WeeklyOptions, log: Callable[[str], None]) -> str:
     return f"{res.summary}; W&B {res.url}"
 
 
+def _player(o: WeeklyOptions, log: Callable[[str], None]) -> str:
+    """Score the season's saved projections (every earlier week: PFR pressures arrive a
+    week late), refit + project week N, write the projections into the graph. Scoring and
+    the graph write never stop the step; a failed refit degrades it and records it in
+    `player_status.json`, so the digest uses the labelled heuristic watch list instead of
+    an older projection file (Sol review)."""
+    from nflengine.models.player_runs import run_train, score_weeks
+    from nflengine.models.player_schema import write_status
+    from nflengine.paths import ensure_data_root
+
+    notes: list[str] = []
+    if o.week > 1:
+        try:
+            board = score_weeks(o.season, range(1, o.week), o.launched_by, log=log)
+            live = board.filter(board["mode"] == "live").height
+            notes.append(f"scoreboard: {live} live rows through week {o.week - 1}")
+        except Exception as e:  # scoring is bookkeeping: never block the projections
+            notes.append(f"scoreboard skipped ({type(e).__name__})")
+            log(f"[yellow]scoreboard skipped: {type(e).__name__}: {e}[/]")
+    try:
+        out = run_train(o.season, o.week, o.launched_by, promote=o.promote, log=log)
+    except Exception as e:
+        write_status(ensure_data_root().run_dir(o.season, o.week), "degraded", type(e).__name__)
+        raise StepDegraded(
+            "player", f"{type(e).__name__}: {e}; the digest uses the heuristic watch list"
+        ) from e
+    notes.append(f"{out['table'].height} projections -> {out['predictions']}; W&B {out['url']}")
+    try:
+        from nflengine.graph.projections import write_projections
+
+        res = write_projections(out["table"], log=log)
+        notes.append(f"graph: {getattr(res, 'summary', res)}")
+    except Exception as e:  # the graph is optional (P05 fail-soft rule)
+        notes.append(f"graph write skipped ({type(e).__name__})")
+    return "; ".join(notes)
+
+
 def _digest(o: WeeklyOptions, log: Callable[[str], None]) -> str:
     from nflengine.digest.run import run_digest
 
@@ -131,6 +170,7 @@ STEP_FUNCS: dict[str, Callable[[WeeklyOptions, Callable[[str], None]], str]] = {
     "ratings": _ratings,
     "game": _game,
     "graph": _graph,
+    "player": _player,
     "digest": _digest,
 }
 

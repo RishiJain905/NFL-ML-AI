@@ -518,18 +518,26 @@ def check_meaning(
     return CheckResult("meaning", FAIL, not issues, issues)
 
 
+_BANNED_RE = re.compile(
+    rf"(?<![A-Za-z0-9])(?:{'|'.join(BANNED_PATTERNS)})(?![A-Za-z0-9])", re.IGNORECASE
+)
+_BANNED_ALLOW_RE = _phrase_re(BANNED_ALLOW)
+
+
+def banned_terms(text: str) -> list[str]:
+    """Banned betting / fantasy words in a text (allowed football phrases masked first).
+    Also used to keep code-made phrases (model drivers) out of trouble."""
+    return [m.group(0) for m in _BANNED_RE.finditer(_mask(text, _BANNED_ALLOW_RE))]
+
+
 def check_banned(sections: dict[str, str]) -> CheckResult:
     """Banned words match on letter boundaries, so hyphenated compounds ("must-bet",
     "betting-lock") are caught; allowed football phrases are masked first."""
-    banned = re.compile(
-        rf"(?<![A-Za-z0-9])(?:{'|'.join(BANNED_PATTERNS)})(?![A-Za-z0-9])", re.IGNORECASE
-    )  # fmt: skip
-    allow = _phrase_re(BANNED_ALLOW)
     issues = [
-        Issue(sec, m.group(0), "banned betting / fantasy language", s)
+        Issue(sec, term, "banned betting / fantasy language", s)
         for sec, text in sections.items()
         for s in sentences(text)
-        for m in banned.finditer(_mask(s, allow))
+        for term in banned_terms(s)
     ]
     return CheckResult("banned_language", FAIL, not issues, issues)
 

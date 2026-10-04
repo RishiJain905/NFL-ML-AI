@@ -124,6 +124,8 @@ class PlaceholderLLM:
                 f"The watch list went {rc['watchlist_hits']['display']} of "
                 f"{rc['watchlist_total']['display']} above baseline."
             )
+        for h in (rc.get("scoreboard_highlights") or [])[:1]:
+            opt.append(f"Player projections: {h}.")
         cal = sorted(rc.get("calibration", []), key=lambda b: -b["games"]["value"])
         if cal:
             b = cal[0]
@@ -248,6 +250,8 @@ class PlaceholderLLM:
         if not items:
             return "No watch list this week: there isn't enough recent usage data yet."
         short = _short_names(p)
+        if any(w.get("source") == "model" for w in items):
+            return _model_watch(items, short, budget)
         main: list[str] = []
         for w in items:
             rank_note = f"the {w['opp_def_rank']['display']}"
@@ -269,6 +273,31 @@ class PlaceholderLLM:
             return _graph_items(items, budget)
 
         return write
+
+
+def _model_watch(items: list[dict[str, Any]], short: dict[str, str], budget: int | None) -> str:
+    """Model picks (P06): projection vs baseline and range in one sentence per player (with
+    "low confidence" in it when flagged), then each kept pick's top driver while room
+    remains. At least 4 picks."""
+    main: list[str] = []
+    notes: list[str] = []
+    for w in items:
+        hedge = ", low confidence" if w.get("confidence") == "low" else ""
+        main.append(
+            f"{w['player']} ({w['team_name']} {w['position']}) vs the {w['opponent_name']}: "
+            f"the model projects {w['projection']['display']}, "
+            f"{w['vs_baseline']['display']} of {w['baseline']['display']} "
+            f"(range {w['interval']['display']}{hedge})."
+        )
+        drivers = w.get("drivers") or []
+        name = short[w["player_id"]]
+        note = [f"The main driver for {name}: {drivers[0]}."] if drivers else []
+        if not drivers and w.get("driver_note"):
+            note.append(f"For {name}, {w['driver_note']}.")
+        if w.get("baseline_note"):
+            note.append(f"For {name}, {w['baseline_note']}.")
+        notes.append(" ".join(note))
+    return _fit_items(main, notes, budget, minimum=4)
 
 
 def _sentence(text: str) -> str:

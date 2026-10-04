@@ -105,6 +105,7 @@ def walk_forward(
     weights: SampleWeights | None = None,
     min_train_rows: int = 1,
     on_week: Callable[[AsOf, pl.DataFrame], None] | None = None,
+    history: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """Predict every key's week with a model trained only on earlier weeks.
 
@@ -113,13 +114,16 @@ def walk_forward(
     still predicted when they fall in a key's week. Keys whose week has no rows, or whose
     training set has fewer than `min_train_rows` rows, are skipped. Returns the
     concatenated predictions (whatever columns the model returns) in key order.
+
+    `history` seeds the walk-forward history with earlier predictions of the same model
+    (P06: a weekly refit continues from the saved backtest); it must lie before every key.
     """
     labels = [label] if isinstance(label, str) else list(label)
     weights = weights or SampleWeights()
     has_label = pl.all_horizontal(pl.col(c).is_not_null() for c in labels)
     frame = frame.sort("season", "week")
     preds: list[pl.DataFrame] = []
-    history = pl.DataFrame()
+    history = history if history is not None else pl.DataFrame()
     for key in sorted(keys):
         test = frame.filter((pl.col("season") == key.season) & (pl.col("week") == key.week))
         if test.is_empty():

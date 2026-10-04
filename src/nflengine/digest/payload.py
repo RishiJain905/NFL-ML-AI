@@ -4,8 +4,9 @@ Every number is a `Num` (`{value, display}`). The display string is made once, i
 `digest/format.py`, and the LLM must copy it exactly: the checks only accept numbers that
 appear in some display string (or in a code-made text field such as `rank_note`).
 
-`graph_insights` (P05) carry the knowledge-graph sections; `players_to_watch` gets a real
-model in P06 (v0 fills it with a labelled heuristic).
+`graph_insights` (P05) carry the knowledge-graph sections; `players_to_watch` and
+`tough_spots` come from the player model (P06; the P04 heuristic, labelled `heuristic`, is
+the fallback when a week has no projections).
 """
 
 from __future__ import annotations
@@ -80,6 +81,23 @@ class SeasonToDate(Model):
     watchlist_total: Num | None = None
 
 
+class LookbackItem(Model):
+    """One of last week's watch-list picks against what happened (P06; code-written)."""
+
+    player: str
+    player_id: str
+    team: str
+    team_name: str
+    position: str = ""
+    target: str  # "receiving yards"
+    # code-made: "projected 84 receiving yards, range 52–118 receiving yards → actual 97
+    # receiving yards: inside the range, above his baseline of 61 receiving yards"
+    text: str
+    played: bool = False  # played and scored (an unscored pressure count is not)
+    hit: bool | None = None  # actual > baseline
+    inside: bool | None = None  # P10 <= actual <= P90 (model picks only)
+
+
 class ReportCard(Model):
     status: Literal["scored", "no_saved_predictions", "first_week"]
     scored_week: int | None = None
@@ -96,7 +114,11 @@ class ReportCard(Model):
     not_graded: int = 0  # games predicted after kickoff (never graded)
     calibration: list[CalibrationBucket] = Field(default_factory=list)  # season to date
     season_to_date: SeasonToDate | None = None
-    scoreboard_highlights: list[str] = Field(default_factory=list)  # player models (P06)
+    # player models (P06), code-made: how the projections are doing (always one weak spot;
+    # backtest numbers labelled as such) and last week's picks, projected vs actual
+    scoreboard_highlights: list[str] = Field(default_factory=list)
+    watch_lookback: list[LookbackItem] = Field(default_factory=list)
+    watchlist_inside: Num | None = None  # model picks whose actual fell inside the range
 
 
 # ---- games ------------------------------------------------------------------------------------
@@ -198,10 +220,18 @@ class UnderHoodItem(Model):
     confidence: Literal["medium", "low"] = "medium"
 
 
-# ---- players to watch (heuristic until P06) ---------------------------------------------------
+# ---- players to watch (model from P06; the P04 heuristic is the fallback) ---------------------
 
 
 class WatchItem(Model):
+    """A players-to-watch pick, or a tough spot (`Payload.tough_spots`).
+
+    `source: "model"` (P06): projection (P50), the P10-P90 `interval`, the baseline,
+    `vs_baseline` (words say above / below), code-made `drivers` and notes.
+    `source: "heuristic"` (the P04 fallback when no projections exist): the usage and
+    opponent-defense fields instead.
+    """
+
     player: str
     player_id: str
     team: str
@@ -210,21 +240,33 @@ class WatchItem(Model):
     opponent: str
     opponent_name: str
     game_id: str
+    matchup: str = ""  # code-made "Titans at Colts" (away at home)
     target: str  # "receiving yards"
+    group: str | None = None  # model position group ("WR/TE"; model picks)
     baseline: Num
-    usage_metric: str  # "target share"
-    usage_recent: Num
-    usage_before: Num
-    usage_before_note: str  # "earlier this season" / "last season"
+    # heuristic picks (P04 fallback)
+    usage_metric: str | None = None  # "target share"
+    usage_recent: Num | None = None
+    usage_before: Num | None = None
+    usage_before_note: str | None = None  # "earlier this season" / "last season"
     # value = rank (1 = most EPA allowed); display says which end: "3rd-weakest", "weakest",
     # "4th-strongest". A bare "1st" was read as "best" by the real LLM, so never show one.
-    opp_def_rank: Num
-    opp_def_unit: str
-    projection: Num | None = None  # P06
-    interval: Num | None = None  # P06
+    opp_def_rank: Num | None = None
+    opp_def_unit: str | None = None
+    # model picks (P06)
+    projection: Num | None = None  # P50: "84 receiving yards"
+    interval: Num | None = None  # P10-P90: "52–118 receiving yards"
+    vs_baseline: Num | None = None  # "23 receiving yards above his baseline"
+    # where a thin baseline comes from ("his baseline comes from 2 games this season")
+    baseline_note: str | None = None
+    role_note: str | None = None  # a role change ("regular teammates who missed ...")
+    injury_note: str | None = None  # "listed questionable on this week's injury report"
     confidence: Literal["low", "medium", "high"] = "low"
     source: Literal["heuristic", "model"] = "heuristic"
+    # code-made: "<phrase> (puts the projection 9 receiving yards above a typical player in
+    # his group)"; only drivers >= 20% of the gap to baseline, same direction first
     drivers: list[str] = Field(default_factory=list)
+    driver_note: str | None = None  # "no single factor stands out" when no driver qualifies
 
 
 # ---- later phases -----------------------------------------------------------------------------
@@ -320,6 +362,9 @@ class Payload(Model):
     team_trends: list[TrendItem] = Field(default_factory=list)
     under_the_hood: list[UnderHoodItem] = Field(default_factory=list)
     players_to_watch: list[WatchItem] = Field(default_factory=list)
+    # regular starters projected well below their own baseline (P06): a code-written list
+    # under *Matchup / risk to watch*
+    tough_spots: list[WatchItem] = Field(default_factory=list)
     graph_insights: list[GraphInsight] = Field(default_factory=list)  # P05: picked items
     # code-written graph extras (after P05): QB-change flags for the game table, starters
     # out, and the strong stories that didn't fit the prose ("More from the graph")

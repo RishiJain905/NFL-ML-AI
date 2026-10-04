@@ -12,6 +12,10 @@ Brier also to "Elo"), except calibration counts, which belong to their bucket ("
 trend numbers to the team; under-the-hood and watch-list numbers to the player. `meta`
 numbers (season, week) are global and need no owner.
 
+Player model (P06): a pick's or tough spot's projection, range, baseline, gap to baseline
+and driver texts belong to the player (not his team); a look-back line to its player; the
+scoreboard highlights and the inside-the-range count to the model.
+
 Graph insights (P05): each fact's numbers belong to the fact's `owners` (team codes and
 player ids). When a fact has several clauses ("the Bucs lost to the Vikings by 7; the
 Packers lost to the Vikings by 17"), an owner the fact names only in another clause doesn't
@@ -30,7 +34,7 @@ from dataclasses import dataclass, field
 
 from nflengine.digest.format import normalize_text, number_atoms
 from nflengine.digest.names import TEAMS, last_name, team_aliases
-from nflengine.digest.payload import GraphInsight, Num, Payload
+from nflengine.digest.payload import GraphInsight, Num, Payload, WatchItem
 
 MODEL_ALIASES = [
     "the model",
@@ -213,13 +217,19 @@ def build_fact_index(payload: Payload) -> FactIndex:
             fx.low_confidence.append(p.key)
 
     for w in payload.players_to_watch:
-        p = fx.player(w.player_id, w.player)
-        p.add(w.baseline, w.usage_recent, w.usage_before, w.opp_def_rank, w.projection)
-        p.add(w.interval, *w.drivers)
-        fx.team(w.team)
-        fx.team(w.opponent)
+        p = _add_watch_item(fx, w)
         if w.confidence == "low":
             fx.low_confidence.append(p.key)
+    # code-written (P06): tough spots, last week's picks and the scoreboard highlights. The
+    # prose may mention them; their numbers then need the player (or the model) named
+    for w in payload.tough_spots:
+        _add_watch_item(fx, w)
+    model.add(*rc.scoreboard_highlights, rc.watchlist_inside)
+    for lb in rc.watch_lookback:
+        p = fx.player(lb.player_id, lb.player)
+        p.add(lb.text)
+        p.teams.add(lb.team)
+        fx.team(lb.team)
 
     for g in payload.graph_insights:
         _add_graph_insight(fx, g)
@@ -235,6 +245,17 @@ def build_fact_index(payload: Payload) -> FactIndex:
         fx.name(o.player).teams.add(o.team)
         fx.team(o.team)
     return fx.finalize()
+
+
+def _add_watch_item(fx: FactIndex, w: WatchItem) -> Entity:
+    """A players-to-watch pick or tough spot: every number belongs to the player."""
+    p = fx.player(w.player_id, w.player)
+    p.add(w.baseline, w.usage_recent, w.usage_before, w.opp_def_rank, w.projection)
+    p.add(w.interval, w.vs_baseline, w.baseline_note, w.role_note, w.injury_note)
+    p.add(w.driver_note, *w.drivers)
+    fx.team(w.team)
+    fx.team(w.opponent)
+    return p
 
 
 def _names(text: str, e: Entity) -> bool:

@@ -10,6 +10,10 @@ Conventions:
 - points as whole numbers; margins as "Chiefs by 3" ("even" under half a point)
 - Brier scores with 3 decimals; EPA with 2 decimals and a sign
 - ranges with an en dash ("60–70%"); the checks treat any dash the same
+- player stats with their label ("84 receiving yards", "5.3 tackles"); a projection's gap to
+  its baseline and a driver's effect in words ("23 receiving yards above his baseline",
+  "puts the projection 9 receiving yards above a typical player in his group"), never a bare
+  sign (P06)
 """
 
 from __future__ import annotations
@@ -168,6 +172,74 @@ def metric(x: float, unit: str) -> Num:
     if unit == "count_avg":
         return Num(value=round(float(x), 3), display=f"{_round_half_up(x, 1):.1f}")
     raise ValueError(f"unknown unit {unit!r}")
+
+
+# ---- player projections (P06) -------------------------------------------------------------------
+
+
+def _stat_text(x: float, unit: str, *, signed: bool = True) -> str:
+    """The number part of a player stat: yards whole, counts with one decimal unless whole,
+    EPA with 2 decimals (and a sign unless `signed=False`)."""
+    if unit == "epa":
+        r = _round_half_up(x, 2)
+        return f"{r:+.2f}" if signed else f"{abs(r):.2f}"
+    if unit == "count":
+        r = _round_half_up(x, 1)
+        return str(int(r)) if r == int(r) else f"{r:.1f}"
+    return str(_int(x))
+
+
+def _label(label: str, text: str) -> str:
+    """'1 tackles' -> '1 tackle', '1 carries' -> '1 carry' (labels are plural)."""
+    if text != "1" or not label.endswith("s"):
+        return label
+    return label[:-3] + "y" if label.endswith("ies") else label[:-1]
+
+
+def stat(x: float, label: str, unit: str = "yards") -> Num:
+    """A player stat with its label (projections, baselines, actuals): (84.2, "receiving
+    yards") -> "84 receiving yards"; counts keep one decimal unless whole ("5.3 tackles",
+    "6 tackles"); EPA has a sign and 2 decimals ("+0.12 EPA per dropback")."""
+    text = _stat_text(x, unit)
+    return Num(value=round(float(x), 3), display=f"{text} {_label(label, text)}")
+
+
+def stat_range(lo: float, hi: float, label: str, unit: str = "yards") -> Num:
+    """A projection's P10-P90 range: "52–118 receiving yards" (value: the width)."""
+    a, b = _stat_text(lo, unit), _stat_text(hi, unit)
+    return Num(value=round(float(hi) - float(lo), 3), display=f"{a}{EN_DASH}{b} {label}")
+
+
+def vs_baseline(diff: float, label: str, unit: str = "yards") -> Num:
+    """Projection minus baseline in words, so no sign is left to read:
+    "23 receiving yards above his baseline", "0.4 tackles below his baseline", or "level
+    with his baseline" when it rounds to 0."""
+    text = _stat_text(abs(diff), unit, signed=False)
+    if float(text) == 0:
+        return Num(value=round(float(diff), 3), display="level with his baseline")
+    word = "above" if diff > 0 else "below"
+    return Num(
+        value=round(float(diff), 3), display=f"{text} {_label(label, text)} {word} his baseline"
+    )
+
+
+def driver_effect(contribution: float, label: str, unit: str = "yards") -> Num | None:
+    """A SHAP driver's contribution in words, against what SHAP measures it from (the
+    model's average prediction, i.e. a typical player in his position group, never his own
+    baseline or form): "puts the projection 9 receiving yards above a typical player in his
+    group" / "... 0.4 tackles below ..."; None when it rounds to 0 (nothing to say).
+    The P06 fact-check found "his recent form raises the projection" read as "he's in form"
+    for a player whose recent games were below his own baseline."""
+    text = _stat_text(abs(contribution), unit, signed=False)
+    if float(text) == 0:
+        return None
+    word = "above" if contribution > 0 else "below"
+    return Num(
+        value=round(float(contribution), 3),
+        display=(
+            f"puts the projection {text} {_label(label, text)} {word} a typical player in his group"
+        ),
+    )
 
 
 def bucket(lo: float, hi: float) -> str:

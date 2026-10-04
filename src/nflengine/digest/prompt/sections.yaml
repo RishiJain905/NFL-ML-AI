@@ -10,8 +10,11 @@ sections:
       One or two sentences on last week's picks: the pick record, the Brier score next to
       Elo's, the average score error, and the biggest_miss game (say plainly that the model
       got it wrong). Mention the season-to-date numbers and one calibration bucket when
-      present. If status is not "scored", say so in one sentence using the note. Don't
-      repeat these instructions in the text.
+      present. If status is not "scored", say so in one sentence using the note. Code
+      lists the player-projection highlights (scoreboard_highlights) and last week's
+      watch-list look-back (watch_lookback) next to your text: you may quote one highlight
+      word for word, but don't restate the lists. Don't repeat these instructions in the
+      text.
   - id: game_outlook
     title: Game outlook
     payload: [games, game_highlights]
@@ -36,12 +39,20 @@ sections:
     title: Players to watch
     payload: [players_to_watch]
     instructions: >-
-      A table above your text already lists every pick (up to eight) with its usage,
-      opponent defense and baseline. Write about the four to six most notable: recent usage
-      change, the opponent's defense, the baseline for the target stat. Copy opp_def_rank's display exactly ("3rd-weakest" = one of the
-      worst defenses, a good matchup; "4th-strongest" = a tough one); never shorten it to
-      a bare ordinal. These are heuristic picks with low confidence until the player
-      model ships (P06): say so.
+      A table above your text already lists every pick (up to eight). Write about the four
+      to six most notable. When source is "model": for each player give the projection
+      for his target stat, his vs_baseline (copy it whole: it already says above or below
+      his baseline) and his interval as his likely range; then one or two of his drivers,
+      copied whole (a driver compares him with a typical player in his group; it is not his
+      form and not the reason for the gap to his baseline), or his driver_note when he has
+      no driver, plus his role_note or injury_note when present. A baseline_note says where a thin baseline comes from: give it as
+      context for the baseline, never as the reason for the projection. The list is already in code's order: never call a player the top,
+      biggest or best pick, and never call a projection a sure thing. When confidence is
+      "low", say so in that player's sentence. When source is "heuristic" (no projections
+      this week): recent usage change, the opponent's defense and the baseline; copy
+      opp_def_rank's display exactly ("3rd-weakest" = one of the worst defenses, a good
+      matchup; "4th-strongest" = a tough one), never a bare ordinal, and say these are
+      low-confidence heuristic picks.
   - id: matchup_risk
     title: Matchup / risk to watch
     payload: [graph_insights]

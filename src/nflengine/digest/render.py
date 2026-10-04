@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from nflengine.digest.payload import GameItem, Payload, ReportCard
+from nflengine.digest.payload import GameItem, Num, Payload, ReportCard, WatchItem
 
 SECTION_TITLES = {
     "report_card": "Report card",
@@ -65,7 +65,10 @@ def report_card_numbers(rc: ReportCard) -> str:
             f"score error {rc.points_mae.display} per team",
         ]
         if rc.watchlist_total:
-            parts.append(f"watch list {rc.watchlist_hits.display} of {rc.watchlist_total.display}")
+            wl = f"watch list {rc.watchlist_hits.display} of {rc.watchlist_total.display}"
+            if rc.watchlist_inside is not None:
+                wl += f" above baseline, {rc.watchlist_inside.display} inside their range"
+            parts.append(wl)
         lines.append(" · ".join(parts))
     s = rc.season_to_date  # also shown when last week had nothing gradable (Sol #12)
     if s:
@@ -82,9 +85,22 @@ def report_card_numbers(rc: ReportCard) -> str:
             f"{b.bucket}: {b.favorite_wins.display} of {b.games.display}" for b in rc.calibration
         )
         lines.append(f"**Calibration (season, favorite won):** {cal}")
+    if rc.scoreboard_highlights:
+        hl = " ".join(f"{_cap(h)}." for h in rc.scoreboard_highlights)
+        lines.append(f"**Player projections:** {hl}")
     if rc.not_graded:
         lines.append(f"_{rc.not_graded} game(s) not graded: predicted after kickoff._")
+    if rc.watch_lookback:
+        picks = "\n".join(
+            f"  - {lb.player} ({lb.team_name} {lb.position}, {lb.target}): {lb.text}"
+            for lb in rc.watch_lookback
+        )
+        lines.append(f"**Last week's watch list:**\n{picks}")
     return "\n".join(f"- {line}" for line in lines)
+
+
+def _cap(text: str) -> str:
+    return text[:1].upper() + text[1:]
 
 
 NEWS_MAX = 4  # ESPN headlines shown under "Latest news"
@@ -156,11 +172,45 @@ def starters_out_list(p: Payload) -> str:
     return f"**Starters out this week** ({note})\n\n" + "\n".join(lines)
 
 
+MODEL_WATCH_NOTE = (
+    "_Player model projections: the projection is the model's central estimate (the median "
+    "for yards, the average for counts), the range covers 80% of outcomes (10th to 90th "
+    "percentile), the baseline is his own rolling average. Low confidence = thin history or "
+    "a wide range._"
+)
+HEURISTIC_WATCH_NOTE = (
+    "_Heuristic picks (no player-model projections this week): usage trend and opponent "
+    "defense only, low confidence._"
+)
+
+
+def watch_source(p: Payload) -> str:
+    """model | heuristic: where this week's picks came from (the payload's model version
+    says it when the list is empty)."""
+    if p.players_to_watch:
+        return "model" if any(w.source == "model" for w in p.players_to_watch) else "heuristic"
+    version = p.meta.model_versions.get("players to watch", "")
+    return "heuristic" if version.startswith("heuristic") else "model"
+
+
 def watch_table(p: Payload) -> str:
     """Every watch-list pick in one table (code-written); the prose covers the top ones."""
     rows = p.players_to_watch
     if not rows:
         return ""
+    if watch_source(p) == "model":
+        lines = [
+            "| Player | Game | Projection | Range (80%) | Baseline | Confidence | Main driver "
+            "/ note |",
+            "|---|---|---|---|---|---|---|",
+        ]
+        for w in rows:
+            lines.append(
+                f"| {w.player} ({w.team_name} {w.position}) | vs {w.opponent_name} | "
+                f"{_d(w.projection)} | {_d(w.interval)} | {w.baseline.display} | "
+                f"{w.confidence} | {_why(w)} |"
+            )
+        return "\n".join(lines)
     lines = [
         "| Player | Game | Usage (recent vs before) | Opponent defense | Baseline |",
         "|---|---|---|---|---|",
@@ -168,11 +218,36 @@ def watch_table(p: Payload) -> str:
     for w in rows:
         lines.append(
             f"| {w.player} ({w.team_name} {w.position}) | vs {w.opponent_name} | "
-            f"{w.usage_metric} {w.usage_recent.display} vs {w.usage_before.display} "
-            f"({w.usage_before_note}) | {w.opp_def_unit}: {w.opp_def_rank.display} | "
+            f"{w.usage_metric} {_d(w.usage_recent)} vs {_d(w.usage_before)} "
+            f"({w.usage_before_note}) | {w.opp_def_unit}: {_d(w.opp_def_rank)} | "
             f"{w.baseline.display} |"
         )
     return "\n".join(lines)
+
+
+def _why(w: WatchItem) -> str:
+    lead = w.drivers[:1] or ([w.driver_note] if w.driver_note else [])
+    parts = [*lead, *([w.baseline_note] if w.baseline_note else [])]
+    return "; ".join(parts) or "–"
+
+
+def _d(n: Num | None) -> str:
+    return n.display if n is not None else "–"
+
+
+def tough_spots_list(p: Payload) -> str:
+    """Regular starters projected well below their own baseline (code-written, P06)."""
+    if not p.tough_spots:
+        return ""
+    lines = [
+        f"- {w.player} ({w.team_name} {w.position}) vs the {w.opponent_name}: projected "
+        f"{_d(w.projection)}, {_d(w.vs_baseline)} of {w.baseline.display} (range "
+        f"{_d(w.interval)})"
+        for w in p.tough_spots
+    ]
+    return "**Tough spots** (player model: projected well below their own baseline)\n\n" + (
+        "\n".join(lines)
+    )
 
 
 def graph_more_list(p: Payload) -> str:
@@ -267,10 +342,14 @@ def render_digest(
             body.append(game_table(p))
             body.append(starters_out_list(p))
         if sec == "players_to_watch":
-            body.append("_Heuristic picks until the player model ships (P06): low confidence._")
+            source = watch_source(p)
+            body.append(MODEL_WATCH_NOTE if source == "model" else HEURISTIC_WATCH_NOTE)
             body.append(watch_table(p))
         if sections[sec]:
             body.append(sections[sec])
+        # tough spots belong to Matchup / risk; without the graph sections, under the picks
+        if sec == "matchup_risk" or (sec == "players_to_watch" and "matchup_risk" not in sections):
+            body.append(tough_spots_list(p))
         if sec == "non_obvious":
             body.append(graph_more_list(p))
         out.append(f"## {SECTION_TITLES[sec]}\n\n" + "\n\n".join(b for b in body if b))
