@@ -48,7 +48,7 @@ The full weekly pipeline runs **with no manual steps**: scheduled, calendar-awar
 ### Proving it
 - [x] 🤖 Dry run: simulate a full week with `--auto` against a past week (time travel via `--as-of`).
 - [ ] ⏭ **Dropped with scheduling (D71)** 🧑 **Rishi watches** the first two scheduled weeks land (digest + W&B + notification) without touching anything.
-- [x] ✋ **Checkpoint:** close P07. *(Waived in Rishi's kickoff: "marking the phase complete".)*
+- [x] ✋ **Checkpoint:** close P07. *(Waived in Rishi's kickoff: "marking the phase complete"; Rishi then reviewed the close-out and approved it on 2026-10-04.)*
 
 ## Rishi-in-the-loop moments: what to look for
 
@@ -97,5 +97,5 @@ The full weekly pipeline runs **with no manual steps**: scheduled, calendar-awar
 - **The injury-update addendum is code-written** (no LLM), and Tuesday's prediction files stay the graded ones (D73).
 - **`--auto` promotes** the live fits to `production` (D72).
 - **The W&B pipeline run** (`weekly-pipeline` / `pipeline`) is new; it carries lineage to the week's artifacts (closes the W&B guide's gap 3).
-- **Unit tests run with `WANDB_MODE=disabled`** after a CLI test reached the real pipeline (4 junk `pipeline-2026-w05` W&B runs, records on D: deleted).
+- **Unit tests run with `WANDB_MODE=disabled`** after a CLI test reached the real pipeline (4 junk `pipeline-2026-w05` W&B runs, deleted with Rishi's OK; the records on D: deleted too).
 
