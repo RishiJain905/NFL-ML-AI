@@ -284,7 +284,9 @@ Last tuned 2026-10-04. Hyperparameters stay fixed for the season (doc 04).
 
 ## Players to watch (backtest)
 
-The watch list (D69) picks 8 players a week by the projected gap to their baseline. In the 2019–2025 backtests (124 weeks, 992 picks), **69.5% of picks beat their baseline**, against a **42.2% base rate** for every eligible role player (exit criterion: > 50%). Every season is between 66.2% and 72.9%; every group beats its own base rate (QB 71.5 / 47.5, RB 68.1 / 44.7, WR/TE 68.3 / 40.2, EDGE/DL 61.1 / 37.3, LB/S 72.1 / 47.8). 77% of the picks' results fell inside their range. Caveat: backtest rows only exist for players who played, so a pick who sits out never happens there; live hit rates will be a little lower.
+**Since week 5 of 2026 (D70): 10 offense + 10 defense a week**, picked separately by the projected gap to baseline, with a volume floor for defenders (≥ 1.0 projected pressures, ≥ 2.0 tackles; `models/player_watch.py` `MIN_VOLUME`). In the 2019–2025 backtests (2,480 picks) **65.3% beat their baseline vs a 42.2% base rate**: offense 65.0 / 42.0, defense 65.6 / 42.3; by group QB 70.7 / 47.5, RB 62.0 / 44.7, WR/TE 63.3 / 40.2, EDGE/DL 59.8 / 37.3, LB/S 69.9 / 47.8; every season 60.8–69.4%; no side ever short of 10. Tough spots: 5 a week.
+
+The first watch list (D69, used for the week-4 digest) picked 8 players a week by the projected gap to their baseline. In the 2019–2025 backtests (124 weeks, 992 picks), **69.5% of picks beat their baseline**, against a **42.2% base rate** for every eligible role player (exit criterion: > 50%). Every season is between 66.2% and 72.9%; every group beats its own base rate (QB 71.5 / 47.5, RB 68.1 / 44.7, WR/TE 68.3 / 40.2, EDGE/DL 61.1 / 37.3, LB/S 72.1 / 47.8). 77% of the picks' results fell inside their range. Caveat: backtest rows only exist for players who played, so a pick who sits out never happens there; live hit rates will be a little lower.
 
 ## Is a 3–9% gain good? (Why player stats barely beat a rolling average)
 

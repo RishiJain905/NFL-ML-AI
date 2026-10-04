@@ -51,10 +51,12 @@ from nflengine.digest.llm import get_llm
 from nflengine.digest.llm.base import LLMClient
 from nflengine.digest.payload import Meta, Payload
 from nflengine.digest.players import (
+    DEFAULT_SIZES,
     HEURISTIC_VERSION,
     PLAYER_PRED_FILE,
     PlayerWatch,
     WatchScorer,
+    WatchSizes,
     player_watch,
     read_scoreboards,
     stamp_model_watch,
@@ -225,7 +227,7 @@ def materialize_backtest_player_predictions(
     ctx: DigestContext,
     games: pl.DataFrame,
     *,
-    n_items: int = 8,
+    sizes: WatchSizes = DEFAULT_SIZES,
     followed: list[str] | tuple[str, ...] = (),
 ) -> list[Path]:
     """Write `predictions_players.parquet` for weeks 1..N of the backtest season from the
@@ -264,7 +266,9 @@ def materialize_backtest_player_predictions(
             written.append(out)
         if w < ctx.week and (stale or not _model_watch_saved(folder / WATCH_FILE)):
             stamp = tuesday_before(games, ctx.season, w)
-            picks = select_watchlist(wk, n_items, followed=followed, run_time=stamp)
+            picks = select_watchlist(
+                wk, sizes.offense, sizes.defense, followed=followed, run_time=stamp
+            )
             stamp_model_watch(picks, stamp).write_parquet(folder / WATCH_FILE)
     return written
 
@@ -375,7 +379,7 @@ def choose_watch(
     ctx: DigestContext,
     games: pl.DataFrame,
     followed: list[str],
-    n_items: int,
+    sizes: WatchSizes,
     log: Callable[[str], None] = print,
     heuristic: Callable[..., PlayerWatch] = heuristic_watch,
 ) -> PlayerWatch:
@@ -386,11 +390,11 @@ def choose_watch(
 
     if read_status(ctx.run_dir) == "degraded":
         log("[yellow]the player model's refit failed this week: heuristic watch list[/]")
-        return heuristic(ctx, games, followed, n_items, version=REFIT_FAILED_VERSION)
-    pw = player_watch(ctx.run_dir, ctx.run_time, n_items=n_items, followed=followed)
+        return heuristic(ctx, games, followed, sizes.heuristic, version=REFIT_FAILED_VERSION)
+    pw = player_watch(ctx.run_dir, ctx.run_time, sizes=sizes, followed=followed)
     if pw is None:
         log("[yellow]no player projections for this week: heuristic watch list[/]")
-        return heuristic(ctx, games, followed, n_items)
+        return heuristic(ctx, games, followed, sizes.heuristic)
     return pw
 
 
@@ -433,8 +437,7 @@ def build_payload(
         _feature(paths, "team_trends", s, w), _feature(paths, "team_trend_drivers", s, w), followed
     )
     uh = select_under_hood(s, w, paths, followed=followed)
-    n_items = int(get_config().digest.get("watchlist_size") or 8)
-    pw = choose_watch(ctx, games, followed, n_items, log)
+    pw = choose_watch(ctx, games, followed, WatchSizes.from_config(get_config().digest), log)
     upcoming = [g for g in game_items if g.status == "upcoming"]
     started = [g.matchup for g in game_items if g.status == "started"]
     teams = {g.home for g in game_items} | {g.away for g in game_items}
@@ -592,7 +595,7 @@ def run_digest(
         player_files = materialize_backtest_player_predictions(
             ctx,
             games,
-            n_items=int(get_config().digest.get("watchlist_size") or 8),
+            sizes=WatchSizes.from_config(get_config().digest),
             followed=load_followed_teams(),
         )
         log(f"backtest player projections: {len(player_files)} week files written")

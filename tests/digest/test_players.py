@@ -14,9 +14,10 @@ from nflengine.digest import format as F
 from nflengine.digest import render as R
 from nflengine.digest.facts import build_fact_index
 from nflengine.digest.llm.placeholder import PlaceholderLLM
-from nflengine.digest.payload import LookbackItem, ReportCard
+from nflengine.digest.payload import LookbackItem, ReportCard, SideTally
 from nflengine.digest.players import (
     PLAYER_PRED_FILE,
+    WatchSizes,
     build_model_watch,
     driver_texts,
     lookback_text,
@@ -239,28 +240,35 @@ def test_a_failed_refit_uses_the_heuristic_and_says_why(tmp_path: Path):
 
     logs: list[str] = []
     # no projections: the plain fallback
-    assert choose_watch(ctx, pl.DataFrame(), [], 8, logs.append, heuristic).version == calls[0]
+    assert (
+        choose_watch(ctx, pl.DataFrame(), [], WatchSizes(), logs.append, heuristic).version
+        == calls[0]
+    )
     # projections present: the model
     ctx.run_dir.mkdir(parents=True, exist_ok=True)
     week_preds().write_parquet(ctx.run_dir / PLAYER_PRED_FILE)
-    pw = choose_watch(ctx, pl.DataFrame(), [], 8, logs.append, heuristic)
+    pw = choose_watch(ctx, pl.DataFrame(), [], WatchSizes(), logs.append, heuristic)
     assert pw.version == "player-model-v1:2025-w08" and len(calls) == 1
     # a failed refit: the old file is ignored, the footer says why, one log line
     write_status(ctx.run_dir, "degraded", "ValueError")
     logs.clear()
-    pw = choose_watch(ctx, pl.DataFrame(), [], 8, logs.append, heuristic)
+    pw = choose_watch(ctx, pl.DataFrame(), [], WatchSizes(), logs.append, heuristic)
     assert pw.version == REFIT_FAILED_VERSION and calls[-1] == REFIT_FAILED_VERSION
     assert len(logs) == 1 and "refit failed" in logs[0]
     write_status(ctx.run_dir, "ok")
-    assert choose_watch(ctx, pl.DataFrame(), [], 8, logs.append, heuristic).items
+    assert choose_watch(ctx, pl.DataFrame(), [], WatchSizes(), logs.append, heuristic).items
 
 
 def test_model_watch_picks_and_tough_spots_and_stamps():
-    pw = model_watch(week_preds(), TUESDAY, n_items=8)
-    assert [w.player for w in pw.items] == [
-        "Puka Nacua", "Fred Warner", "Zay Flowers", "Garrett Wilson",
+    pw = model_watch(week_preds(), TUESDAY)
+    assert [(w.player, w.side) for w in pw.items] == [
+        ("Puka Nacua", "offense"), ("Zay Flowers", "offense"), ("Garrett Wilson", "offense"),
+        ("Fred Warner", "defense"),
     ]  # fmt: skip
     assert [w.player for w in pw.tough] == ["Davante Adams"]
+    assert pw.frame["side"].to_list() == ["offense"] * 3 + ["defense"]
+    small = model_watch(week_preds(), TUESDAY, sizes=WatchSizes(offense=1, defense=0, tough=0))
+    assert [w.player for w in small.items] == ["Puka Nacua"] and small.tough == []
     assert pw.version == "player-model-v1:2025-w08"
     f = pw.frame
     assert f["source"].unique().to_list() == ["model"]
@@ -273,7 +281,7 @@ def test_model_watch_picks_and_tough_spots_and_stamps():
 def test_player_watch_is_none_without_a_projection_file(tmp_path: Path):
     assert player_watch(tmp_path, TUESDAY) is None
     week_preds().write_parquet(tmp_path / PLAYER_PRED_FILE)
-    pw = player_watch(tmp_path, TUESDAY, n_items=2)
+    pw = player_watch(tmp_path, TUESDAY, sizes=WatchSizes(offense=1, defense=1))
     assert pw is not None and len(pw.items) == 2
 
 
@@ -281,7 +289,7 @@ def test_player_watch_is_none_without_a_projection_file(tmp_path: Path):
 
 
 def model_payload(**rc_kw):
-    pw = model_watch(week_preds(), TUESDAY, n_items=8)
+    pw = model_watch(week_preds(), TUESDAY)
     rc = make_payload().report_card.model_copy(update=rc_kw)
     return make_payload(players_to_watch=pw.items, tough_spots=pw.tough, report_card=rc)
 
@@ -332,7 +340,9 @@ def test_checks_catch_a_projection_moved_to_another_player_and_a_missing_hedge()
 def test_render_uses_the_model_table_and_places_tough_spots():
     p = model_payload()
     table = R.watch_table(p)
-    assert table.startswith("| Player | Game | Projection | Range (80%) | Baseline |")
+    assert table.startswith("**Offense** (3 picks)\n\n| Player | Game | Projection |")
+    assert "**Defense** (1 pick)" in table
+    assert table.index("Garrett Wilson") < table.index("**Defense**") < table.index("Fred Warner")
     assert (
         "| Puka Nacua (Rams WR) | vs 49ers | 85 receiving yards | 60–135 receiving yards" in table
     )
@@ -372,7 +382,70 @@ def test_report_card_numbers_show_highlights_and_the_look_back():
     assert "**Player projections:** No live week of player projections has been scored yet." in out
     rc2 = rc.model_copy(update={"scoreboard_highlights": ["a b", "the 80% ranges held"]})
     assert "**Player projections:** A b. The 80% ranges held." in R.report_card_numbers(rc2)
-    assert "  - Tee Higgins (Bengals WR, receiving yards): did not play, so not scored" in out
+    assert "| – | Tee Higgins (Bengals WR) | receiving yards | – | – | – | – | – |" in out
+
+
+def test_the_look_back_is_one_compact_table_with_side_tallies():
+    lb = [
+        LookbackItem(
+            player="Puka Nacua",
+            player_id="a",
+            team="LA",
+            team_name="Rams",
+            position="WR",
+            target="receiving yards",
+            text="t",
+            played=True,
+            hit=True,
+            inside=True,
+            side="offense",
+            projection=F.stat(85, "receiving yards"),
+            interval=F.stat_range(60, 135, "receiving yards"),
+            actual=F.stat(97, "receiving yards"),
+        ),
+        LookbackItem(
+            player="Fred Warner",
+            player_id="b",
+            team="SF",
+            team_name="49ers",
+            position="LB",
+            target="tackles",
+            text="t",
+            played=False,
+            side="defense",
+            projection=F.stat(6.2, "tackles", "count"),
+            interval=F.stat_range(3, 9, "tackles", "count"),
+            status="did not play",
+        ),
+    ]
+    rc = ReportCard(
+        status="scored", scored_week=7, scored_week_display=F.count(7),
+        picks_correct=F.count(9), picks_total=F.count(14), brier=F.brier(0.21),
+        brier_elo=F.brier(0.22), points_mae=F.points_error(7.1),
+        watchlist_hits=F.count(13), watchlist_total=F.count(19), watchlist_inside=F.count(15),
+        watchlist_by_side=[SideTally(side="offense", hits=F.count(7), total=F.count(10)),
+                           SideTally(side="defense", hits=F.count(6), total=F.count(9))],
+        watch_lookback=lb,
+    )  # fmt: skip
+    out = R.report_card_numbers(rc)
+    assert (
+        "watch list 13 of 19 above baseline, 15 inside their range (offense 7 of 10, defense 6 "
+        "of 9)" in out
+    )
+    assert (
+        "| Side | Player | Stat | Projected | Range | Actual | In range | Above baseline |" in out
+    )
+    assert (
+        "| offense | Puka Nacua (Rams WR) | receiving yards | 85 receiving yards | 60–135 "
+        "receiving yards | 97 receiving yards | ✓ | ✓ |" in out
+    )
+    assert (
+        "| defense | Fred Warner (49ers LB) | tackles | 6.2 tackles | 3–9 tackles | did not play "
+        "| – | – |" in out
+    )
+    assert "  - " not in out  # no per-pick bullets any more
+    fx = build_fact_index(make_payload(report_card=rc))
+    assert {"7", "10", "6", "9"} <= fx.entities["model"].atoms
 
 
 # ---- scoring saved picks and the look-back ---------------------------------------------------
@@ -422,7 +495,13 @@ def test_score_watch_rows_handles_model_and_heuristic_picks():
     assert texts["Jaylen Warren"] == (
         "actual 70 scrimmage yards, above his baseline of 50 scrimmage yards"
     )
-    assert [lb.player for lb in watch_lookback(out)][:2] == ["Puka Nacua", "Fred Warner"]
+    order = [(lb.player, lb.side) for lb in watch_lookback(out)]
+    assert order[:2] == [("Puka Nacua", "offense"), ("Zay Flowers", "offense")]
+    assert order[-1] == ("Fred Warner", "defense")  # offense first, then defense
+    from nflengine.digest.players import side_tallies
+
+    tallies = {t.side: (t.hits.value, t.total.value) for t in side_tallies(out)}
+    assert tallies == {"offense": (1, 1), "defense": (0, 1)}  # Flowers didn't play
 
 
 def test_an_unpublished_pressure_count_is_not_scored():
@@ -559,6 +638,8 @@ def test_backtest_materializes_projections_and_earlier_watch_lists(tmp_path: Pat
     from nflengine.digest.run import make_context, materialize_backtest_player_predictions
     from nflengine.paths import DataPaths
 
+    SIZES3 = WatchSizes(offense=2, defense=1)  # noqa: N806
+
     paths = DataPaths(tmp_path)
     kick = {
         6: dt.datetime(2025, 10, 12, 17, tzinfo=dt.UTC),
@@ -581,7 +662,7 @@ def test_backtest_materializes_projections_and_earlier_watch_lists(tmp_path: Pat
         t = key.split("-")[0]
         allp.filter(pl.col("target") == t).write_parquet(d / PLAYER_PRED_FILE)
     ctx = make_context(2025, 7, "backtest", kick[7] - dt.timedelta(days=5), paths)
-    written = materialize_backtest_player_predictions(ctx, games, n_items=3)
+    written = materialize_backtest_player_predictions(ctx, games, sizes=SIZES3)
     assert [p.parent.name for p in written] == ["week06", "week07"]
     now = pl.read_parquet(ctx.run_dir / PLAYER_PRED_FILE)
     assert now.height == 5 and now["actual"].null_count() == 5  # outcomes blanked
@@ -598,11 +679,13 @@ def test_backtest_materializes_projections_and_earlier_watch_lists(tmp_path: Pat
         ctx.run_root / "2025" / "week06" / WATCH_FILE
     )
     os.utime(ctx.run_root / "2025" / "week06" / WATCH_FILE, (1_000_000, 1_000_000))
-    again = materialize_backtest_player_predictions(ctx, games, n_items=3)
+    again = materialize_backtest_player_predictions(ctx, games, sizes=SIZES3)
     assert [p.parent.name for p in again] == ["week06", "week07"]
     rebuilt = pl.read_parquet(ctx.run_root / "2025" / "week06" / WATCH_FILE)
     assert "stale" not in rebuilt["player"].to_list()
-    assert materialize_backtest_player_predictions(ctx, games, n_items=3)[0].parent.name == "week07"
+    assert (
+        materialize_backtest_player_predictions(ctx, games, sizes=SIZES3)[0].parent.name == "week07"
+    )
     # no player backtests: nothing written (the digest falls back to the heuristic)
     empty = make_context(2025, 7, "backtest", kick[7], DataPaths(tmp_path / "none"))
     assert materialize_backtest_player_predictions(empty, games) == []
@@ -629,3 +712,31 @@ def test_backtest_rows_in_the_live_season_file_are_never_quoted_as_live():
     ]
     assert week_improvement(mixed, 2026, 3) is None
     assert week_improvement(mixed, 2026, 3, "backtest") is not None
+
+
+# ---- 10 offense + 10 defense (D70) ---------------------------------------------------------------
+
+
+def test_watch_sizes_come_from_the_config():
+    sizes = WatchSizes.from_config(
+        {"watchlist_offense": 10, "watchlist_defense": 10, "tough_spots": 5, "watchlist_size": 8}
+    )
+    assert (sizes.offense, sizes.defense, sizes.tough, sizes.heuristic) == (10, 10, 5, 8)
+    assert WatchSizes.from_config(None) == WatchSizes()
+    assert WatchSizes.from_config({"tough_spots": 2}).tough == 2
+
+
+def test_placeholder_covers_both_sides_offense_first_within_budget():
+    offense = [proj(f"o{i}", f"Off Player{i}", f"T{i}", "OPP", 2.0 - i / 10) for i in range(10)]
+    defense = [proj(f"d{i}", f"Def Player{i}", f"D{i}", "OPP", 2.0 - i / 10, group="LB/S")
+               for i in range(10)]  # fmt: skip
+    pw = model_watch(frame([*offense, *defense]), TUESDAY)
+    assert [w.side for w in pw.items] == ["offense"] * 10 + ["defense"] * 10
+    p = make_payload(players_to_watch=pw.items, tough_spots=pw.tough)
+    synth = run_placeholder(p, {**BUDGETS, "players_to_watch": 200})
+    assert synth.final.passed, synth.final.to_dict()
+    text = synth.sections["players_to_watch"]
+    for name in ("Player0", "Player1"):  # the top 2 of each side always
+        assert f"Off {name}" in text and f"Def {name}" in text
+    assert text.index("Off Player1") < text.index("Def Player0")  # offense first
+    assert "Off Player3" not in text and "Def Player3" not in text  # at most 3 per side

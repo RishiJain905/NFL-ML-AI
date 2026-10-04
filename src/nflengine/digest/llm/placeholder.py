@@ -275,10 +275,36 @@ class PlaceholderLLM:
         return write
 
 
+PER_SIDE = 3  # picks per side the prose covers (D70: the tables hold all 20)
+
+
 def _model_watch(items: list[dict[str, Any]], short: dict[str, str], budget: int | None) -> str:
     """Model picks (P06): projection vs baseline and range in one sentence per player (with
     "low confidence" in it when flagged), then each kept pick's top driver while room
-    remains. At least 4 picks."""
+    remains. Two sides (D70): the top 2 of each side always, a 3rd of each while the budget
+    allows, offense before defense."""
+    offense = [w for w in items if w.get("side") != "defense"][:PER_SIDE]
+    defense = [w for w in items if w.get("side") == "defense"][:PER_SIDE]
+    if not defense:  # picks without sides (P06 lists): the 4 top picks, then more
+        return _model_sentences(items, short, budget, list(range(len(items))), 4)
+    n_off = len(offense)
+    off_idx = list(range(n_off))
+    def_idx = list(range(n_off, n_off + len(defense)))
+    first = [*off_idx[:2], *def_idx[:2]]  # always written
+    rest = [i for pair in zip(off_idx[2:], def_idx[2:], strict=False) for i in pair]
+    rest += off_idx[2 + len(def_idx[2:]) :] + def_idx[2 + len(off_idx[2:]) :]
+    return _model_sentences([*offense, *defense], short, budget, [*first, *rest], len(first))
+
+
+def _model_sentences(
+    items: list[dict[str, Any]],
+    short: dict[str, str],
+    budget: int | None,
+    priority: list[int],
+    required: int,
+) -> str:
+    """One sentence per pick (plus a driver / baseline note), added in `priority` order
+    (the first `required` always), written in the items' own order."""
     main: list[str] = []
     notes: list[str] = []
     for w in items:
@@ -297,7 +323,21 @@ def _model_watch(items: list[dict[str, Any]], short: dict[str, str], budget: int
         if w.get("baseline_note"):
             note.append(f"For {name}, {w['baseline_note']}.")
         notes.append(" ".join(note))
-    return _fit_items(main, notes, budget, minimum=4)
+    limit = None if budget is None else budget * TRIM
+    keep: list[int] = []
+    used = 0
+    for k, i in enumerate(priority):
+        n = _words(main[i])
+        if k < required or limit is None or used + n <= limit:
+            keep.append(i)
+            used += n
+    out: list[str] = []
+    for i in sorted(keep):
+        out.append(main[i])
+        if notes[i] and (limit is None or used + _words(notes[i]) <= limit):
+            out.append(notes[i])
+            used += _words(notes[i])
+    return " ".join(out)
 
 
 def _sentence(text: str) -> str:

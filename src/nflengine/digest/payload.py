@@ -96,6 +96,20 @@ class LookbackItem(Model):
     played: bool = False  # played and scored (an unscored pressure count is not)
     hit: bool | None = None  # actual > baseline
     inside: bool | None = None  # P10 <= actual <= P90 (model picks only)
+    # the compact look-back table (D70: 20 picks a week)
+    side: Literal["offense", "defense"] | None = None
+    projection: Num | None = None
+    interval: Num | None = None
+    actual: Num | None = None
+    status: str = ""  # "" (scored) | "did not play" | "no result yet"
+
+
+class SideTally(Model):
+    """Last week's picks of one side that were scored, and how many beat their baseline."""
+
+    side: Literal["offense", "defense"]
+    hits: Num
+    total: Num
 
 
 class ReportCard(Model):
@@ -119,6 +133,7 @@ class ReportCard(Model):
     scoreboard_highlights: list[str] = Field(default_factory=list)
     watch_lookback: list[LookbackItem] = Field(default_factory=list)
     watchlist_inside: Num | None = None  # model picks whose actual fell inside the range
+    watchlist_by_side: list[SideTally] = Field(default_factory=list)  # offense / defense
 
 
 # ---- games ------------------------------------------------------------------------------------
@@ -243,6 +258,7 @@ class WatchItem(Model):
     matchup: str = ""  # code-made "Titans at Colts" (away at home)
     target: str  # "receiving yards"
     group: str | None = None  # model position group ("WR/TE"; model picks)
+    side: Literal["offense", "defense"] | None = None  # model picks: which list (D70)
     baseline: Num
     # heuristic picks (P04 fallback)
     usage_metric: str | None = None  # "target share"

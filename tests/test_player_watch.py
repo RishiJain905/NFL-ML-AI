@@ -10,6 +10,9 @@ import pytest
 from nflengine.models.player_schema import MAIN_TARGETS, PRED_SCHEMA, conform
 from nflengine.models.player_watch import (
     FOLLOWED_BOOST,
+    GROUP_CAPS,
+    MIN_VOLUME,
+    N_TOUGH,
     eligible,
     select_watchlist,
     tough_spots,
@@ -106,34 +109,46 @@ def test_largest_positive_outperformance_first_and_negatives_never_picked():
     df = frame([row("a", "KC", 0.4), row("b", "BUF", 1.2), row("c", "DEN", -0.5)])
     out = select_watchlist(df)
     assert ids(out) == ["b", "a"]
-    assert out["rank"].to_list() == [1, 2]
-    assert set(PRED_SCHEMA) <= set(out.columns) and {"rank", "score"} <= set(out.columns)
+    assert out["rank"].to_list() == [1, 2] and out["side"].to_list() == ["offense"] * 2
+    assert set(PRED_SCHEMA) <= set(out.columns) and {"rank", "score", "side"} <= set(out.columns)
 
 
-def test_at_most_two_per_team():
-    df = frame([row(f"k{i}", "KC", 2.0 - i / 10, group=g) for i, g in enumerate(
-        ["WR/TE", "RB", "QB", "LB/S"])] + [row("b", "BUF", 0.1)])  # fmt: skip
-    assert ids(select_watchlist(df)) == ["k0", "k1", "b"]
+def test_offense_and_defense_are_picked_separately_with_their_own_quota():
+    """Defenders' bigger z can't crowd offense out: each side fills its own list."""
+    d = [row(f"d{i}", f"D{i}", 3.0 - i / 10, group=("EDGE/DL", "LB/S")[i % 2]) for i in range(8)]
+    o = [row(f"o{i}", f"O{i}", 0.5 - i / 100, group=("QB", "RB", "WR/TE")[i % 3]) for i in range(6)]
+    out = select_watchlist(frame([*d, *o]), n_offense=4, n_defense=3)
+    assert out.filter(pl.col("side") == "offense")["player_id"].to_list() == [
+        "o0",
+        "o1",
+        "o2",
+        "o3",
+    ]
+    assert out.filter(pl.col("side") == "defense")["player_id"].to_list() == ["d0", "d1", "d2"]
+    assert out["side"].to_list() == ["offense"] * 4 + ["defense"] * 3  # offense first
+    assert out["rank"].to_list() == [1, 2, 3, 4, 1, 2, 3]  # rank within the side
 
 
-def test_group_cap_keeps_variety_but_relaxes_when_the_list_would_be_short():
+def test_at_most_two_per_team_per_side():
+    off = [row(f"k{i}", "KC", 2.0 - i / 10, group=g) for i, g in enumerate(["WR/TE", "RB", "QB"])]
+    dfn = [
+        row(f"x{i}", "KC", 1.0 - i / 10, group=g) for i, g in enumerate(["LB/S", "EDGE/DL", "LB/S"])
+    ]
+    out = select_watchlist(frame([*off, *dfn, row("b", "BUF", 0.1)]))
+    assert ids(out) == ["k0", "k1", "b", "x0", "x1"]  # 2 Chiefs on offense and 2 on defense
+
+
+def test_group_caps_keep_variety_but_relax_when_a_side_would_be_short():
     qbs = [row(f"q{i}", f"T{i}", 3.0 - i / 10, group="QB") for i in range(6)]
     wr = [row("w", "WR1", 0.3)]
-    out = select_watchlist(frame([*qbs, *wr]), n_items=4)
-    assert ids(out) == ["q0", "q1", "q2", "w"]  # 3 QBs, then the receiver
-    out = select_watchlist(frame([*qbs, *wr]), n_items=6)
+    out = select_watchlist(frame([*qbs, *wr]), n_offense=4)
+    assert ids(out) == ["q0", "q1", "q2", "w"]  # QB cap 3, then the receiver
+    out = select_watchlist(frame([*qbs, *wr]), n_offense=6)
     assert ids(out) == ["q0", "q1", "q2", "w", "q3", "q4"]  # caps relaxed to fill
-    assert ids(select_watchlist(frame(qbs), n_items=4, max_per_group=None)) == [
+    assert ids(select_watchlist(frame(qbs), n_offense=4, group_caps=None)) == [
         "q0", "q1", "q2", "q3",
     ]  # fmt: skip
-
-
-def test_at_most_three_defenders_unless_the_list_would_be_short():
-    d = [row(f"d{i}", f"D{i}", 3.0 - i / 10, group=("EDGE/DL", "LB/S")[i % 2]) for i in range(5)]
-    o = [row("q", "Q1", 0.4, group="QB"), row("w", "W1", 0.3)]
-    assert ids(select_watchlist(frame([*d, *o]), n_items=5)) == ["d0", "d1", "d2", "q", "w"]
-    assert ids(select_watchlist(frame([*d, *o]), n_items=6)) == ["d0", "d1", "d2", "q", "w", "d3"]
-    assert len(select_watchlist(frame(d), n_items=5, max_defense=None)) == 5
+    assert GROUP_CAPS == {"QB": 3, "RB": 4, "WR/TE": 4, "EDGE/DL": 6, "LB/S": 6}
 
 
 def test_followed_team_boost_breaks_close_calls_only():
@@ -148,7 +163,7 @@ def test_a_linebacker_in_two_pools_appears_once_with_his_best_row():
         [
             row("lb", "KC", 0.6, group="EDGE/DL", position="OLB"),
             row("lb", "KC", 1.1, group="LB/S", position="OLB"),
-            row("x", "BUF", 0.8),
+            row("x", "BUF", 0.8, group="EDGE/DL"),
         ]
     )
     out = select_watchlist(df)
@@ -160,7 +175,7 @@ def test_ties_break_on_player_id_and_empty_input_keeps_columns():
     df = frame([row("b", "KC", 1.0), row("a", "BUF", 1.0)])
     assert ids(select_watchlist(df)) == ["a", "b"]
     empty = select_watchlist(frame([row("a", "KC", -1.0)]))
-    assert empty.is_empty() and {"rank", "score", "p50"} <= set(empty.columns)
+    assert empty.is_empty() and {"rank", "score", "p50", "side"} <= set(empty.columns)
 
 
 # ---- tough spots --------------------------------------------------------------------------------
@@ -181,7 +196,9 @@ def test_tough_spots_are_regular_starters_far_below_baseline():
     )
     out = tough_spots(df, n=3, exclude=["w2"])
     assert ids(out) == ["t1", "t3"]
-    assert out["score"].to_list() == [-1.5, -0.8]
+    assert out["score"].to_list() == [-1.5, -0.8] and out["side"].to_list() == ["offense"] * 2
+    many = frame([row(f"t{i}", f"T{i}", -1.0 - i / 10) for i in range(7)])
+    assert len(tough_spots(many)) == N_TOUGH == 5
 
 
 # ---- backtest -----------------------------------------------------------------------------------
@@ -219,6 +236,10 @@ def test_backtest_hit_rate_against_the_base_rate():
     assert g["WR/TE"]["hit_rate"] == pytest.approx(2 / 3)
     assert res.by_season["season"].to_list() == [2025]
     assert res.summary()["watch/hit_rate"] == pytest.approx(2 / 3)
+    sides = {r["side"]: r for r in res.by_side.iter_rows(named=True)}
+    assert sides["offense"]["hit_rate"] == pytest.approx(2 / 3)
+    assert sides["defense"]["picks"] == 0 and sides["defense"]["base_rate"] == 0.0
+    assert res.summary()["watch/offense/base_rate"] == pytest.approx(3 / 5)
     assert set(res.picks["player_id"]) == {"a", "b"}
     assert res.picks.filter(pl.col("week") == 1)["inside"].to_list() == [True, True]
 
@@ -226,3 +247,36 @@ def test_backtest_hit_rate_against_the_base_rate():
 def test_backtest_of_nothing_is_empty():
     res = watchlist_backtest([])
     assert res.overall == {} and res.picks.is_empty()
+
+
+# ---- minimum projected volume -----------------------------------------------------------------
+
+
+def test_a_pick_needs_a_minimum_projected_volume_and_the_list_backfills():
+    """Rotation linemen projected 0.3 pressures read oddly; the next best pick takes the slot."""
+    low = row("low", "A1", 2.0, group="EDGE/DL", kind="count", mean=0.3, p50=0.0)
+    ok = row("ok", "A2", 1.0, group="EDGE/DL", kind="count", mean=1.2, p50=1.0)
+    lb = row("lb", "A3", 0.5, group="LB/S", kind="count", mean=1.9, p50=2.0)  # mean < 2.0
+    lb_ok = row("lb_ok", "A4", 0.4, group="LB/S", kind="count", mean=2.4, p50=2.0)
+    out = select_watchlist(frame([low, ok, lb, lb_ok]))
+    assert ids(out) == ["ok", "lb_ok"]  # the projection is the mean for counts
+    assert ids(select_watchlist(frame([low, ok, lb, lb_ok]), min_volume=None)) == [
+        "low", "ok", "lb", "lb_ok",
+    ]  # fmt: skip
+    assert MIN_VOLUME == {"pressures": 1.0, "tackles": 2.0}
+    # amounts (yards) have no floor; tough spots never use one
+    wr = row("wr", "W1", 1.0, p10=0.0, p50=8.0, p90=30.0)
+    assert ids(select_watchlist(frame([wr]))) == ["wr"]
+    weak = row("weak", "T1", -1.0, group="EDGE/DL", kind="count", mean=0.4, p50=0.0)
+    assert ids(tough_spots(frame([weak]))) == ["weak"]
+
+
+def test_a_side_that_cannot_fill_its_quota_shows_fewer_and_the_backtest_counts_it():
+    rows = [row(f"d{i}", f"D{i}", 1.0 - i / 10, group="EDGE/DL", kind="count",
+                mean=1.5 if i < 2 else 0.5) for i in range(4)]  # fmt: skip
+    out = select_watchlist(frame(rows), n_defense=3)
+    assert ids(out) == ["d0", "d1"]  # the floor is never relaxed to fill
+    res = watchlist_backtest(frame([{**r, "actual": 2.0, "played": True} for r in rows]),
+                             n_offense=0, n_defense=3)  # fmt: skip
+    assert res.short_weeks == {"offense": 0, "defense": 1}
+    assert res.summary()["watch/defense/short_weeks"] == 1

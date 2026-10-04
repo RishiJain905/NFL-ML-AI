@@ -33,7 +33,12 @@ from nflengine.digest.payload import (
     ReportCard,
     SeasonToDate,
 )
-from nflengine.digest.players import scoreboard_highlights, watch_lookback, week_improvement
+from nflengine.digest.players import (
+    scoreboard_highlights,
+    side_tallies,
+    watch_lookback,
+    week_improvement,
+)
 from nflengine.models import metrics as M
 
 PRED_FILE = "predictions_games.parquet"
@@ -286,6 +291,7 @@ def build_report_card(
         watch_lookback=lookback,
         # only when every scored pick had a range (a mixed heuristic week shows none)
         watchlist_inside=F.count(w_inside) if w_ranged and w_ranged == w_total else None,
+        watchlist_by_side=side_tallies(watch_scored),
     )
     row = {
         "season": season,

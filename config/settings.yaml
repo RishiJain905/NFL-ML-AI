@@ -90,12 +90,15 @@ player_model:             # player model v1 (P06; documentation/04 -> C); LightG
 qb: {}                    # QB status feature (features/qb.py QBParams); defaults in code
 
 digest:                   # prose word budgets per section (documentation/06)
-  watchlist_size: 8       # players to watch (all in a table; the prose covers the top ones)
+  watchlist_size: 8       # the P04 heuristic fallback's list size (no player projections)
+  watchlist_offense: 10   # model players to watch on offense (QB / RB / WR-TE; Rishi, D70)
+  watchlist_defense: 10   # ... and on defense (EDGE/DL / LB/S)
+  tough_spots: 5          # regular starters projected furthest below their baseline
   word_budgets:
     report_card: 60
     game_outlook: 80
     team_trends: 120
     under_the_hood: 110
-    players_to_watch: 160
+    players_to_watch: 200   # 2-3 picks per side in prose (D70); the tables hold all 20
     matchup_risk: 80
     non_obvious: 90

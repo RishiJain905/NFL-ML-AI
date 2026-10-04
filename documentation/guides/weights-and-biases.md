@@ -309,7 +309,7 @@ Until a live week is scored (the first is week 4, scored by week 5's run), the c
 | `check/<name>`, `check_issues/<name>` | 1/0 per check and the issue count, for all 11 checks (`complete`, `number_provenance`, `spelled_out_numbers`, `entity_binding`, `unknown_entities`, `meaning`, `banned_language`, `length`, `length_short`, `hedging`, `name_heuristic`) | every fail-level check 1; `hedging` and `length_short` 0 (warnings) |
 | `regenerated`, `banner` | Whether a second writer attempt was needed; whether a warning banner was printed | `false`, `false` |
 | `words/<section>`, `words_total` | Words per section and in all | 716 in all |
-| `games`, `team_trends`, `under_the_hood_items`, `watchlist_items`, `news_items` | How many items each section got | 15, 4, 5, 5, 5 |
+| `games`, `team_trends`, `under_the_hood_items`, `watchlist_items`, `news_items` | How many items each section got (`watchlist_items`: 20 from week 5 of 2026, 10 offense + 10 defense, D70) | 15, 4, 5, 5, 5 |
 | `graph_status`, `graph_items` | Whether the graph sections were in, and how many insights | `ok`, 3 |
 | `graph_more_items`, `qb_changes`, `starters_out` | The code-written lists (D63): "More from the graph" lines, QB changes flagged in the game table, starters-out entries | added after week 4's live digest; expect about 4–6, 0–7, 20–40 |
 | `market_data_used` | Whether any shown game used the market variant | `true` |

@@ -39,17 +39,19 @@ sections:
     title: Players to watch
     payload: [players_to_watch]
     instructions: >-
-      A table above your text already lists every pick (up to eight). Write about the four
-      to six most notable. When source is "model": for each player give the projection
+      Code-written tables above your text list every pick. When source is "model" there
+      are two lists, "offense" and "defense" (each item's side, up to 10 each): write about
+      the 2-3 most notable of each side, offense first, and say which side you are on. For
+      each player give the projection
       for his target stat, his vs_baseline (copy it whole: it already says above or below
       his baseline) and his interval as his likely range; then one or two of his drivers,
       copied whole (a driver compares him with a typical player in his group; it is not his
       form and not the reason for the gap to his baseline), or his driver_note when he has
       no driver, plus his role_note or injury_note when present. A baseline_note says where a thin baseline comes from: give it as
-      context for the baseline, never as the reason for the projection. The list is already in code's order: never call a player the top,
+      context for the baseline, never as the reason for the projection. Each list is already in code's order: never call a player the top,
       biggest or best pick, and never call a projection a sure thing. When confidence is
       "low", say so in that player's sentence. When source is "heuristic" (no projections
-      this week): recent usage change, the opponent's defense and the baseline; copy
+      this week; one list of up to 8, write about the 4-6 most notable): recent usage change, the opponent's defense and the baseline; copy
       opp_def_rank's display exactly ("3rd-weakest" = one of the worst defenses, a good
       matchup; "4th-strongest" = a tough one), never a bare ordinal, and say these are
       low-confidence heuristic picks.

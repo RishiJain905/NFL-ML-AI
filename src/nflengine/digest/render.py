@@ -68,6 +68,15 @@ def report_card_numbers(rc: ReportCard) -> str:
             wl = f"watch list {rc.watchlist_hits.display} of {rc.watchlist_total.display}"
             if rc.watchlist_inside is not None:
                 wl += f" above baseline, {rc.watchlist_inside.display} inside their range"
+            if rc.watchlist_by_side:
+                wl += (
+                    " ("
+                    + ", ".join(
+                        f"{t.side} {t.hits.display} of {t.total.display}"
+                        for t in rc.watchlist_by_side
+                    )
+                    + ")"
+                )
             parts.append(wl)
         lines.append(" · ".join(parts))
     s = rc.season_to_date  # also shown when last week had nothing gradable (Sol #12)
@@ -90,13 +99,34 @@ def report_card_numbers(rc: ReportCard) -> str:
         lines.append(f"**Player projections:** {hl}")
     if rc.not_graded:
         lines.append(f"_{rc.not_graded} game(s) not graded: predicted after kickoff._")
-    if rc.watch_lookback:
-        picks = "\n".join(
-            f"  - {lb.player} ({lb.team_name} {lb.position}, {lb.target}): {lb.text}"
-            for lb in rc.watch_lookback
+    out = "\n".join(f"- {line}" for line in lines)
+    table = lookback_table(rc)
+    return f"{out}\n\n{table}" if out and table else (out or table)
+
+
+def _mark(flag: bool | None) -> str:
+    return "–" if flag is None else ("✓" if flag else "✗")
+
+
+def lookback_table(rc: ReportCard) -> str:
+    """Last week's picks in one compact code-written table (D70: 20 picks a week). The
+    one-line text per pick stays in the payload (`LookbackItem.text`)."""
+    if not rc.watch_lookback:
+        return ""
+    lines = [
+        "**Last week's watch list**",
+        "",
+        "| Side | Player | Stat | Projected | Range | Actual | In range | Above baseline |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for lb in rc.watch_lookback:
+        actual = lb.actual.display if lb.actual is not None else (lb.status or "–")
+        lines.append(
+            f"| {lb.side or '–'} | {lb.player} ({lb.team_name} {lb.position}) | {lb.target} | "
+            f"{_d(lb.projection)} | {_d(lb.interval)} | {actual} | {_mark(lb.inside)} | "
+            f"{_mark(lb.hit)} |"
         )
-        lines.append(f"**Last week's watch list:**\n{picks}")
-    return "\n".join(f"- {line}" for line in lines)
+    return "\n".join(lines)
 
 
 def _cap(text: str) -> str:
@@ -193,24 +223,41 @@ def watch_source(p: Payload) -> str:
     return "heuristic" if version.startswith("heuristic") else "model"
 
 
+MODEL_HEADER = [
+    "| Player | Game | Projection | Range (80%) | Baseline | Confidence | Main driver / note |",
+    "|---|---|---|---|---|---|---|",
+]
+SIDE_TITLES = {"offense": "Offense", "defense": "Defense"}
+
+
+def _model_rows(rows: list[WatchItem]) -> list[str]:
+    return [
+        f"| {w.player} ({w.team_name} {w.position}) | vs {w.opponent_name} | "
+        f"{_d(w.projection)} | {_d(w.interval)} | {w.baseline.display} | "
+        f"{w.confidence} | {_why(w)} |"
+        for w in rows
+    ]
+
+
 def watch_table(p: Payload) -> str:
-    """Every watch-list pick in one table (code-written); the prose covers the top ones."""
+    """Every watch-list pick, code-written; the prose covers the top ones. Model picks come
+    in two tables, Offense and Defense (D70); picks without a side in one."""
     rows = p.players_to_watch
     if not rows:
         return ""
     if watch_source(p) == "model":
-        lines = [
-            "| Player | Game | Projection | Range (80%) | Baseline | Confidence | Main driver "
-            "/ note |",
-            "|---|---|---|---|---|---|---|",
-        ]
-        for w in rows:
-            lines.append(
-                f"| {w.player} ({w.team_name} {w.position}) | vs {w.opponent_name} | "
-                f"{_d(w.projection)} | {_d(w.interval)} | {w.baseline.display} | "
-                f"{w.confidence} | {_why(w)} |"
-            )
-        return "\n".join(lines)
+        if not any(w.side for w in rows):
+            return "\n".join([*MODEL_HEADER, *_model_rows(rows)])
+        blocks = []
+        for side, title in SIDE_TITLES.items():
+            part = [w for w in rows if w.side == side]
+            if part:
+                n = len(part)
+                blocks.append(
+                    f"**{title}** ({n} pick{'s' if n != 1 else ''})\n\n"
+                    + "\n".join([*MODEL_HEADER, *_model_rows(part)])
+                )
+        return "\n\n".join(blocks)
     lines = [
         "| Player | Game | Usage (recent vs before) | Opponent defense | Baseline |",
         "|---|---|---|---|---|",

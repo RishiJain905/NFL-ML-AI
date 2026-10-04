@@ -68,6 +68,13 @@ _None._
 
 ## Session log (newest first)
 
+### 2026-10-04: Players to watch → 10 offense + 10 defense, 5 tough spots (D70; for week 5)
+- Rishi liked the tough spots and asked for more players to watch: 10 offense + 10 defense, ready for Tuesday's week-5 run. He also asked why every week-4 pick was "medium": not a filter (the watch list keeps low-confidence picks; only tough spots skip them) but the rule: **high** needs 4+ games this season, impossible in week 4; from week 5 on it appears (2025 backtest weeks 5+: 1,339 high of 3,286 receiving-yards rows).
+- **Built (opus-high, D70):** `select_watchlist` picks each side separately (2 per team per side; soft group caps QB 3, RB 4, WR/TE 4, EDGE/DL 6, LB/S 6), a defensive **volume floor** (≥ 1.0 pressures, ≥ 2.0 tackles; chosen on 2019–2020, confirmed on 2021–2025; no offensive floor, it cost hit rate), 5 tough spots, two tables (Offense, Defense), prose on 2–3 per side (budget 160 → 200), a compact 20-row look-back with a per-side tally. Config: `digest.watchlist_offense`, `watchlist_defense`, `tough_spots`.
+- **Backtest** (2019–2025, 2,480 picks): **65.3% vs a 42.2% base rate** (offense 65.0, defense 65.6; every group and season above 50%; no side ever short). The 8-pick list was 69.5%.
+- **Checked:** 979 tests pass, ruff clean; 2025 week 8 / 9 backtest digests (placeholder) pass every check with 20 picks; a real-GLM backtest digest of 2025 week 9 (`reports/backtests/2025/week09-digest-openrouter.md`, no W&B) **passed every check** after one regeneration; the first attempt's failures were in team trends (length, two unowned numbers), not the players section (219 words, within its tolerance). Confidence labels show high / medium / low as expected in week 9.
+- **Docs:** D70; doc 04 / 06; the player model card, guide, W&B guide, digest-checks skill.
+
 ### 2026-10-04: P06 docs follow-up: the math, the code map, every training round
 - Rishi asked whether the docs give the math behind training and tuning, and point to the files and lines each model touches, for every model (QB, RB, WR/TE, defense), so a newcomer or a returning reader understands each model.
 - The cards explained each step in words but had no formulas, worked numbers or `file:line` pointers, and the round-by-round training history lived only in PROGRESS and W&B. Added:

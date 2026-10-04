@@ -34,16 +34,21 @@ from nflengine.digest import format as F
 from nflengine.digest.build import matchup
 from nflengine.digest.checks import banned_terms
 from nflengine.digest.names import nickname
-from nflengine.digest.payload import LookbackItem, WatchItem
+from nflengine.digest.payload import LookbackItem, SideTally, WatchItem
 from nflengine.models.player_schema import TARGETS, conform, score_predictions
-from nflengine.models.player_watch import select_watchlist, tough_spots
+from nflengine.models.player_watch import (
+    N_DEFENSE,
+    N_OFFENSE,
+    N_TOUGH,
+    select_watchlist,
+    tough_spots,
+)
 from nflengine.paths import DataPaths
 
 PLAYER_PRED_FILE = "predictions_players.parquet"
 LIVE_SCOREBOARD = "accuracy_scoreboard.parquet"  # runs/<season>/
 BACKTEST_SCOREBOARD = ("backtests", "player", "scoreboard.parquet")  # under runs/
 HEURISTIC_VERSION = "heuristic-v0 (no player projections this week)"
-TOUGH_N = 3
 DRIVERS_MAX = 3
 MIN_SCORED = 20  # a target needs this many scored projections before a highlight names it
 COVERAGE_OK = (0.72, 0.88)  # P06 exit criterion for the P10-P90 range
@@ -168,6 +173,7 @@ def build_model_watch(rows: pl.DataFrame) -> list[WatchItem]:
                 matchup=matchup(home, away),
                 target=label,
                 group=r["group"],
+                side=r.get("side"),
                 baseline=F.stat(base, label, unit),
                 projection=F.stat(mid, label, unit),
                 interval=F.stat_range(float(r["p10"]), float(r["p90"]), label, unit),
@@ -204,15 +210,46 @@ class PlayerWatch:
     version: str
 
 
+@dataclass(frozen=True)
+class WatchSizes:
+    """How many picks the digest shows (`config/settings.yaml` → `digest`): 10 on offense,
+    10 on defense, 5 tough spots (D70); the heuristic fallback keeps its single list of 8."""
+
+    offense: int = N_OFFENSE
+    defense: int = N_DEFENSE
+    tough: int = N_TOUGH
+    heuristic: int = 8
+
+    @classmethod
+    def from_config(cls, digest: dict[str, Any] | None) -> WatchSizes:
+        d = digest or {}
+
+        def get(key: str, default: int) -> int:
+            v = d.get(key)
+            return int(v) if v is not None else default
+
+        return cls(
+            offense=get("watchlist_offense", N_OFFENSE),
+            defense=get("watchlist_defense", N_DEFENSE),
+            tough=get("tough_spots", N_TOUGH),
+            heuristic=get("watchlist_size", 8),
+        )
+
+
+DEFAULT_SIZES = WatchSizes()
+
+
 def model_watch(
     preds: pl.DataFrame,
     run_time: dt.datetime,
     *,
-    n_items: int = 8,
+    sizes: WatchSizes = DEFAULT_SIZES,
     followed: Collection[str] = (),
 ) -> PlayerWatch:
-    picks = select_watchlist(preds, n_items, followed=followed, run_time=run_time)
-    tough = tough_spots(preds, TOUGH_N, run_time=run_time, exclude=picks["player_id"].to_list())
+    picks = select_watchlist(
+        preds, sizes.offense, sizes.defense, followed=followed, run_time=run_time
+    )
+    tough = tough_spots(preds, sizes.tough, run_time=run_time, exclude=picks["player_id"].to_list())
     return PlayerWatch(
         stamp_model_watch(picks, run_time),
         build_model_watch(picks),
@@ -225,7 +262,7 @@ def player_watch(
     run_dir: Path,
     run_time: dt.datetime,
     *,
-    n_items: int = 8,
+    sizes: WatchSizes = DEFAULT_SIZES,
     followed: Collection[str] = (),
 ) -> PlayerWatch | None:
     """This week's model picks and tough spots from `run_dir/predictions_players.parquet`;
@@ -233,7 +270,7 @@ def player_watch(
     preds = load_player_predictions(run_dir / PLAYER_PRED_FILE)
     if preds is None:
         return None
-    return model_watch(preds, run_time, n_items=n_items, followed=followed)
+    return model_watch(preds, run_time, sizes=sizes, followed=followed)
 
 
 # ---- scoring saved picks ----------------------------------------------------------------------
@@ -374,10 +411,22 @@ def watch_lookback(scored: pl.DataFrame) -> list[LookbackItem]:
     published order."""
     if scored.is_empty():
         return []
-    df = scored.sort("rank", nulls_last=True) if "rank" in scored.columns else scored
+    df = scored
+    if "side" in df.columns:
+        df = df.with_columns((pl.col("side") == "defense").fill_null(False).alias("_def"))
+        df = df.sort("_def", "rank", nulls_last=True) if "rank" in df.columns else df.sort("_def")
+    elif "rank" in df.columns:
+        df = df.sort("rank", nulls_last=True)
     out = []
     for r in df.iter_rows(named=True):
         played = bool(r.get("played"))
+        model = r.get("source") == "model" and _num_ok(r.get("p50"))
+        label = r.get("target_label") or r.get("target") or ""
+        unit = (r.get("unit") or "yards") if model else "yards"
+        status = ""
+        if not played:
+            status = "no result yet" if r.get("played_game") else "did not play"
+        side = r.get("side") if r.get("side") in ("offense", "defense") else None
         out.append(
             LookbackItem(
                 player=r["player"],
@@ -390,8 +439,34 @@ def watch_lookback(scored: pl.DataFrame) -> list[LookbackItem]:
                 played=played,
                 hit=r.get("hit") if played else None,
                 inside=r.get("inside") if played else None,
+                side=side,
+                projection=F.stat(center(r), label, unit) if model else None,
+                interval=(
+                    F.stat_range(float(r["p10"]), float(r["p90"]), label, unit) if model else None
+                ),
+                actual=F.stat(float(r["actual"]), label, unit) if played else None,
+                status=status,
             )
         )
+    return out
+
+
+def side_tallies(scored: pl.DataFrame) -> list[SideTally]:
+    """Scored picks and hits per side (offense first); [] for a list without sides."""
+    if scored.is_empty() or "side" not in scored.columns:
+        return []
+    played = scored.filter(pl.col("played").fill_null(False))
+    out = []
+    for side in ("offense", "defense"):
+        part = played.filter(pl.col("side") == side)
+        if part.height:
+            out.append(
+                SideTally(
+                    side=side,  # type: ignore[arg-type]
+                    hits=F.count(int(part["hit"].fill_null(False).sum())),
+                    total=F.count(part.height),
+                )
+            )
     return out
 
 

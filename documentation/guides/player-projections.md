@@ -91,31 +91,34 @@ curated Parquet (D:) ──► features/player_data.py   player_history: one row
 
 All three are code, not the LLM (`models/player_watch.py`, `digest/players.py`).
 
-**Players to watch (8 per week, `digest.watchlist_size`).** From the week's projections:
+**Players to watch: 10 on offense + 10 on defense** (D70, Rishi's request; `digest.watchlist_offense` / `watchlist_defense`). From the week's projections:
 1. **Pool:** main targets only; a real role (snap share ≥ 50% over his last 2 games, or a *role change*: regular teammates who missed the team's last game or are ruled out this week, each counted once, leaving ≥ 15% of the targets for a WR/TE or ≥ 25% of the carries for an RB (`open_tgt` / `open_car`)); a game not yet kicked off when the digest runs; not Out / Doubtful.
 2. **Score:** `outperf_z` = (projection − baseline) / the target's typical baseline miss, so a 25-yard jump and a 1.5-pressure jump compare. Only positive scores qualify. Followed teams get ×1.15.
-3. **Pick greedily:** at most 2 per team, 3 per position group and **3 defenders** in all (EDGE/DL + LB/S). The caps are relaxed only if the list would come up short. Without the defense cap, 5–6 of 8 picks were defenders every week and a receiver made the list about once a month: defenders' count targets move further from their baselines in z than receiving yards do (the rule was checked on 2019–2020 and confirmed on 2021–2025).
+3. **Pick each side on its own, greedily:** offense (QB, RB, WR/TE) and defense (EDGE/DL, LB/S) fill separate lists of 10, at most 2 per team per side, with soft group caps for variety (QB 3, RB 4, WR/TE 4, EDGE/DL 6, LB/S 6) that are relaxed only if a side would come up short. Why two lists: defenders' count targets move further from their baselines in z than receiving yards do, so one combined ranking crowds offense out (P06's single list of 8 needed a 3-defender cap; without it 5–6 of 8 picks were defenders).
+4. **Minimum projected volume** (`MIN_VOLUME`, on the projection as shown: the average for counts): at least **1.0 pressures** or **2.0 tackles**. A rotation lineman projected 0.3 pressures read oddly, and on 2019–2020 pressures picks under 0.8 hit only 33% (58% above). Chosen on 2019–2020 only, confirmed on 2021–2025 unchanged: defense 62.9% → 65.3% and 64.2% → 65.7%, EDGE/DL 55.4% → 59.9% and 56.0% → 59.8%, and no week came up short of 10. Never relaxed: a side that can't fill 10 shows fewer (the table title says "Defense (9 picks)"). No offensive floor: picks under 20 receiving or rushing yards hit as often as the others, and a 20-yard floor lowered WR/TE's hit rate (65.6% → 62.8% on 2019–2020). Tough spots don't use it.
 
-**Tough spots (3).** Regular starters (snap share ≥ 50%, not low confidence) projected at least a quarter of a typical miss *below* their own baseline, one per team, never a watch-list player. A code-written list under *Matchup / risk to watch*.
+**Tough spots (5, `digest.tough_spots`).** Regular starters (snap share ≥ 50%, not low confidence) projected at least a quarter of a typical miss *below* their own baseline, one per team, never a watch-list player. A code-written list under *Matchup / risk to watch*.
 
 **Look-back.** Next week's report card grades the list exactly as it was saved (`watchlist.parquet` in the run folder, `created_at` = when the digest ran; picks made after kickoff are never graded): "projected 85 receiving yards, range 60–135 receiving yards → actual 97 receiving yards: inside the range, above his baseline of 60 receiving yards". A **hit** = actual above his baseline. Unpublished stats (a PFR pressure count not out yet) aren't scored; the weekly step re-scores every earlier week, so they fill in a week later on the scoreboard (the look-back itself is written once, in the next week's digest).
 
 **Is the list any good?** `watchlist_backtest` replays the selection on every backtest week and compares the hit rate with the **base rate**: the share of all eligible role players who beat their baseline. The base rate is well under 50% (medians sit below means, so most players finish below their own average), so a hit rate only means something next to it.
 
-| 2019–2025 backtests (124 weeks, 992 picks) | Hit rate | Base rate | Picks per week |
+| 2019–2025 backtests (124 weeks, 2,480 picks: 10 + 10 a week, volume floor on) | Hit rate | Base rate | Picks per week |
 |---|---|---|---|
-| **All picks** | **69.5%** | 42.2% | 8 |
-| QB | 71.5% | 47.5% | 2.1 |
-| RB | 68.1% | 44.7% | 1.9 |
-| WR/TE | 68.3% | 40.2% | 1.0 |
-| EDGE/DL | 61.1% | 37.3% | 0.8 |
-| LB/S | 72.1% | 47.8% | 2.2 |
+| **All picks** | **65.3%** | 42.2% | 20 |
+| Offense | 65.0% | 42.0% | 10 |
+| Defense | 65.6% | 42.3% | 10 |
+| QB | 70.7% | 47.5% | 3.0 |
+| RB | 62.0% | 44.7% | 3.6 |
+| WR/TE | 63.3% | 40.2% | 3.5 |
+| EDGE/DL | 59.8% | 37.3% | 4.3 |
+| LB/S | 69.9% | 47.8% | 5.7 |
 
-Exit criterion (P06): hit rate > 50%. Every season clears it (66.2% in 2019 is the lowest, 72.9% in 2021 the highest), always 24–31 points above that season's base rate. 77% of the picks' actual results fell inside their 80% range. Confidence mix of the picks: 36% high, 50% medium, 14% low (low-confidence picks hit 63%, the others 68–72%). Among *all* pool players projected above their baseline, 47.9% beat it: the list's edge comes from picking the biggest projected jumps, not from the direction alone.
+Exit criterion (P06): hit rate > 50%. Every season clears it (60.8% in 2022 is the lowest, 69.4% in 2023 and 2024 the highest), 20–27 points above that season's base rate; every group too (EDGE/DL is lowest, 59.8% against a 37.3% base rate). Neither side came up short of 10 in any week. 78% of the picks' actual results fell inside their 80% range. Confidence mix: 35% high, 51% medium, 14% low (low-confidence picks hit 61%, the others 65–66%). Among *all* pool players projected above their baseline, 47.9% beat it: the list's edge comes from picking the biggest projected jumps, not from the direction alone. That's also why the 20-pick list hits less often than P06's 8-pick list did (69.5%): picks 9–20 have smaller projected jumps.
 
 ## 6. Reading the projections in the digest
 
-**Players to watch table** (code-written; the prose covers 4–6 of the 8):
+**Players to watch tables** (code-written, one for Offense and one for Defense, 10 rows each; the prose covers the 2–3 most notable per side, offense first):
 
 | Column | Meaning |
 |---|---|
@@ -128,7 +131,7 @@ Exit criterion (P06): hit rate > 50%. Every season clears it (66.2% in 2019 is t
 How to read a pick: the projection's distance from the baseline is the story; the range says how wide the plausible outcomes are; the driver says what the model is reacting to; a baseline note says "his normal is uncertain too". Every number in the table and the prose comes from `digest/format.py` and is checked against the payload (the `digest-checks` skill).
 
 **Report card additions:**
-- **Last week's watch list:** one line per pick, projected vs actual vs range, plus "watch list 6 of 8 above baseline, 7 inside their range".
+- **Last week's watch list:** one compact table, one row per pick (side, player, stat, projected, range, actual, ✓ / ✗ for "in range" and "above baseline", "did not play" / "no result yet" when it wasn't scored), and on the numbers line "watch list 15 of 20 above baseline, 17 inside their range (offense 6 of 10, defense 9 of 10)". Season totals are unchanged.
 - **Player projections:** 2–3 highlights from the accuracy scoreboard, always including the weakest target: "receiving yards projections beat the rolling baseline by 9% so far this season (3 weeks scored)", "pressures: not yet better than the rolling baseline (2% worse)", "the 80% ranges held 79% of results". A live digest uses only live scoreboard rows. Until a live week has been scored it says so ("no live week of player projections has been scored yet") and quotes the walk-forward backtests, **labelled as backtests**.
 
 **When projections are missing or the refit failed**, the digest falls back to the P04 usage heuristic. A failed refit writes `player_status.json` = `degraded` in the run folder (`player_schema.write_status`), and the digest checks it before reading `predictions_players.parquet`, so an older projection file left by an earlier run of the week is never used. The fallback is labelled "Heuristic picks (no player-model projections this week)", and the footer's model version says `heuristic-v0`.
@@ -232,6 +235,7 @@ A 🧑 run passes `--launched-by rishi` (agents: `--launched-by agent`).
 - SHAP drivers explain the projection against a typical player in his group, not against the player's baseline (§3); the digest words them that way and hides the small ones.
 - **A pick can be mostly baseline lag.** The rolling baseline pulls toward last season with 3 pseudo-games, so a backup who became a starter (the live 2026 week-4 list: Jake Hansen, 12% of snaps in week 1, then 88% and 100%, after a 1.7-tackle backup season) is projected well above a baseline that hasn't caught up with his new role. The projection is sensible; the "jump" is partly the role change. A baseline note appears only for fewer than 3 games this season, not for a changed role.
 - The prose names players without their team or opponent (the table carries both); the prompt doesn't ask for the matchup string in each sentence.
+- **Deep offensive picks can be small yardage.** The defensive list has a volume floor (§5); the offensive list doesn't, because low-yardage picks hit as often as the others. A pick like 13 projected receiving yards (a 3-yard baseline) can appear late in the Offense table.
 - Backtest rows only include games the player played, so a pick who sits out never appears there; live hit rates will run a little lower.
 - Pressures depend on PFR, which publishes about a week late: last week's pressures may not be scorable on Tuesday.
 - Not yet modelled (P08): touchdown, sack and interception chances, coverage stats for corners and safeties, team totals, and a consistency layer (receptions ≤ targets, receivers' yards ≈ QB yards).

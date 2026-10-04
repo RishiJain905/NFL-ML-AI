@@ -225,9 +225,11 @@ def build_fact_index(payload: Payload) -> FactIndex:
     for w in payload.tough_spots:
         _add_watch_item(fx, w)
     model.add(*rc.scoreboard_highlights, rc.watchlist_inside)
+    for t in rc.watchlist_by_side:
+        model.add(t.hits, t.total)
     for lb in rc.watch_lookback:
         p = fx.player(lb.player_id, lb.player)
-        p.add(lb.text)
+        p.add(lb.text, lb.projection, lb.interval, lb.actual)
         p.teams.add(lb.team)
         fx.team(lb.team)
 

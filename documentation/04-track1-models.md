@@ -221,7 +221,7 @@ The **"players to watch"** list is built from the main target for each position 
 
 - Compute a **baseline** = a weighted mix of the player's last 4 games and season to date, pulled toward their prior-season rate early in the year.
 - `outperformance = projection_p50 - baseline`.
-- Watch list = the largest positive outperformance among players with a real role (snap share ≥ 50% over the last 2 games, or a clear role change, such as a starter ruled out ahead of them). Capped at 2 per team, 6–8 total in the payload. The digest shows 4–6.
+- Watch list = the largest positive outperformance among players with a real role (snap share ≥ 50% over the last 2 games, or a clear role change, such as a starter ruled out ahead of them). Capped at 2 per team, 6–8 total in the payload. The digest shows 4–6. *(As built since 2026 week 5, D70: 10 offense + 10 defense in two tables, the prose on the most notable few.)*
 - Also flag notable **negative** outperformance (a tough spot) as candidates for "Matchup / risk to watch".
 
 ### Features
@@ -259,7 +259,7 @@ Results, settings and how to read the charts: [player model card](model_cards/pl
 - **Features** (126, all as of the row's week; the PFR / FTN ones and the pressures label lag one more week): own recent output (`own_*`), usage (`use_*`), team context including the P03 expected margin and points and the market-implied team total (`team_*`), the graph's ripple effects recomputed in Polars (`rip_*`), availability from the week's injury report (`avail_*`, the "Friday view", D66), efficiency incl. NGS / PFR / FTN (`eff_*`), opponent incl. production allowed to the position group over expectation (`opp_*`). Leakage tests per family (future-invariance on a synthetic league; a truncation check on the real data).
 - **Walk-forward 2019–2025**, weekly refits after 2 burn-in seasons; current-season sample weights (D28); hyperparameters from a 12-point grid per target scored on 2017–2018 only (D68).
 - **Drivers:** LightGBM's own SHAP values (`pred_contrib`), top 3 per projection, phrased from `features/descriptions.yaml`. SHAP explains the projection against the model's average, not against the player's own baseline, so the digest lists the drivers that agree with the projection's direction first and adds a note when the baseline rests on little history.
-- **Watch list** (doc 04 rule): the main stat per group, a real role (snap share ≥ 50% over the last 2 games, or vacated usage), ranked by (projection − baseline) / the target's typical baseline miss; at most 2 per team, 3 per position group and **3 defenders** (a variety rule checked on 2019–2020, confirmed on 2021–2025); 8 in the payload. The most negative gaps among regular starters are **tough spots** for *Matchup / risk*.
+- **Watch list** (doc 04 rule): the main stat per group, a real role (snap share ≥ 50% over the last 2 games, or vacated usage), ranked by (projection − baseline) / the target's typical baseline miss; **10 offense + 10 defense** chosen separately (D70; Rishi: more players to watch and to grade the model on), at most 2 per team per side, soft per-group caps (QB ≤ 3, RB ≤ 4, WR/TE ≤ 4; EDGE/DL ≤ 6, LB/S ≤ 6). Before D70: 8 picks with at most 3 defenders (D69). The **5** most negative gaps among regular starters are **tough spots** for *Matchup / risk*.
 - **Weekly path** (D67): the `player` step between `graph` and `digest`.
 
 ---
