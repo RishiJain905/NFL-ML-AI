@@ -368,6 +368,27 @@ How to use it: the tackles line climbs to +4.8% and settles; the pressures line 
 `bt/range_param` is the dispersion `r` for both runs; a drifting `r` would mean the spread of outcomes is changing.
 For pressures the first `lgb/curve_<season>` is **2020**, not 2019: the 2019 curve would train on seasons before 2018, and PFR has none.
 
+## Code path and training history
+
+The formulas and worked examples (baseline, pinball loss, conformal shift, Poisson + negative binomial, `baseline_p50`, z-score, SHAP) are in the overview card's [The math, step by step](player-model-v1.md#the-math-step-by-step-with-worked-examples-from-the-live-2026-week-4-fit); every model shares that code. Line numbers are as of commit `2ab11b4` (the function name is the stable pointer).
+
+**What is specific to the defensive models.**
+- **Targets:** `models/player_schema.py:68` (`pressures-edge`, count, `start_season` 2018, `label_lag` 1) and `:69` (`tackles-lbs`, count).
+- **Pools:** `pool_expr("EDGE/DL")`: `pgroup` DL or LB with defensive snaps (nflverse labels many edge rushers LB, D64); `pool_expr("LB/S")`: LB or S with defensive snaps. A linebacker is in both, with two projections. Flags `pos_lb`, `pos_s` (`models/player_model.py:110–111`).
+- **Pressures label:** PFR `def_pressures` (`features/player_data.py:527`). A defender who played with no PFR row had 0, but only when PFR published that team-game (zero-fill at line 546); otherwise null (not scorable yet).
+- **The PFR lag:** PFR publishes about a week late, so the pressures features lag a week (`asof_join(lag=1)`; `_lag_for`, `features/player.py:263`) **and** so does the label. At each weekly key, `PlayerWeekModel.__call__` (`models/player_model.py:350–358`) drops the latest week's pressures rows from training and from the calibration history. The tuning objective does the same (the Sol review found it didn't at first, and the sweep was re-run: `upmglalz`).
+- **Tackles label:** solo + assisted (`features/player_data.py:599`), which matches PFR's combined tackles (correlation 0.97–0.99).
+- **Models:** one Poisson booster each (`pressures-edge-mean.txt`, `tackles-lbs-mean.txt`) + negative binomial. Settings `config/settings.yaml:87–88`. Backtests: `runs/backtests/player/<model>/`.
+
+**Every training round** (improvement over the rolling baseline, W&B run ids):
+
+| Model | Round 1 (default 15 / 100 / 300, raw-mean yardstick) | Final, tuned | Final v2 (published) | No market lines |
+|---|---|---|---|---|
+| `pressures-edge` | +16.0%\* `z35epws7` | +3.0% `ek0sc1ld` | +3.0% `z2mwdzna` | +3.0% `b1nhvc9a` |
+| `tackles-lbs` | +6.8%\* `r18wcwa2` | +4.8% `7a77jo45` | +4.8% `m1iw9pyp` | +4.7% `xo7ckwaw` |
+
+\* Against the raw rolling mean (replaced by the median yardstick, D65). The pressures model itself barely changed (MAE 0.5546 → 0.5557); the +16% was the median-vs-mean effect on a stat whose median is 0. Tuning: pressures 7 leaves / 200 rows / 150 trees (sweeps `qnn35nz6`, then `upmglalz` with the label lag, same point), tackles 15 / 50 / 150 (`uvajbbn7`). Live week-4 fit `kl4fzvl8`: dispersions r = 2.8 (pressures: very spread out) and 8.7 (tackles).
+
 ## Versioning
 
 - **Hyperparameters are fixed for the 2026 season.** Retune before 2027 (P10). Never retune mid-season (doc 04: investigate, don't retune, when a target loses to its baseline for 3+ weeks in a row).

@@ -309,6 +309,27 @@ The x-axis of every `bt/*` curve is **`bt/step`**: one step per reported week. S
 `mae_season_mean_same_rows` / `mae_model_season_mean_rows` / `improvement_vs_season_mean_pct` (the same comparison against the season-to-date mean), `spearman_outperformance`, `share_role_baseline`
 (share of rows on the role baseline), `seasons_beating_baseline` out of `seasons`. The config panel lists the 126 features, `feature_hash`, `dataset_version` (pbp snapshot 2026-10-04) and `git_commit`.
 
+## Code path and training history
+
+The formulas and worked examples (baseline, pinball loss, conformal shift, Poisson + negative binomial, `baseline_p50`, z-score, SHAP) are in the overview card's [The math, step by step](player-model-v1.md#the-math-step-by-step-with-worked-examples-from-the-live-2026-week-4-fit); every model shares that code. Line numbers are as of commit `2ab11b4` (the function name is the stable pointer).
+
+**What is specific to the QB models.**
+- **Targets:** `models/player_schema.py:59` (`pass_yds-qb`, label `passing_yards`, an amount) and `:60` (`pass_epa-qb`, label `epa_per_db`, an amount).
+- **Pool:** `pool_expr("QB")` (`models/player_schema.py:91`): `pgroup == "QB"` **and** `main_qb`. `main_qb` is computed in `player_history` (`features/player_data.py:622–634`): the QB with the most dropbacks for his team in that game (ties: more attempts, then id), so a backup's mop-up snaps are never a QB target and a starter knocked out early isn't scored.
+- **Label for EPA per dropback:** `features/player_data.py:603`, the sum of `qb_epa` over his dropbacks (scrambles and sacks included; `play_extras`, line 389) divided by his dropbacks.
+- **Who is projected live:** only the expected starter. `upcoming_rows` (`features/player.py:126`, the QB branch at line 216) takes `expected_qbs`, which `game_context_frames` (`models/player_runs.py:113`, line 146) fills from P03's live resolver (schedule / depth chart / injury report at run time); past weeks use the Tuesday expected starter from `features/game_features.parquet`.
+- **Models:** three quantile boosters each (`q10` / `q50` / `q90`), conformal shift (`models/player_model.py:148`). Settings `config/settings.yaml:78–79` (7 leaves, 200 rows per leaf, 150 trees). Boosters: `models/player-model/<season>-w<NN>/pass_yds-qb-q50.txt` etc.
+- **Backtests on D:** `runs/backtests/player/pass_yds-qb/` and `pass_epa-qb/` (+ `_nomarket`).
+
+**Every training round** (improvement over the rolling baseline, W&B run ids):
+
+| Model | Round 1 (default 15 / 100 / 300, raw-mean yardstick) | Final, tuned | Final v2 (published) | No market lines |
+|---|---|---|---|---|
+| `pass_yds-qb` | +4.3% `uri858o1` | +5.0% `5osf2x54` | +5.0% `5t3sgsfb` | +4.6% `b5ih5plm` |
+| `pass_epa-qb` | +3.6% `q448e9cd` | +4.7% `opw6jalf` | +4.7% `hmeyyis1` | +3.9% `8bcl12h4` |
+
+Round 1 → tuned: the sweeps (`rcyuv6pl`, `cygm4hbw`) moved both QB models from 15 leaves / 100 rows / 300 trees to 7 / 200 / 150, small, heavily regularized trees (only ~3,700 QB games), worth +0.7 and +1.1 points together with the review's feature fixes. Final → v2: no metric change (the Sol fixes only touched watch-list flags). The live week-4 fit is `kl4fzvl8` (live shift 5.4 yards for passing yards, 0.041 EPA for EPA per dropback).
+
 ## Versioning
 
 - **Hyperparameters are fixed for the 2026 season.** Retune before 2027 (P10). Never retune mid-season (doc 04: investigate, don't retune, when a target loses to its baseline for 3+ weeks in a row).

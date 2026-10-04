@@ -437,6 +437,28 @@ The x-axis of every `bt/*` curve is **`bt/step`**: one step per reported week (1
 How to use it: carries and rushing yards beat their baseline in about nine weeks out of ten, receptions in about two out of three, which is exactly what the pooled numbers say (receptions is the thin one). A weekly value of
 −5% to +20% on 68–100 backs is normal. Compare the `bt/cum_improvement_pct` lines of the four runs: rushing yards and scrimmage yards sit close together (they share most of their information), receptions stays far below.
 
+## Code path and training history
+
+The formulas and worked examples (baseline, pinball loss, conformal shift, Poisson + negative binomial, `baseline_p50`, z-score, SHAP) are in the overview card's [The math, step by step](player-model-v1.md#the-math-step-by-step-with-worked-examples-from-the-live-2026-week-4-fit); every model shares that code. Line numbers are as of commit `2ab11b4` (the function name is the stable pointer).
+
+**What is specific to the RB models.**
+- **Targets:** `models/player_schema.py:61` (`rush_yds-rb`, amount), `:62` (`carries-rb`, count), `:63` (`receptions-rb`, count), `:64` (`scrim_yds-rb`, amount; label = rushing + receiving yards, `features/player_data.py:598`).
+- **Pool:** `pool_expr("RB")`: `pgroup == "RB"` (fullbacks are `FB`, excluded) and offensive snaps > 0.
+- **Carry share** (a key usage feature and the ripple "carries left open"): rush plays by `rusher_player_id` over the team's rush plays (`features/player_data.py:607`; `play_extras`, line 389), not the box score's carries, which include kneels.
+- **Ripple:** `ripple_features` (`features/player.py:657`): `rip_vacated_car` / `rip_out_car` (season-to-date carry share of regular teammates who missed the last game / are ruled out; regulars = share ≥ 10%, 2+ games, gone within `RECENT_WEEKS` = 4) and `open_car` (their union, each counted once) for the watch list's role change (≥ 25% of the carries, `models/player_runs.py:78`).
+- **Models:** rushing and scrimmage yards: three quantile boosters + conformal shift; carries and receptions: a Poisson booster (`-mean.txt`) + negative binomial. Settings `config/settings.yaml:80–83`. Backtests: `runs/backtests/player/<model>/`.
+
+**Every training round** (improvement over the rolling baseline, W&B run ids):
+
+| Model | Round 1 (default 15 / 100 / 300, raw-mean yardstick) | Final, tuned | Final v2 (published) | No market lines |
+|---|---|---|---|---|
+| `rush_yds-rb` | +8.1% `l8ackyb0` | +7.9% `sygypd87` | +7.9% `sbvbkqcj` | +8.1% `crppcfkc` |
+| `carries-rb` | +8.4%\* `86mpdcx2` | +6.9% `qtrkdlyq` | +6.9% `sp9b4l9w` | +6.9% `ea8gjgan` |
+| `receptions-rb` | +8.4%\* `ytzjlzxr` | +2.7% `93ov3uz8` | +2.7% `xjgpuxqf` | +2.3% `ultxr45c` |
+| `scrim_yds-rb` | +7.3% `znunyf6c` | +7.4% `cwhxrmev` | +7.4% `l9oko9q2` | +7.3% `kvg3x7g1` |
+
+\* Against the raw rolling mean (replaced by the median yardstick, D65); the models' own MAE barely moved (carries 3.387 → 3.390, receptions 1.090 → 1.090). Tuning (sweeps `glu9cmj8`, `ywgzufw3`, `4yqdpr6c`, `0z30t3eb`) chose deeper trees for the yardage models (31 leaves / 200 rows / 150 trees) and 15 / 50 / 300 for the counts. Live week-4 fit `kl4fzvl8`: shifts 0.2 (rushing) and 0.8 yards (scrimmage); dispersions r = 8.1 (carries) and 8.1 (receptions).
+
 ## Versioning
 
 - **Hyperparameters are fixed for the 2026 season.** Retune before 2027 (P10). Never retune mid-season (doc 04: investigate, don't retune, when a target loses to its baseline for 3+ weeks in a row).

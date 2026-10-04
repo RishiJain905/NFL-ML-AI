@@ -68,6 +68,13 @@ _None._
 
 ## Session log (newest first)
 
+### 2026-10-04: P06 docs follow-up: the math, the code map, every training round
+- Rishi asked whether the docs give the math behind training and tuning, and point to the files and lines each model touches, for every model (QB, RB, WR/TE, defense), so a newcomer or a returning reader understands each model.
+- The cards explained each step in words but had no formulas, worked numbers or `file:line` pointers, and the round-by-round training history lived only in PROGRESS and W&B. Added:
+  - `model_cards/player-model-v1.md` → **The math, step by step**: the time rule, the rolling baseline (formula + Braelon Allen 19.67), sample weights, the pinball loss and the three quantile models, the conformal shift (Trevor Lawrence: 5.4 yards → 167–348), Poisson + negative binomial with the method-of-moments dispersion (Jake Hansen: μ 5.29, r 8.74 → 2–8), `baseline_p50` (Abdul Carter 1.6 → 1), the scoreboard formulas, the z-score (Hansen 1.07), SHAP (Allen's three drivers), walk-forward, tuning, the weekly fit; each with its `file:line` and function. **Where each model lives in the code** (registry line, pool, label column, settings line, booster files per model; the pipeline step by step). **How the 11 models were trained and tuned** (every round: what changed and where, and each model's improvement and W&B run per round).
+  - Each family card (QB, RB, WR/TE, defense) → **Code path and training history**: what is specific to those models in the code (QB pool = main QB and the live expected starter; RB carry share from play-by-play; WR/TE one model with a TE flag and the QB-history features; defense: the PFR zero-fill and label lag, tackles = solo + assists) and their rounds with run ids.
+  - Every `file:line` was checked against commit `2ab11b4` with a script. One stale code comment fixed (`ROLE_CHANGE_TGT`).
+
 ### 2026-10-04: P06 built, backtested, shipped, run live and closed ✅
 - **Kickoff.** P05 was already closed. Asked up front (phase-workflow §4): **🧑 steps waived for P06** (the agent runs the backtests, the tuning and the first live run, `--launched-by agent`); **✋ ship decision by Rishi**; ✋ close waived; the first live player run on **week 4 if ready before the 13:30 UTC kickoff**, else week 5. Subagents named by Rishi (opus-high, sonnet-xhigh) and a Sol review before the commit.
 - **Built** (contract first: `models/player_schema.py`, then parallel work):

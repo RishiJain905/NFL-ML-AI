@@ -416,6 +416,28 @@ The x-axis of every `bt/*` curve is **`bt/step`**: one step per reported week (1
 
 How to use it: receiving yards beats its baseline in every one of the 124 weeks (the weekly line never goes below zero: that is unusual and a sign of how steady the usage signal is), targets in about nine weeks out of ten, receptions in about five out of six. Each week has 197–264 pass catchers, so the weekly lines are much smoother than the QB's.
 
+## Code path and training history
+
+The formulas and worked examples (baseline, pinball loss, conformal shift, Poisson + negative binomial, `baseline_p50`, z-score, SHAP) are in the overview card's [The math, step by step](player-model-v1.md#the-math-step-by-step-with-worked-examples-from-the-live-2026-week-4-fit); every model shares that code. Line numbers are as of commit `2ab11b4` (the function name is the stable pointer).
+
+**What is specific to the WR/TE models.**
+- **Targets:** `models/player_schema.py:65` (`rec_yds-wrte`, amount), `:66` (`targets-wrte`, count), `:67` (`receptions-wrte`, count).
+- **Pool:** `pool_expr("WR/TE")`: `pgroup` WR or TE with offensive snaps. One model for both positions; the flag `pos_te` (`add_position_flags`, `models/player_model.py:109`) lets the trees treat tight ends differently.
+- **Usage features:** target share and air-yards share from the box score (`target_share`, `air_yards_share`), red-zone target share from play-by-play (`play_extras`, `features/player_data.py:389`), all over his earlier games (`usage_features`, `features/player.py:433`).
+- **QB history (graph Q3 in Polars):** `rip_qb_new`, `rip_qb_tgt_share`, `rip_qb_games` in `ripple_features` (`features/player.py:657`): his share of the team's targets in earlier games where this week's expected QB was the main QB.
+- **Watch-list role change:** `open_tgt` ≥ 15% (`models/player_runs.py:77`).
+- **Models:** receiving yards: three quantile boosters + conformal shift; targets and receptions: a Poisson booster + negative binomial. Settings `config/settings.yaml:84–86`. Backtests: `runs/backtests/player/<model>/`.
+
+**Every training round** (improvement over the rolling baseline, W&B run ids):
+
+| Model | Round 1 (default 15 / 100 / 300, raw-mean yardstick) | Final, tuned | Final v2 (published) | No market lines |
+|---|---|---|---|---|
+| `rec_yds-wrte` | +9.1% `gu5b2wxv` | +9.2% `wpwv6zd2` | +9.2% `xzmsy4ac` | +9.2% `clfrac2z` |
+| `targets-wrte` | +8.0%\* `1yq342zo` | +5.2% `hqmugbgz` | +5.2% `q0xk19h9` | +5.2% `vc1nnqax` |
+| `receptions-wrte` | +7.7%\* `6vz8zisd` | +3.4% `h1vbygqw` | +3.4% `es0ls811` | +3.4% `ls6t4bxm` |
+
+\* Against the raw rolling mean (replaced by the median yardstick, D65); the models' own MAE barely moved (targets 1.615 → 1.616, receptions 1.201 → 1.202). Tuning (sweeps `awk1hndy`, `3w91p7lu`, `lhxih9f7`): 15 / 200 / 150 for receiving yards, 31 / 200 / 300 for targets, 7 / 50 / 300 for receptions. Live week-4 fit `kl4fzvl8`: receiving-yards shift 0.0 (the raw quantiles were already calibrated), dispersions r = 10.5 (targets) and 11.4 (receptions).
+
 ## Versioning
 
 - **Hyperparameters are fixed for the 2026 season.** Retune before 2027 (P10). Never retune mid-season (doc 04: investigate, don't retune, when a target loses to its baseline for 3+ weeks in a row).

@@ -38,6 +38,8 @@ A linebacker can be in two pools (pressures and tackles): he gets both projectio
 
 ## 3. The ideas it rests on (a short primer)
 
+The formulas, worked examples with real week-4 numbers, the `file:line` of every step and the history of every training round are in the [player model card → The math, step by step](../model_cards/player-model-v1.md#the-math-step-by-step-with-worked-examples-from-the-live-2026-week-4-fit). This section is the plain-language version.
+
 **Gradient-boosted trees (LightGBM).** A decision tree splits players into groups by asking yes/no questions about features ("target share over 22%?", "opponent allows many yards to WRs?") and predicts each group's typical outcome. *Boosting* fits hundreds of small trees one after another, each correcting what the previous ones got wrong. LightGBM is a fast implementation. The settings that matter: `num_leaves` (how many groups one tree can make: bigger = more detail, more overfitting), `min_data_in_leaf` (no group smaller than this), `n_estimators` (how many trees) and `learning_rate` (how much each tree corrects). They live in `config/settings.yaml` → `player_model`.
 
 **Quantile regression (yards, EPA).** A normal model predicts the average. A *quantile* model predicts a percentile: trained with the "pinball" loss at 0.1, it learns the value that 10% of outcomes fall below. We fit three per target (0.1, 0.5, 0.9): the 0.5 model is the projection (the median), the other two are the raw range. Why the median for yards: yardage is skewed (a few 150-yard games, many 40-yard ones), and the median is the better single guess for "what will he do" on such a distribution.

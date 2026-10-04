@@ -74,7 +74,7 @@ SCOREBOARD_FILE = "accuracy_scoreboard.parquet"
 FEATURE_FILE = "player_features.parquet"
 DESCRIPTIONS = Path(__file__).resolve().parents[1] / "features" / "descriptions.yaml"
 ROLE_SNAP = 0.5  # documentation/04: a real role = snap share >= 50% over the last 2 games
-ROLE_CHANGE_TGT = 0.15  # vacated + listed-out target share that counts as a role change
+ROLE_CHANGE_TGT = 0.15  # target share left open (`open_tgt`) that counts as a role change
 ROLE_CHANGE_CAR = 0.25
 
 
