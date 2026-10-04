@@ -194,3 +194,36 @@ This week's referee crew: penalties per game and home/away penalty split over th
 ## Stretch: Q&A agent over the graph
 
 Separate from the digest, a later learning project: a chat interface where an LLM writes Cypher (text-to-Cypher) against the schema, runs it in a **read-only session** (write clauses rejected; see Runtime above), and answers questions ("How has the Lions' pass rush done against mobile QBs since 2023?"). This covers the agentic and RAG learning goals without risking the digest's guarantee that numbers come only from the models and data.
+
+## As built in P05
+
+The how-to and debugging guide is the `neo4j-graph` skill; decisions D58–D62.
+
+| Piece | Module | Notes |
+|---|---|---|
+| Tables | `graph/tables.py` | One Polars frame per node label and relationship type, **as of** `GraphKey(season, week, run_time, mode)` (D58). The visibility table in the module docstring is the leakage contract: results only from completed games before week N; week-N games without scores; week-N depth charts and injury reports only when the run could have seen them |
+| Load | `graph/load.py`, `graph/schema.cypher` | Batched wipe, idempotent schema, `UNWIND` writes (5k / 10k rows per transaction), then a count check against the tables |
+| Queries | `graph/queries/q1_revenge`, `q2_injury_ripple`, `q3_qb_change`, `q4_common_opponents`, `q8_trend_mismatch` | Read transactions; each returns `insight_type`, `strength`, `sample_size` (definitions D59) |
+| Insights | `graph/insights.py`, `graph/published.py` | Code-made headline + facts with owners, selection, novelty from the published-insight log (D60) |
+| Build | `graph/build.py` | `nfl graph build` (W&B `track1-graph` / `build`, artifact `graph-results:<season>-w<NN>`), `graph_results.json` in the run folder, fail-soft mode (D61) |
+| Digest | `digest/graph_sections.py` | Reads or builds the week's results, re-picks with the digest's run time, records what was published |
+
+**Schema as built** (differences from the tables above):
+- Model outputs and the log use one string key each: `TeamWeek.key` ("KC:2026:4", plus the composite index), `GamePrediction.key` (game\|version\|variant, with `is_primary`), `PublishedInsight.key` (season-week:`insight_id`). `PlayerProjection` has its constraint, ready for P06.
+- `Game` also has `home_team`, `away_team`, `completed`, `stadium_id`, and for the week being built `home_qb_expected` / `away_qb_expected` (the game model's expected starters) with `home_qb_source` / `away_qb_source` (Tuesday rule `last_game` ... vs live `schedule`, `depth_chart`, `injury_next`).
+- `Player` gets `dropbacks` next to `scramble_rate` (its sample) and `draft_year`; `position_group` comes from `players`, else from the position.
+- `PLAYED_FOR` adds `weeks`, `roster_weeks` (the actual list) and `status_last` (`RES` = reserve list); statuses that mean "not on the team" (CUT, RET, UFA, RFA, TRD, TRC, TRT) are left out.
+- `APPEARED_IN` adds `off_snaps`, `def_snaps`, `st_snaps`, `rec_tds`, `rush_tds`, `pass_att`, `completions`, `pass_tds`, `ints`, `target_share`, `qb_hits`, `tackles`, `def_ints`, `passes_defended`, `dropbacks`, `qb_started`, and NGS `ngs_separation`, `ngs_time_to_throw`, `ngs_ryoe`.
+- `PLAYED_IN` adds `opponent`, `points_allowed`, `margin`, `epa_allowed`, `success_allowed`, `epa_margin`, `plays`, `penalty_yards`.
+- `ON_INJURY_REPORT` adds `team_id`, `season`, `week`; `DEPTH_CHART` is offense and defense only; `HEAD_COACH_OF` adds `games`; `TRADED_TO` adds `season`.
+- Not built yet: `COORDINATOR_OF` / `WORKED_UNDER` (optional seed, P08), `SIMILAR_TO` (GDS, P08), play-level nodes.
+
+**Size and speed (2026 week 4, live).** About 15.5k nodes (7.1k players, 2.3k games, 5.7k `TeamWeek`) and 590k relationships (210k `APPEARED_IN`, 254k `DEPTH_CHART`). A full rebuild takes about 1.5 minutes on the HDD bind mount (load ~75 s; schema ~12 s), and every library query runs in under 1 s on the full graph. The named Docker volume (D27) isn't needed.
+
+### Findings from P05 (checked live on 2026-10-03)
+- `officials.game_id` is the old GSIS id; it joins `games.old_game_id` (16,154 of 16,182 rows since 2018).
+- `injuries.date_modified` is null for every 2025–2026 row (D62).
+- `trades` rows for traded draft picks carry the eventual draftee's `pfr_id`: the 2019 pick San Francisco got from Denver "is" Dre Greenlaw. Those rows (`pick_season` set; 2,737 of 3,943 rows with a `pfr_id`) aren't player trades.
+- Depth-chart slots changed format in 2025: ≤2024 lists three rank-1 `WR` slots (and two `CB`), 2025+ one ranked list per position. "Next on the chart" is only reliable for single-slot positions.
+- A with / without comparison must start at the player's first start: counting the games before he was a starter compared a rookie lineman's bench games with his starts and read "the offense was better without him" (D59).
+- On a Saturday run the week-4 report changed several picks (a starting QB ruled out, Q3; several Out starters, Q2), so the Saturday injury update (P07) will matter for these sections.

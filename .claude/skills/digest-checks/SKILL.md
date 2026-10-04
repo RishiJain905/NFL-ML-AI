@@ -1,6 +1,6 @@
 ---
 name: digest-checks
-description: How the weekly digest is built, checked and debugged (P04+). Use when changing the digest payload, number formatting, the placeholder or a real LLM provider, the prompt files, the automated checks (number provenance, entity binding, banned language, length, hedging), the report card / season scorecard, `nfl digest` or `nfl weekly run`, or when a digest run shows a check failure, a false positive or a warning banner.
+description: How the weekly digest is built, checked and debugged (P04+). Use when changing the digest payload, number formatting, the placeholder or a real LLM provider, the prompt files, the automated checks (number provenance, entity binding, banned language, length, hedging), the report card / season scorecard, the knowledge-graph sections (matchup / risk, non-obvious insights), `nfl digest` or `nfl weekly run`, or when a digest run shows a check failure, a false positive or a warning banner.
 ---
 
 # Digest: build, checks, debugging
@@ -10,7 +10,7 @@ The spec is `documentation/06-weekly-digest.md` (layout, payload, prompt, checks
 ## 1. The pipeline (one code path for live and backtest)
 `digest/run.py::run_digest(season, week, mode=...)`:
 1. **Context**: `live` reads `runs/<season>/week<NN>/predictions_games.parquet` (from `nfl train game`); `backtest` materializes the week's (and every earlier week's) predictions from the canonical walk-forward backtests into `runs/digest-backtests/<season>/week<NN>/`, stamped with that week's Tuesday 14:00 UTC run time.
-2. **Payload** (`build_payload`): report card (`report_card.py`), games / trends / news (`build.py`), under the hood (`under_hood.py`), watch list (`watchlist.py`). Validated by `payload.py` (Pydantic, `extra="forbid"`).
+2. **Payload** (`build_payload`): report card (`report_card.py`), games / trends / news (`build.py`), under the hood (`under_hood.py`), watch list (`watchlist.py`), graph insights (`graph_sections.py`, P05: reads or builds the week's `graph_results.json`, re-picks with the run time). Validated by `payload.py` (Pydantic, `extra="forbid"`).
 3. **Fact index** (`facts.py`): entity → display strings + number atoms.
 4. **LLM** (`llm/`): the registry picks `llm.provider` from `config/settings.yaml`. Only `digest/llm/` may import a provider (a test enforces it).
 5. **Checks + regenerate once** (`synthesize.py`, `checks.py`), then a ⚠️ banner if they still fail.
@@ -31,6 +31,7 @@ The spec is `documentation/06-weekly-digest.md` (layout, payload, prompt, checks
 | team trends | the team (delta, window, net rating, driver changes, evidence) |
 | under the hood, players to watch | the player (unique last names become aliases) |
 | QB names, evidence names (`people`) | known names without numbers (so "unknown entity" doesn't fire) |
+| graph insights (P05) | each fact's numbers go to its `owners` only (a team's margin to that team, never the shared opponent; a teammate's usage to him and the starter, never the team, because naming any player of the item names his team); headline / sample to the game's two teams and the item's subject players; every person and team in an item (common opponents too) is a known entity. In a fact with several "; " clauses, an owner named only in another clause doesn't own this clause's numbers |
 Team aliases: code, nickname, full name, location (not "New York" / "Los Angeles"), plus a few extras (`digest/names.py`). Codes and capitalized aliases match case-sensitively. **Short aliases (unique last names) and team names only count outside every known full player name** (payload + rosters), so "Chase Brown" never counts as a mention of Ja'Marr Chase ("Chase"); found with the real LLM in P04. Names use plain word boundaries, so a hyphenated matchup ("Vikings-Steelers") names both teams; the phrase lists (banned words, hedges, number words) keep hyphen-aware boundaries so allow-list phrases like "two-point" stay whole. In the report card the model is the implicit owner unless the sentence names a calibration bucket, whose counts only the bucket owns.
 
 ## 4. The checks (`checks.py`)
@@ -45,7 +46,7 @@ Team aliases: code, nickname, full name, location (not "New York" / "Los Angeles
 | `banned_language` | fail | betting / fantasy regex with an allow-list ("offensive line", "line of scrimmage", "lined up", "sideline", "goal line" ...) |
 | `length` | fail | a section > 125% of budget, or the total > 105% of the sum of active budgets |
 | `length_short` | warn | a section < 75% of budget (D53: padding invites invention) |
-| `hedging` | warn | a low-confidence item mentioned without a hedge phrase; a section-wide disclaimer (a hedged sentence naming no player or team) covers that section's items |
+| `hedging` | warn | a low-confidence item mentioned without a hedge phrase; a section-wide disclaimer (a hedged sentence naming no player or team) covers that section's items; a section holding a low-confidence graph item (`fx.hedge_sections`) must contain a hedge phrase ("small sample", "descriptive", "not predictive" ...) |
 | `name_heuristic` | warn | capitalized pairs matching nothing known (possible made-up names) |
 
 ## 5. Debugging a failed run
@@ -53,10 +54,11 @@ Team aliases: code, nickname, full name, location (not "New York" / "Los Angeles
 2. **False positive?** Usually formatting: a display string built outside `format.py`, a unit phrase the parser splits oddly, or a number the template writes that isn't in the payload (e.g. "the last 3 weeks" needs `window` in the payload). Fix the payload or the template, never the check, unless the check is wrong; then add a test in `tests/digest/test_checks.py`.
 3. **Unknown entity on a real name?** Register it in the payload (`people`, QB fields) so the fact index knows it.
 4. Re-run quickly without W&B: `uv run nfl digest --season 2025 --week 8 --backtest --no-wandb`.
-5. **Known limitation: the sentence splitter never splits after "Jr." / "Sr." / initials** (so "Michael Penix Jr. threw" stays whole). When a name with a suffix ends a sentence, the next sentence merges into it ("…Deebo Samuel Sr. The Vikings…"). That only loosens binding for those two sentences and can trip the warn-only name heuristic.
+5. **Known limitation: the sentence splitter doesn't split after "Jr." / "Sr." / initials** (so "Michael Penix Jr. threw" stays whole), except before a common sentence opener (`_SUFFIX_SPLIT`: "…Deebo Samuel Sr. The Vikings…" does split). After any other word the two sentences still merge ("Penix Jr. Packers had 14"), which only loosens binding for them and can trip the warn-only name heuristic.
+6. **Known limitation: small integers can collide across owners.** Ownership is per entity, not per field, so a team that owns "3" from "the last 3 weeks" also "owns" a 3 written next to it elsewhere ("The Raiders had 3 sacks" passes). Meaning checks and code-made phrases are the defence; per-field binding is a possible later fix (documentation/guides/llm-digest-writer.md §9).
 6. **Read the prose for meaning, not just the checks.** The checks prove every number came from the payload and has an owner; they can't prove the sentence means the right thing. In P04 an independent fact-check (an opus-high subagent comparing each GLM digest with its `payload.json`) found 4 material meaning errors in 4 digests with every number correct. Rule that came out of it: **never let the LLM derive an order, direction, venue or tier**; put the code-made text in the payload (`matchup`, `game_highlights[].rank_note`, `model_vs_consensus.text`, change-worded trend deltas, tiered defense ranks), tell the prompt to copy it, and add a `meaning` check where it can be verified mechanically. Re-run the fact-check after prompt or payload changes. Make display strings self-describing: P04's bare `opp_def_rank` "1st" (meaning *weakest* defense) was written by GLM as "the 1st-ranked pass defense" and "toughest coverage". It is now "weakest" / "3rd-weakest" / "4th-strongest". Never put an ordinal, a sign or a unit in the payload without the word that says which way it points.
 
-## 6. The real LLM (`llm/openrouter.py`, D56)
+## 6. The real LLM (`llm/openrouter.py`, D56; reader guide: `documentation/guides/llm-digest-writer.md`)
 - Config only: `config/settings.yaml` → `llm.provider: openrouter`, `model`, `reasoning_effort`, `max_tokens`, `timeout_seconds`, `retries`, and `llm.openrouter` (sent as OpenRouter's `provider` routing object: `only` + `sort: price`). The key is `OPENROUTER_API_KEY` (env file); `nfl doctor` reports set / accepted, never the value.
 - Check the model's live endpoints (tags, prices, supported parameters) without a key: `curl -s https://openrouter.ai/api/v1/models/<model>/endpoints`.
 - Replies are parsed leniently (`parse_sections`): code fences and text around the JSON are ignored; a reply with none of the section ids raises `LLMError`.
@@ -69,10 +71,17 @@ Team aliases: code, nickname, full name, location (not "New York" / "Los Angeles
 - **A person named in a team's evidence or QB slot also names that team** for binding (`Entity.teams`).
 - **Latency:** with `reasoning_effort: max` the live digest's two calls took 21 minutes. P07's schedule has to allow for it, or use a lower effort.
 
+## 6b. Graph sections (P05; the graph side is the `neo4j-graph` skill)
+- `nfl digest --graph auto|build|read|off`: a backtest builds the graph as of its Tuesday (~1.5 min); a live run reads the weekly `graph` step's `graph_results.json` and builds only if it's missing. `meta.graph_status` = ok / unavailable / off.
+- `matchup_risk` (80) and `non_obvious` (90) are tagged `phase: P05` in `sections.yaml` and switched on through `synthesize(..., enabled_phases=state.enabled_phases)` only when the graph is `ok`. A section with no pick is fixed code text (`graph_sections.NO_ITEM`). Unavailable: no sections, an info banner (`render.graph_banner`) and a footer line.
+- The text is code-made (`graph/insights.py`): one claim and its owners per fact. Never add a fact whose numbers the LLM must interpret (a sign, better / worse, who won): write the word in code ("worse without him", "lost to the Vikings by 7").
+- After the digest is written, `record_published` appends the picks to the published-insight log (novelty, 3 weeks).
+
 ## 7. Placeholder writer rules (`llm/placeholder.py`)
 - Uses only display strings; every sentence with a number names its owner.
 - Fits each section to its budget (`TRIM = 1.0`): required sentences first, then optional ones / extra items while they fit (`_fit`, `_fit_items`), so the total stays within budget.
 - Low-confidence items get "(low confidence)" or "a small sample" in the same sentence.
+- Graph sections: each item is "`matchup`: headline", then its facts verbatim (capitalized, with a period), then its note; a low-confidence item without a note ends with a small-sample sentence. The first item's headline and first fact are always kept; a second item only when its core fits the budget.
 
 ## 8. Report card and scorecard
 - Grades the previous week's **saved** `predictions_games.parquet` (`is_primary` rows). Predictions made at or after kickoff are never graded (`not_graded`).
@@ -84,7 +93,7 @@ Team aliases: code, nickname, full name, location (not "New York" / "Los Angeles
 - The scorecard row is for the **graded** week; `checks_passed` comes from that week's own `checks.json`.
 
 ## 9. `nfl weekly run`
-Steps `ingest → ready → curate → ratings → game → digest`; state in `runs/<season>/week<NN>/weekly_run.json`; resume with `--from-step <name>`. Readiness failures exit 3. New phases add steps to `weekly.STEPS` / `STEP_FUNCS`.
+Steps `ingest → ready → curate → ratings → game → graph → digest`; state in `runs/<season>/week<NN>/weekly_run.json`; resume with `--from-step <name>`. Readiness failures exit 3. A fail-soft step raises `StepDegraded` (recorded `degraded`, the run goes on): the `graph` step does when Neo4j is down. `--llm placeholder` runs the digest step with the template writer. New phases add steps to `weekly.STEPS` / `STEP_FUNCS`.
 
 ## Improving this skill
 Add new false-positive patterns, allow-list phrases, owner rules or debugging steps here in the same commit as the fix, and note it in the `PROGRESS.md` session log. Keep it procedural; the spec stays in documentation/06.

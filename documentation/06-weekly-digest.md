@@ -94,10 +94,16 @@ One payload per run, saved to `{NFL_DATA_ROOT}/runs/{season}/week{NN}/payload.js
      "drivers": ["opponent allows the most receiving yards to WRs after adjusting for schedule",
                  "target share up to 27% since the WR2 went on IR"]}
   ],
-  "graph_insights": [
-    {"insight_type": "injury_ripple", "section": "matchup_risk", "strength": 0.82,
-     "entities": ["…"], "facts": [{"label": "team EPA/play without starter", "display": "-0.08", "n_games": 5}],
-     "confidence": "low", "graph_query": "q2_injury_ripple"}
+  "graph_insights": [  // as built in P05 (D60): code-made text the LLM copies
+    {"insight_id": "injury_ripple:00-0035717", "insight_type": "injury_ripple",
+     "section": "matchup_risk", "strength": 0.70, "confidence": "medium",
+     "graph_query": "q2_injury_ripple", "game_id": "2026_04_DEN_SF", "matchup": "Broncos at 49ers",
+     "teams": ["SF", "DEN"],
+     "people": [{"player": "Nick Bosa", "player_id": "00-0035717", "team": "SF", "role": "out"}],
+     "headline": "Nick Bosa (49ers DE) is listed out for this week (knee).",
+     "facts": [{"text": "In 18 games without Nick Bosa since the start of the 2024 season, the 49ers defense allowed +0.11 EPA per play, against -0.03 EPA per play in 16 games he started: worse without him",
+                "owners": ["SF", "00-0035717"]}],
+     "sample": {"value": 18, "display": "18 games without him"}, "note": ""}
   ],
   "news": [{"source": "ESPN", "headline": "…", "summary": "…", "entities": ["…"]}]
 }
@@ -185,3 +191,19 @@ The digest v0 lives in `src/nflengine/digest/` (the how-to and debugging guide i
 **Report card for the first live week.** No week-3 predictions were saved (the pipeline went live in week 4), so the week-4 digest says there is nothing to grade; week 5's grades week 4. Predictions are never backfilled (D55).
 
 **Backtests** (`nfl digest --backtest`): as if live on the Tuesday of the week. Game predictions come from the canonical walk-forward backtests (`runs/backtests/game/{market,model_only}`), materialized into `runs/digest-backtests/<season>/week<NN>/` for that week and every earlier week, so the report card reads "saved" files exactly as it does live. Reports go to `reports/backtests/<season>/`; W&B group `digest-dev`.
+
+**How the prompt, the checks and the provider work as built** (20 numbered prompt rules, 11 checks with real examples, the regeneration feedback, latency and cost, and how to switch the model) is in the [LLM writer guide](guides/llm-digest-writer.md). The tables above are the original spec.
+
+## As built in P05
+
+The knowledge-graph sections (6 and 7) are on. Decisions D60 and D61; the graph side is the `neo4j-graph` skill.
+
+- **Where the items come from.** `digest/graph_sections.py` reads the week's `graph_results.json` (written by the weekly `graph` step or `nfl graph build`), or builds it: a backtest always builds the graph as of its Tuesday, a live run builds only if the file is missing (`nfl digest --graph auto|build|read|off`). It re-picks from the stored candidates with the digest's own run time, so a game that has kicked off since the build is never featured; a live digest also skips games kicking off within 90 minutes (writing can take 20+ minutes).
+- **Payload.** `graph_insights` holds only the picked items (above), and `meta.graph_status` (`ok` / `unavailable` / `off`) + `graph_note` say whether the graph was there.
+- **Sections.** *Matchup / risk to watch* (80 words) gets the top injury ripple or QB change (a trend mismatch if neither exists); *Non-obvious insights* (90 words) the top 1–2 of revenge, common opponents and trend mismatch. A section with no item is a code-written sentence ("No graph angle cleared the bar this week."). With both on, the prose budget is 700 words.
+- **Checks.** Each fact's numbers are owned by the entities in its `owners` (a team's margin by that team only, a teammate's usage by him and the starter, not by the team), the headline's and sample's by the game's teams and the item's subject; every person and every team in an item (a common opponent too) is a known entity. Subject players of a low-confidence item need a hedge; a section holding a low-confidence item must contain a hedge phrase ("small sample", "descriptive", ...). Warn level, like the rest of hedging. Prompt rule 20: copy fact texts whole, never move a number, never turn a with / without comparison into a forecast.
+- **Placeholder.** Each item is "`matchup`: headline", then its facts verbatim and its note, fitted to the budget (the first item's headline and first fact always; a second item only if its core fits).
+- **Length** is measured on the LLM's sections only: code-written sections (a report card with nothing to grade, a graph section with no pick) are left out of the budget and the `length_short` warning.
+- **Fail-soft.** If the graph is unavailable, the digest publishes without sections 6–7, with an ℹ️ banner and a "Knowledge graph: unavailable (...)" footer line.
+- **Novelty.** After a digest is written, the picks its prose actually names are appended to `published_insights.parquet` (the log never loses a published pick, even on a re-run) (live in `runs/`, backtests in `runs/digest-backtests/`) and, when Neo4j is up, added as `PublishedInsight` nodes; the same story isn't picked again for 3 weeks.
+

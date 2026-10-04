@@ -28,7 +28,7 @@ Tool caches are pointed at the data root automatically: `WANDB_DIR` → `D:/nfl-
 ## Commands
 
 ```
-uv run nfl --help                  # all commands (`graph` is a placeholder until P05)
+uv run nfl --help                  # all commands
 uv run nfl doctor                  # health check
 uv run nfl wandb-smoke             # W&B smoke test
 
@@ -48,11 +48,17 @@ uv run nfl backtest game --variant market --seasons 2018-2025
 uv run nfl backtest game-weights   # W&B sweep over the current-season sample weight (P03)
 uv run nfl train game --season 2026 --week N   # weekly fit -> runs/<season>/week<NN>/predictions_games.parquet (P03)
 
-uv run nfl weekly run --season 2026 --week N   # ingest -> ready -> curate -> ratings -> game -> digest (P04)
+uv run nfl weekly run --season 2026 --week N   # ingest -> ready -> curate -> ratings -> game -> graph -> digest
 uv run nfl weekly run --season 2026 --week N --from-step digest   # resume from a failed step
 uv run nfl digest --season 2026 --week N       # payload -> LLM -> checks -> reports/<season>/week<NN>-digest.md (P04)
 uv run nfl digest --season 2025 --weeks 8-9 --backtest   # past weeks as if live on their Tuesday (P04)
 
+uv run nfl graph build --season 2026 --week N  # rebuild Neo4j as of week N + query library -> graph_results.json (P05)
+uv run nfl graph build --season 2025 --week 8 --backtest   # the graph a past week's Tuesday saw
+uv run nfl graph query q2_injury_ripple --season 2026 --week N   # one library query, read-only
+# Neo4j Browser: http://localhost:7474 (queries to try: .claude/skills/neo4j-graph/SKILL.md)
+
 uv run pytest                      # tests (integration tests excluded by default)
+uv run pytest -m integration       # Neo4j golden / load / performance tests (~10 min; rebuilds the graph)
 uv run ruff check .                # lint
 ```

@@ -2,7 +2,7 @@
 
 A personal ML system that produces a weekly NFL digest during the season. It shows game win probabilities and predicted scores, team trends, a look back at last week's tracking stats, projections for offensive and defensive players, and insights from a knowledge graph. It tracks its own accuracy every week. A separate research track models player movement on the NFL Big Data Bowl tracking data.
 
-Last updated: 2026-10-01 (start of 2026 Week 4).
+Last updated: 2026-10-04 (P05: knowledge graph; guides added).
 
 ## Start here
 
@@ -25,7 +25,30 @@ Last updated: 2026-10-01 (start of 2026 Week 4).
 | 10 | [Decisions log](10-decisions-log.md) | Every decision so far, why, when to revisit, open questions |
 | 11 | [Prediction targets](11-prediction-targets.md) | Every game, team and player (offense + defense) target, the baselines, realistic ceilings, the accuracy scoreboard |
 
-`plans/` is the phase-by-phase build plan. `model_cards/` holds one card per trained or tuned model: what it is, how it was tuned, results vs baselines, known limits. Start with [team ratings](model_cards/team_ratings.md) (P02), then the [game model](model_cards/game-model-v0.md) (P03). `archive/` holds the original starter docs, for reference only.
+## Guides: how each part works, in plain language
+
+One guide per major technology or component, written for a reader who's new to it: what it is, how it's wired here, what it produces, how to look at it, how to change it.
+
+| Guide | What it explains |
+|---|---|
+| [Knowledge graph (Neo4j)](guides/knowledge-graph.md) | Neo4j in two minutes, what our graph holds, a Neo4j Browser walkthrough, each Cypher query in the library, how graph findings reach the digest (P05) |
+| [Weights & Biases](guides/weights-and-biases.md) | Every W&B run, chart, table and artifact, step by step through the weekly run and the research runs, and what to check each week |
+| [The LLM digest writer](guides/llm-digest-writer.md) | What the LLM does and doesn't do, the prompt, the checks it must pass, cost and latency, and how to switch the model or provider safely |
+
+## Weekly graph queries
+
+[`queries/`](queries/README.md) holds one file per live week (`<season>-week<NN>-queries.md`): Neo4j Browser queries that trace that week's digest back to the graph, the findings it didn't use, and anything else worth a look, each with the result it returned. Start with [2026 week 4](queries/2026-week04-queries.md).
+
+## Model cards
+
+`model_cards/` holds one card per trained or tuned model: what it is, how it was tuned, results vs baselines, how to read its W&B charts, known limits.
+
+| Card | Phase |
+|---|---|
+| [Team ratings, Elo, trend](model_cards/team_ratings.md) | P02 |
+| [Game model v0](model_cards/game-model-v0.md) | P03 |
+
+`plans/` is the phase-by-phase build plan. `archive/` holds the original starter docs, for reference only.
 
 New to the football terms? **EPA, success rate and net rating** are defined at the top of [04 → A](04-track1-models.md#key-terms).
 

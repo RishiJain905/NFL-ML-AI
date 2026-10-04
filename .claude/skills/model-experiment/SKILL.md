@@ -53,6 +53,11 @@ Applies to P02 (ratings/Elo/trend), P03 and P08 (game model), P06 and P08 (playe
 - **Watch-list scoring**: `digest.watchlist.score_watchlist(df)` adds `actual` / `played` / `hit` (actual > baseline). The P04 heuristic hits 40% vs a 43% base rate for all eligible players (2024–2025): **a hit rate means nothing without the base rate**, because yardage is right-skewed.
 - **W&B groups**: `weekly-pipeline` / `main` (live digests), `digest-dev` / `backtest` (past weeks; `nfl digest --backtest`).
 
+**Building blocks that exist (P05):**
+- **Graph outputs as features (for P06).** Every graph build writes `graph_results.json` to the run folder (live `runs/<S>/week<NN>/`, backtests `runs/digest-backtests/<S>/week<NN>/`): `queries.q2_injury_ripple.results` (starter out, the teammate who stepped in, his usage with / without, the team's EPA with / without, sample size) and `queries.q3_qb_change.results` (expected QB vs main starter, each current receiver's targets from both). Rows are as of the run (a backtest build is as of its Tuesday), so they are leakage-safe for a walk-forward over weeks that have a build. To get them for many past weeks without Neo4j round trips, reuse `graph/tables.py` (`GraphKey`, `load_inputs`, `build_tables`) and compute the same aggregates in Polars, or run `nfl graph build --backtest` per week (~1.5 min each).
+- **`GraphKey(season, week, run_time, mode)`** is the as-of key for anything that must look like a Tuesday (backtest) or the moment of a live run; its `before()` / `through()` are Polars filters.
+- **W&B group `track1-graph` / `build`:** the pattern for a one-shot job with a live curve (`define_metric("load/*", step_metric="load/step")`, one point per loaded table).
+
 ## 1. Define before you code
 Write these down (in the phase file or model card) before any training code:
 - **Target:** exact column and grain (for example `receiving_yards` per player-game, regular season, only players who played).

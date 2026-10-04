@@ -63,6 +63,7 @@ Before writing code against any data source, API, library or model output, **loo
 - Implementation that differs from a design doc → update the doc **and** add a decisions-log entry, in the same commit.
 - Add an **"As built: deviations from the task list"** section to the phase file whenever the build diverged from it.
 - Keep `README.md` (repo root) current when setup or commands change.
+- **Guides** (`documentation/guides/`, CLAUDE.md → Documentation): when the phase introduces a new technology, component, service, pipeline stage, W&B run or artifact, write or update its plain-language guide (primer, wiring, outputs, how to look at it, how to change it, limits, real numbers) and add it to `documentation/README.md`. New W&B charts or artifacts go into `guides/weights-and-biases.md` in the same commit. Rishi asked for this after P05: the design docs alone didn't explain the new pieces to a newcomer.
 
 ## 8. Close the session (every session, even mid-phase)
 1. Update `documentation/plans/PROGRESS.md`:
@@ -103,6 +104,9 @@ Before writing code against any data source, API, library or model output, **loo
 - **The secret-guard / deny rules can block a shell `grep` whose text names `.env.example` alongside other files.** Read `.env.example` with the Read tool (it's the one env file agents may read) and search the other files with Grep.
 - **Heredoc-driven Python edits can corrupt regexes (P04).** Inside a `python - << 'EOF'` script, a regex written as `"\b..."` in a normal (non-raw) string becomes a literal backspace character in the file. It happened twice, and a test caught it both times. Prefer the Edit tool for regex lines; after any scripted edit, scan for control characters (`[\x00-\x08\x0b\x0c\x0e-\x1f]`) in changed files.
 - **Real LLM calls are slow at high reasoning effort** (minutes per digest). Run them with `run_in_background`, keep `--no-wandb` for the first try, and keep the placeholder as the fallback writer.
+- **Neo4j integration tests own the graph (P05).** `pytest -m integration tests/graph/...` rebuilds the whole graph for each golden week (~1.5 min each, ~10 min in all) and ends by rebuilding the live week. Don't run a graph build, a backtest digest or a subagent's graph query at the same time. Pipe-buffered output (`... | tail`) shows nothing until the run ends: wait for the notification.
+- **Multi-line Python edits with quotes: write the script with the Write tool** to the scratchpad and run it (`uv run python <script>`). A heredoc whose text mixes `'''`, apostrophes and backticks failed to parse in Git Bash (P05).
+- **Subagent reviews of each other's contracts pay off (P05).** opus-high, wiring the digest side of a payload model it didn't design, found three real binding holes (a fact with two teams' numbers owned by both, a shared opponent owning both margins, a teammate standing in for his team). Ask the integrating subagent to report where the contract made its job awkward.
 - **Smoke-test W&B logging before the real runs.** Do one short backtest tagged `smoke` (2 seasons, `save=False`). It checks that the tables and plots log correctly before the runs that count (P03: `e9ex7x3q`).
 
 ## 12. Improving this workflow

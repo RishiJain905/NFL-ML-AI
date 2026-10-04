@@ -44,8 +44,26 @@ Never read, open, print, `cat` / `type` / `Get-Content`, `grep` / `Select-String
 A personal ML system that produces a weekly NFL digest (win probabilities, predicted scores, team trends, projections for offensive and defensive players, Neo4j graph insights), plus a Big Data Bowl movement-model research track.
 
 - **Design docs:** `documentation/01`–`11` (start at `documentation/README.md`).
+- **Guides:** `documentation/guides/`, one plain-language guide per major technology or component (knowledge graph, W&B tracking, the LLM writer, ...). **Model cards:** `documentation/model_cards/`, one per trained or tuned model. See "Documentation" below.
 - **Build plan:** `documentation/plans/README.md`. **Where work stands:** `documentation/plans/PROGRESS.md`.
 - **Decisions:** `documentation/10-decisions-log.md`. If implementation needs to differ from a doc, update the doc and log the decision in the same commit.
+
+## Documentation: what every phase must leave behind
+
+The goal: someone who has never seen the project can read `documentation/` and understand the whole architecture and how to operate it, without reading code. Updating the existing docs isn't enough on its own.
+
+| Kind | Where | When | What it holds |
+|---|---|---|---|
+| Design docs (the spec) | `documentation/01`–`11` | Whenever the design or the as-built behaviour changes | The "what and why"; an "As built in Pxx" section per phase; a decisions-log entry for every deviation |
+| **Guides** | `documentation/guides/<topic>.md` | **In the phase that introduces a new technology, component, service or pipeline stage**, and updated by every later phase that changes it | A reader-first explanation: what it is (a short primer if the tool is new to Rishi), how it's wired here, what it produces (files, tables, charts, artifacts), how to look at it and operate it (commands, UI walkthrough, example queries), how to change or swap it safely, limits and what's next, with real examples and numbers from this project |
+| Model cards | `documentation/model_cards/<model>.md` | Every trained or tuned model (the `model-experiment` skill §7 lists the required sections) | Target, features, tuning, results vs baselines, "Reading the W&B charts", limits |
+| Skills | `.claude/skills/<skill>/SKILL.md` | When the work teaches agents something reusable | Agent-facing how-to; never a substitute for a guide |
+| Weekly graph queries | `documentation/queries/<season>-week<NN>-queries.md` | When Rishi asks, after a live weekly run | Neo4j Browser queries that trace that week's digest to the graph, the findings it didn't use, other interesting ones; **every query run against that week's graph, with what it returned** (format: `queries/README.md` and the 2026 week-4 file) |
+
+Rules:
+- **Before closing a phase, list what it introduced** (new tech, services, data stages, W&B runs or artifacts, CLI commands, file formats) and make sure each one is explained in a guide or model card. Name the guides in the phase's end-of-run report.
+- Existing guides: `knowledge-graph.md` (Neo4j, P05), `weights-and-biases.md` (every W&B run, chart and artifact across the weekly cycle), `llm-digest-writer.md` (the digest LLM and how to switch models). Expected next: the player model card (P06), a weekly-operations guide (P07: scheduling, retries, notifications), a Track 2 / Big Data Bowl guide (T00+). Keep `documentation/README.md`'s index current.
+- New W&B runs, charts or artifacts are added to `guides/weights-and-biases.md` in the same commit that adds them.
 
 ## Working style: keep going, stop only when needed
 
@@ -81,8 +99,9 @@ A personal ML system that produces a weekly NFL digest (win probabilities, predi
   | `curated-data` | Reading, joining or aggregating any curated data (games, plays, player/team stats, NGS, PFR, FTN, snaps, injuries, depth charts, lines, weather, ESPN): data dictionary, keys and conventions, quirks, tested query recipes | `.claude/skills/curated-data/SKILL.md` |
   | `model-experiment` | Any feature building for models, training, tuning, walk-forward backtest or evaluation; W&B logging; artifacts and promotion; model cards; 🧑 handoffs with "what to look for" notes | `.claude/skills/model-experiment/SKILL.md` |
   | `digest-checks` | Changing or debugging the weekly digest: payload, number formatting, LLM providers (placeholder / OpenRouter), prompt files, the automated checks and their false positives, the report card and season scorecard, `nfl digest` / `nfl weekly run` | `.claude/skills/digest-checks/SKILL.md` |
+  | `neo4j-graph` | The Neo4j knowledge graph: schema, as-of loaders and their leakage rules, the query library, insight ranking and novelty, `nfl graph build` / `nfl graph query`, the weekly `graph` step, golden and integration tests, slow or failed builds | `.claude/skills/neo4j-graph/SKILL.md` |
 
-  Planned for later phases (create them at the start of that phase): `neo4j-graph` (P05), `weekly-ops` (P07), `adding-a-data-source` (whenever a new source is added).
+  Planned for later phases (create them at the start of that phase): `weekly-ops` (P07), `adding-a-data-source` (whenever a new source is added).
 - **Pick up work** with the protocol in `documentation/plans/README.md`: read PROGRESS → the phase file → the docs it lists. Update PROGRESS at the end of every session.
 - **Task tags:** 🤖 the agent does it · 🧑 Rishi runs it (prepare the command and "what to look for" notes, then pause) · ✋ checkpoint (stop and ask). Never skip a 🧑 or ✋ step silently.
 - **Data lives on D:** under `NFL_DATA_ROOT` (`D:\nfl-ml-data`). Code stays on F:. All paths go through the `paths` module; no hard-coded paths; no data in git.

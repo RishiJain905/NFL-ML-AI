@@ -120,6 +120,15 @@ Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/particip
 - **`snaps`** has a few rows without `gsis_id` and a few duplicate (player, game) rows since 2024: drop / dedupe. `player_games.target_share` is 0–1 and never null.
 - **`espn_news`** is mostly fantasy content (`is_fantasy`). Team ids are ESPN's (`team_espn_ids`); map them with `espn_injuries` (`team_espn_id` → `team`).
 
+## Quirks found in P05 (checked live 2026-10-03)
+- **`officials.game_id` is the old GSIS id** (`2015091000`), not the nflverse `game_id`: join on `games.old_game_id` (16,154 of 16,182 rows since 2018 match).
+- **`injuries.date_modified` is null for every 2025-2026 row** (2024 and earlier have timestamps). A 2025+ report can't be time-scoped by when it changed: a live run uses the snapshot it has, a backtest leaves week N's report out (D62).
+- **`trades` rows for traded draft picks carry the eventual draftee's `pfr_id`** (`pick_season` set; 2,737 of 3,943 rows with a `pfr_id`): the 2019 pick SF got from DEN "is" Dre Greenlaw. For player trades, filter `pick_season IS NULL`. `gave` = old team, `received` = new team.
+- **Depth-chart slot formats:** to 2024, three rank-1 `WR` rows (one per slot) and two `CB` slots; 2025+, one ranked list per position (`WR` 1..8). "Rank + 1" is the backup only at single-slot positions (QB, RB, TE, C, LT ...). The 2026 charts are daily snapshots with `snap_date` (one per team-week).
+- **PFR ids:** `players.pfr_id` maps them to `gsis_id` (22.7k of 24.8k players have one); `draft_picks.gsis_id` is set for almost every pick since 2010.
+- **`rosters_weekly.status`:** ACT, DEV (practice squad), RES (reserve / IR), INA (game-day inactive), CUT, RET, PUP, RSN, SUS, NWT, UFA, EXE, RSR, TRC, TRD, TRT, RFA, E01, E14. "On the team" = anything but CUT, RET, UFA, RFA, TRD, TRC, TRT. `game_type` is REG / WC / DIV / CON / SB.
+- **The knowledge graph mirrors these tables as of a week** (`nfl graph build`). For multi-hop questions (a player's teams, injury ripples, QB-receiver history) see the `neo4j-graph` skill and the run folder's `graph_results.json`.
+
 ## Recipes
 
 **Open the data:**

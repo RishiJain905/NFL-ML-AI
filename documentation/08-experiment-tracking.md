@@ -11,7 +11,7 @@ One W&B project: **`nfl-analytics-engine`**. Runs are organized by `group` and `
 | `track1-ratings` | `tune`, `eval` | Rating half-life / prior pull-back tuning, trend validation |
 | `track1-game` | `tune`, `train`, `eval`, `backtest` | Game model experiments, walk-forward backtests (`bt/*` curves, step `bt/step`), the current-season weight sweep, and weekly fits that log the `game-model` artifact |
 | `track1-player` | `tune`, `train`, `eval` | Player model experiments, one tag per position group |
-| `track1-graph` | `build`, `query-test` | Graph rebuild counts and timings, golden-test results |
+| `track1-graph` | `build` | Graph rebuilds (`nfl graph build` and the weekly `graph` step; tag `live` / `backtest`): a `load/*` curve per loaded table (seconds, rows, rows per second), `count/node/*` and `count/rel/*`, `time/*` per phase, `query/<name>/rows` and `/seconds`, `insights/*`, and tables of the candidates and picks. Golden tests run in pytest (`-m integration`), not W&B (P05) |
 | `digest-dev` | `backtest` | Prompt and section experiments on past weeks |
 | `track2-bdb` | `baseline`, `train`, `eval` | Big Data Bowl experiments |
 | **`weekly-pipeline`** | `main`, `injury-update` | **Production runs only**, kept separate so research never clutters the record of what shipped |
@@ -93,3 +93,6 @@ The same numbers feed the digest's **Report card** section, so W&B and the diges
 - Each weekly fit → a new artifact version tagged `{season}-w{NN}`.
 - The **`production`** alias points to the version the weekly pipeline uses.
 - The **`candidate`** alias is for experiments that beat production in walk-forward evaluation. Promote it manually, between weeks, never mid-run.
+
+**As built in P05.** Each graph rebuild is its own `track1-graph` / `build` run (`graph-<season>-w<NN>`, `-backtest` for past weeks built by `nfl graph build --backtest`; backtest digests build their graph without a separate W&B run and log `graph_status` / `graph_items` in their digest run). Each build also logs the artifact `graph-results` (type `graph`, the run's `graph_results.json`: counts, timings, every query's rows, all candidates and the picks), aliased `<season>-w<NN>` (backtests `-backtest`); P06 reads Q2 / Q3 rows from it. The digest runs carry the tag `graph:<status>`, and their summary has `graph_status` and `graph_items`. The full walkthrough of every run, chart and artifact is the [W&B guide](guides/weights-and-biases.md); its §9 lists where the as-built logging differs from this spec (groups and tags actually used, plots not built yet, the season dashboard and accuracy scoreboard still to come in P06/P07) and §10 the known gaps to settle in P07 (artifact lineage from the digest to its inputs, who moves the `production` alias).
+

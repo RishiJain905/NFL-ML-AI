@@ -2,9 +2,9 @@
 
 > **Agents: update this file at the end of every session**, even mid-phase. See the protocol in [README.md](README.md).
 
-**Current phase:** P05, Knowledge graph v1 (⬜ not started; P04 closed ✅)
-**Next step:** Start P05 (read `P05-knowledge-graph.md`). Rishi plans to finish the later phases today; after they land, re-run `uv run nfl weekly run --season 2026 --week 4` (or `--from-step <first new step>`) **before the first week-4 kickoff (Sun 9:30 AM ET)**; a re-run keeps started games' saved predictions. Week 5's report card will grade week 4's last pre-kickoff picks. Runs stay manual until P07.
-**Last updated:** 2026-10-03, P04 session
+**Current phase:** P06, Player model v1 + accuracy scoreboard (⬜ not started; P05 closed ✅)
+**Next step:** Start P06 (read `P06-player-model.md`; confirm waivers up front). Q2 / Q3 rows in each week's `graph_results.json` (also the W&B `graph-results` artifact) are ready as player-model features. After each live weekly run, Rishi asks for that week's `documentation/queries/<season>-week<NN>-queries.md`. Week 5's report card will grade week 4's last pre-kickoff picks. Runs stay manual until P07.
+**Last updated:** 2026-10-04, P05 closed
 
 Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ blocked · ✅ done
 
@@ -17,7 +17,7 @@ Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ b
 | P02 | Team ratings, Elo, trend | ✅ | 2026-10-03 | 2026-10-03 | Closed with Rishi's approval (params D46, trends descriptive D47) |
 | P03 | Game model v0 | ✅ | 2026-10-03 | 2026-10-03 | 🧑/✋ steps waived by Rishi for P03; config D48; model-only 0.2199 vs Elo 0.2221; market-informed 0.2102 vs market 0.2104 |
 | P04 | Digest v0 (first live digest) | ✅ | 2026-10-03 | 2026-10-03 | Closed with Rishi's approval. Backtests approved by Rishi; live run delegated. GLM 5.3 Flash via OpenRouter (D56); fact-checked twice + Sol review (D53–D57); first live digest 2026 week 4 passed all checks |
-| P05 | Knowledge graph v1 | ⬜ | | | |
+| P05 | Knowledge graph v1 | ✅ | 2026-10-03 | 2026-10-04 | Closed with Rishi's approval. 🧑 steps waived for P05; graph as of a key (D58), 5 queries (D59), digest sections + novelty (D60), fail-soft step (D61); all exit criteria verified; Sol review 11 of 12 fixed (1 declined, D44); fact-check: every graph number confirmed; guides + week-4 queries file |
 | P06 | Player model v1 + accuracy scoreboard | ⬜ | | | |
 | P07 | Automation and weekly operations | ⬜ | | | |
 | P08 | Models v2 + advanced graph | ⬜ | | | |
@@ -49,6 +49,9 @@ Every 🧑 step goes here, whether Rishi ran it or delegated it.
 | 2026-10-03 | P03 | `uv run nfl backtest game --qb-mode actual` (research oracle) | agent (delegated: P03 waiver) | [3ots68nz](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/3ots68nz) | With the listed starting QB: 0.2183 (−0.0016), the value of a game-day QB update for P07 |
 | 2026-10-03 | P04 | Review of the 2025 backtest digests (weeks 4, 8, 9, 14; GLM + placeholder) | Rishi | `digest-dev` runs `p3vwl1f1`, `yf45rwhr`, `ar1v132l`, `egbdqx5m` | **Approved.** Verdict (no numeric scores): "really really good outside of the players to watch section", which reads as "gibberish", as expected until P06. Treated as meeting the ≥ 3.5 "would I read this" bar |
 | 2026-10-03 | P04 | `uv run nfl weekly run --season 2026 --week 4` (**first live digest**) | agent (delegated by Rishi: "I'm not home") | train [1vbkvjdj](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/1vbkvjdj), digest [vvit9fdd](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/vvit9fdd) | First pass: ingest (30 datasets), ready (week 3 16/16), curate (32 tables, all checks pass), ratings and game all green (train `hs6am1in`). Stopped during the digest step to add W&B chart panels after Rishi saw only system charts, then resumed with `--from-step game`; `keep_started` kept Thursday's PIT@CLE row. That digest (`0rbvplt9`) failed its checks after one regeneration (a binding false negative, then 151 words on a 150 limit), so two check fixes went in and `--from-step digest` was re-run: **all checks passed first time** (`vvit9fdd`; one GLM call, 19 min, $0.016). Reviewed line by line against the payload: all as intended |
+| 2026-10-03 | P05 | `uv run nfl graph build --season 2026 --week 4` (**first full build**), twice in a row | agent (delegated: P05 waiver) | [zb406f8m](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/zb406f8m), [pj1ipclt](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/pj1ipclt) | Identical counts: 15,522 nodes, 588,282 relationships; 85 s and 95 s on the HDD bind mount; every query ≤ 0.11 s. Browser exploration queries are in the `neo4j-graph` skill for Rishi |
+| 2026-10-04 | P05 | Review of digests with graph sections: 2025 week 9 backtest (GLM) + 2026 week 4 live | agent (delegated: P05 waiver) + opus-high fact-check | backtest [ngxgsudj](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/ngxgsudj) (earlier `c22e9ixy`, `cw3ttteg`); live [o0skjazq](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/o0skjazq) | Every graph number confirmed against the curated data. Three wording / logic fixes came out of it (QB-change hedge and reason, snap side, unconfirmed Tuesday-rule QB); one length false-start fixed (whole-digest cap restated on regeneration). Both final digests passed every check first time |
+| 2026-10-04 | P05 | `uv run nfl weekly run --season 2026 --week 4 --from-step graph` (live re-run with the graph sections; Rishi approved the re-run before kickoff) | agent (approved by Rishi in the kickoff) | graph [8txvvr92](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/8txvvr92), digest [o0skjazq](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/o0skjazq) | Final code (02:50 UTC Sunday). All checks passed first time (one GLM call, 2.5 min, $0.006). Earlier passes the same night, each superseded: `09lnang5` / `755t5su2` (before the Sol fixes), `6ecpxvf2` / `ev79x0i8` (before the fact-check fixes), and the Neo4j-down check `gf5j6sr1` (placeholder writer, banner) |
 | 2026-10-03 | P03 | `uv run nfl train game --season 2026 --week 4 --promote` (first live prediction) | agent (delegated: P03 waiver) | [ump6sftd](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/ump6sftd) | 16 games, all with complete lines (market rows primary); artifact `game-model:2026-w04` v1 has aliases `2026-w04` + `production` (checked through the W&B API); table sanity-checked |
 
 ## Open blockers
@@ -56,6 +59,61 @@ Every 🧑 step goes here, whether Rishi ran it or delegated it.
 _None._
 
 ## Session log (newest first)
+
+### 2026-10-04: P05 closed ✅
+- Rishi asked how to look at the week-4 graph in Neo4j Browser, then for a per-week queries file: **`documentation/queries/2026-week04-queries.md`** (with a folder README and an index entry). It holds 28 queries in five groups: orientation, the digest's three graph items traced, the strongest unused findings (Bosa with / without, the Bears' QB change, every former-team link, common opponents), cross-checks of the other sections (game table, trends, the Cousins / Geno Smith starts, Brock Bowers' missed games vs his 43% target share, watch-list usage, the QB lines behind "under the hood"), and two just-interesting ones. Every query was run against the week-4 graph and its result written down. From now on, Rishi asks for `<season>-week<NN>-queries.md` after each live weekly run (CLAUDE.md → Documentation lists the format).
+- **Rishi approved closing P05** (✋ ticked). Committed and pushed in this session.
+
+### 2026-10-04: P05 docs follow-up: guides (still ⏸ at the ✋)
+- Rishi asked how Neo4j Browser and the digest's graph sections look, whether P05 was documented like the model cards, and for standalone docs on W&B and on the LLM, plus a CLAUDE.md rule so every phase documents what it introduces.
+- **New `documentation/guides/`** (indexed in `documentation/README.md`):
+  - `knowledge-graph.md` (mine): Neo4j primer, how it runs here, a Neo4j Browser walkthrough (the force-directed Graph view lives in each query's result frame; the Browser draws about 300 nodes per result, so the 588k relationships are seen through the schema view, counts and slices), every node and relationship with counts, each Cypher query (question, walk, strength, real week-4 examples), the path to the digest, what the digest shows (text sections, no picture), 10 starter queries.
+  - `weights-and-biases.md` (opus-high, checked against the code and the W&B API): every step of the weekly run (ingest / ready / curate / ratings create no W&B run; where their records live), every chart, table, summary key and artifact of the game fit, graph build and digest, the research runs, a weekly 2-minute checklist, the season views, an artifacts table, where the build differs from doc 08, known gaps.
+  - `llm-digest-writer.md` (sonnet-xhigh, checked against the code and config): what the LLM does and doesn't do, GLM's settings and measured latency / cost, one digest step by step, the 11 checks with real examples, the prompt files, how to switch the model or provider safely, what to read after a run, security, limits.
+- **Rules:** CLAUDE.md gets a "Documentation: what every phase must leave behind" section (design docs, guides, model cards, skills; list what a phase introduced before closing it; new W&B runs or artifacts go into the W&B guide in the same commit); `phase-workflow` §7 and AGENTS.md point to it.
+- **Code found while documenting** (tests added, 807 pass, ruff clean):
+  - graph builds now log a W&B artifact `graph-results` (type `graph`, `graph_results.json`, alias `<season>-w<NN>`; checked live: `binb1iho`, which also rebuilt the week-4 graph and so overwrote that week's `graph_results.json`: the digest's `payload.json` keeps what it used);
+  - a fail-soft graph build ends its W&B run as failed;
+  - the cumulative season Brier divides each predictor by the games its own weeks cover;
+  - code-written sections are left out of the length checks (the "nothing to grade" report card no longer warns `length_short`);
+  - the `checks.py` docstring lists all 11 checks; the `digest-checks` skill's Jr./Sr. note is corrected and the small-integer collision limit is documented.
+- **Left for later (noted in the guides):** no W&B lineage from the digest to its input artifacts and the `production` alias isn't moved automatically (P07); retries aren't counted in `llm/latency_s` (P09); backtest run-folder files are shared between writers; ESPN news is in the payload but no section uses it.
+
+### 2026-10-03/04: P05 built, verified and reviewed (⏸ at the ✋)
+- **Kickoff.** Rishi confirmed P04 closed (it already was) and asked for P05 with the subagents and a Sol review before the commit. Asked up front (phase-workflow §4): **🧑 steps waived for P05** (the first full build and the digest reviews are mine), **✋ not waived** (stop with a summary before marking P05 done and committing), and **the live week-4 re-run is approved**.
+- **Probed first** (findings in doc 05 "Findings from P05" and the `curated-data` skill): officials join on `games.old_game_id`; `injuries.date_modified` is null for every 2025+ row (D62); trade rows for draft picks carry the draftee's `pfr_id`; depth-chart slot formats changed in 2025; officials, coaches and stadiums are complete for 2018+.
+- **Built** (`src/nflengine/graph/`, `digest/graph_sections.py`):
+  - `tables.py`: every node and relationship as a Polars frame **as of** `GraphKey(season, week, run_time, mode)` (D58), so a backtest graph is what its Tuesday saw; `load.py` + `schema.cypher`: batched wipe, idempotent schema, `UNWIND` writes, count check; `build.py`: `nfl graph build` (W&B `track1-graph` / `build`, live `load/*` curve), `graph_results.json`, fail-soft mode.
+  - Query library (D59): Q1 revenge, Q2 injury ripple (who stepped in, from usage data; team with / without him from his first start), Q3 QB change (receivers' history with the expected QB), Q4 common opponents, Q8 trend mismatch (TeamWeek `NEXT*3`). All under 1 s.
+  - `insights.py` + `published.py` (D60): code-made headline + facts with owners, selection (1 matchup / risk, 1-2 non-obvious), novelty from `published_insights.parquet` (3 weeks; live and backtest logs separate).
+  - Digest: payload `graph_insights` + `meta.graph_status`, sections 6-7 switched on when the graph is OK, prompt rule 20, placeholder writer, banner + footer line when it isn't (D61); `nfl weekly run` gets the fail-soft `graph` step (`StepDegraded`) and `--llm`; `nfl digest --graph`; `nfl graph query`.
+- **Subagents (named by Rishi):** opus-high wired the digest side (facts ownership with a "; " clause rule, hedging for graph sections, the placeholder writer, 25 tests) and found three real binding holes in my contract, all fixed; sonnet-xhigh wrote ~330 graph unit tests (a 4-team synthetic league) and found a **real leak** (a backtest's week-N `PLAYED_IN` carried that game's penalties) plus 5 smaller issues, all fixed; opus-high also fact-checked the GLM graph sections (below).
+- **Exit criteria, verified:**
+  - full rebuild repeatable: two consecutive `nfl graph build` runs, identical counts (W&B `zb406f8m`, `pj1ipclt`);
+  - golden tests for 3 past weeks pass (`pytest -m integration`: Saquon Barkley vs the Giants 2024 w7, Justin Jefferson on IR 2023 w7, Jake Browning for Burrow 2023 w13), plus no week-N results in a Tuesday graph, counts = tables, every query < 2 s, fail-soft: 7 of 7 (7 minutes), re-run after the review fixes;
+  - graph sections in the current-week digest with checks passing: live 2026 week 4, `ev79x0i8` (QB change: Jalon Daniels for the Buccaneers; Kaden Elliss vs his former Falcons; Panthers up / Lions down);
+  - novelty: 2025 weeks 5-9 backtests (placeholder) repeat nothing within 3 weeks, and the filter did real work (held back James Conner's ripple in week 6, the Barkley-Giants rematch in week 8, Joe Flacco's start in weeks 8-9); re-run from a clean log after the review fixes, same result;
+  - fail-soft: with the container stopped, `nfl weekly run --from-step graph --llm placeholder` recorded `graph: degraded (ServiceUnavailable: Neo4j unreachable)` and published with the ℹ️ banner (`gf5j6sr1`); container restarted.
+- **Sol code review** (Codex `gpt-6.1-sol`, xhigh, read-only, via `/sol-qa`, job `task-mut4len4-i1bi11`): 12 findings; 11 fixed with regression tests (`tests/graph/test_graph_review_fixes.py` and updated tests), 1 declined:
+  1. (high) query errors could carry driver / server text into files and W&B: `graph.client.safe_error` (type + fixed reason or Neo4j status code) everywhere, `nfl graph build` fails soft too; a sentinel test.
+  2. (high, **declined**) "completed" isn't checked against the backtest's 14:00 UTC Tuesday (a postponed Tuesday game): same reasoning as P02's D44, the live `ready` step waits for every week N-1 game, so week-based is what a live run sees (D58).
+  3. the Player fallback read future roster rows: as-of now;
+  4. PFR pressures ignored PFR's one-week lag in backtests: lagged;
+  5. a re-run could erase a published pick from the novelty log: the log only grows;
+  6. picks the prose didn't use were logged: only rendered picks are logged;
+  7. kickoff protection could expire while GLM writes: a live digest skips games kicking off within 90 minutes;
+  8. a receiver's targets fact let one QB borrow the other's number: one clause per QB, owned by that QB;
+  9. a box score without a snap record read as a missed game in Q2: snaps null = unknown;
+  10. Q2 counted a stint away from the team as "without him": `PLAYED_FOR.roster_weeks`;
+  11. a count mismatch still produced `status: ok`: it now fails the build (soft) before the queries;
+  12. Q4 averaged missing EPA as 0: known values only.
+- **GLM review digests (🧑 review, delegated) and the fact-check** (opus-high, read-only: prose vs payload, then every graph number recomputed from the curated data as of the digest's week).
+  - **Every number was confirmed** in both digests (2025 week 9 backtest, 2026 week 4 live); GLM copied the fact texts faithfully and added no motives or predictions.
+  - It found three things to fix, all in our code or prompt, all fixed with tests: (1) GLM put "low confidence" on a well-supported QB start (Mayfield is listed Out): the QB-change headline now says why, and the item's `note` says what is uncertain (the new QB's thin history with these receivers), with the prompt told to hedge that claim only; (2) "100% of the Saints' snaps" was defensive snaps: snap shares name their side; (3) **in the 2025 week-9 backtest, "Kirk Cousins is expected to start" was wrong**: Cousins had filled in for one game and Penix started. On a Tuesday the rule only sees the last game's starter, so Q3 now carries the expected QB's source and words a Tuesday-rule pick as "could start ... but it isn't confirmed yet" (low confidence, ranked lower; checked on that week's graph).
+  - Length: one week-9 regeneration ended at 740 words on the 735 cap with every section within its own limit, because regenerations restated per-section limits only. The whole-digest cap is now restated too (`synthesize.length_feedback`).
+  - Final runs: 2025 week 9 `ngxgsudj` (checks passed first time, 689 words; it predates fix 3, which was checked on that week's Tuesday graph instead: all 7 QB changes come out "isn't confirmed yet", strength 0.49-0.52, and an injury ripple takes Matchup / risk); 2026 week 4 `o0skjazq` (all fixes; passed first time). The first-draft binding catch in `c22e9ixy` ("small sample, 3 weeks." naming no team) was a correct catch.
+- **Docs:** doc 05 "As built in P05" + findings, doc 06 "As built in P05" + payload sketch, doc 02 (Neo4j-down row), doc 08 (`track1-graph`), D58-D62, P05 phase file (ticks + "As built: deviations"), README commands. **Skills:** new `neo4j-graph` (listed in CLAUDE.md), `digest-checks` (graph sections, owners, weekly step), `curated-data` (P05 quirks), `model-experiment` (graph outputs as P06 features), `phase-workflow` (integration tests own the graph, write-tool edit scripts, subagent contract reviews).
+- **Tests:** 806 pass (default suite), ruff clean; 7 integration tests pass (re-run on the final code).
 
 ### 2026-10-03: P04 built, reviewed, run live and closed ✅
 - **Kickoff.** P03 was already closed (✅). **No waivers for P04** (asked at the start): Rishi scores the backtest digests himself, and runs the first live `nfl weekly run` himself; the ✋ close needs his approval. The Sol review comes after that, before the commit.

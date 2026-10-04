@@ -200,7 +200,7 @@ No heavyweight orchestrator such as Prefect or Airflow. `nfl weekly run` is a pl
 | nflverse data not ready (previous week's games missing) | Don't run; retry on schedule; alert if still missing by Wednesday 18:00 |
 | ESPN endpoint changed or down | **Fail soft:** continue without news or current lines and note it in the footer |
 | Current market lines unavailable | Publish model-only probabilities; skip the "disagreement with consensus" item |
-| Neo4j down | Try to start the container once; if it still fails, publish the digest without graph sections and add a banner |
+| Neo4j down | Try to start the container once; if it still fails, publish the digest without graph sections and add a banner. As built in P05: the `graph` step fails soft at once (recorded as `degraded`, D61); the restart attempt comes with P07's retries |
 | LLM check fails | Regenerate once with the list of failures; if it still fails, publish with a warning banner and mark the run in W&B |
 | Any unhandled exception | Run marked failed in W&B, notification sent, nothing published |
 
