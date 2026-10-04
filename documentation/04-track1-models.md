@@ -248,6 +248,20 @@ The **"players to watch"** list is built from the main target for each position 
 | Interval coverage | P10–P90 should cover ~80% of outcomes |
 | Watch-list hit rate | % of watch-list players who beat their baseline (vs ~50% by chance); also shown in the report card |
 
+### As built in P06 (decisions D64–D68)
+
+Results, settings and how to read the charts: [player model card](model_cards/player-model-v1.md) (overview) and the family cards ([QB](model_cards/player-qb.md), [RB](model_cards/player-rb.md), [WR/TE](model_cards/player-wrte.md), [defense](model_cards/player-defense.md)). A plain-language walkthrough: [player projections guide](guides/player-projections.md).
+
+- **11 models, one per target × position group** (D64): QB passing yards and EPA per dropback; RB rushing yards, carries, receptions, scrimmage yards; WR/TE receiving yards, targets, receptions; EDGE/DL pressures; LB/S tackles. WR and TE share a model (with a TE flag), as do LB and S. **EDGE/DL = DL + LB**, because nflverse labels many edge rushers LB.
+- **Who is projected and scored:** only games a player took part in on his side of the ball; for QB targets only the team's main QB in that game (most dropbacks). Live, the expected players: on the team, active in one of its last 3 games or back on the active roster after 3+ games for it, not Out / Doubtful / reserve; QBs = the P03 expected starter.
+- **Amounts** (yards, EPA): LightGBM quantile models P10 / P50 / P90 plus a conformal shift fitted on the model's own walk-forward misses of the last 2 seasons. **Counts:** a Poisson LightGBM for the mean, a negative binomial with a dispersion and a range tail fitted on the same history; P50 is its median. Both hold ~80% of outcomes in the range.
+- **Baseline ("player rolling"):** 0.5 × last 4 + 0.5 × season to date, pulled toward last season's mean with 3 pseudo-games; last season when he has no game this season; the position average for his snap-share role when he has no history. **Count targets are scored against the baseline's median** (D65): a median beats any mean on MAE for skewed counts by itself.
+- **Features** (126, all as of the row's week; the PFR / FTN ones and the pressures label lag one more week): own recent output (`own_*`), usage (`use_*`), team context including the P03 expected margin and points and the market-implied team total (`team_*`), the graph's ripple effects recomputed in Polars (`rip_*`), availability from the week's injury report (`avail_*`, the "Friday view", D66), efficiency incl. NGS / PFR / FTN (`eff_*`), opponent incl. production allowed to the position group over expectation (`opp_*`). Leakage tests per family (future-invariance on a synthetic league; a truncation check on the real data).
+- **Walk-forward 2019–2025**, weekly refits after 2 burn-in seasons; current-season sample weights (D28); hyperparameters from a 12-point grid per target scored on 2017–2018 only (D68).
+- **Drivers:** LightGBM's own SHAP values (`pred_contrib`), top 3 per projection, phrased from `features/descriptions.yaml`. SHAP explains the projection against the model's average, not against the player's own baseline, so the digest lists the drivers that agree with the projection's direction first and adds a note when the baseline rests on little history.
+- **Watch list** (doc 04 rule): the main stat per group, a real role (snap share ≥ 50% over the last 2 games, or vacated usage), ranked by (projection − baseline) / the target's typical baseline miss; at most 2 per team, 3 per position group and **3 defenders** (a variety rule checked on 2019–2020, confirmed on 2021–2025); 8 in the payload. The most negative gaps among regular starters are **tough spots** for *Matchup / risk*.
+- **Weekly path** (D67): the `player` step between `graph` and `digest`.
+
 ---
 
 ## Training and retraining cadence

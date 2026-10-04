@@ -77,7 +77,7 @@ A week-4 2026 build holds about **15.5k nodes and 588k relationships**, covering
 | `Official` | 294 | a game official | `official_id` | `name` |
 | `Venue` | 44 | a stadium (international games resolved to the real stadium) | `stadium_id` | `name`, `roof`, `surface` |
 | `PublishedInsight` | 3 after week 4 | a graph item a digest already published (novelty) | `key` | `insight_id`, `type`, `season`, `week`, `entities` |
-| `PlayerProjection` | 0 | reserved for the player model (P06) | `key` | |
+| `PlayerProjection` | one per player × game × target this week (0 right after a build, until the `player` step runs) | a player model projection for this week's game (P06) | `key` (`player_id\|game_id\|rec_yds-wrte\|model version`) | `target_label`, `p10`, `p50`, `p90`, `mean`, `baseline`, `outperformance`, `outperf_z`, `confidence`, `top_drivers`, `is_main` |
 
 ### Relationships
 
@@ -98,6 +98,10 @@ A week-4 2026 build holds about **15.5k nodes and 588k relationships**, covering
 | `(Player)-[:TRADED_TO]->(Team)` | 545 | he was traded to that team (draft-pick trades excluded) | `date`, `from_team` |
 | `(Coach)-[:HEAD_COACH_OF]->(Team)` | 302 | head coach of the team that season | `season`, `games` |
 | `(Game)-[:HAS_PREDICTION]->(GamePrediction)` | 32 | this week's predictions | |
+| `(Player)-[:HAS_PROJECTION]->(PlayerProjection)` | one per projection | the player model projected him this week (P06) | |
+| `(PlayerProjection)-[:FOR_GAME]->(Game)` | one per projection | the game the projection is for | |
+
+**Player projections are written after the build**, by the weekly `player` step (`graph/projections.py`; idempotent, fail-soft). The build wipes everything first, so right after `nfl graph build` there are none until the step runs again. They aren't part of the build's count check. What the numbers mean is in the [player projections guide](player-projections.md).
 
 The two big ones are `DEPTH_CHART` (one row per player per team per week per slot) and `APPEARED_IN` (one per player per game). They're also the slowest to load (about 22 seconds each).
 
@@ -327,7 +331,25 @@ ORDER BY pi.season DESC, pi.week DESC
 ```
 
 ```cypher
-// 10. Constraints and indexes (or run :schema)
+// 10. A team's projections this week, main stats first (Table view)
+MATCH (p:Player)-[:HAS_PROJECTION]->(pp:PlayerProjection {season: 2026, week: 5})
+WHERE pp.team = 'LA'
+RETURN p.name, pp.target_label, round(pp.p50, 1) AS projection, pp.p10, pp.p90,
+       round(pp.baseline, 1) AS baseline, pp.confidence, pp.top_drivers[0] AS driver
+ORDER BY pp.is_main DESC, pp.outperf_z DESC
+```
+
+```cypher
+// 11. One player's projection next to his last 4 games (receiving yards)
+MATCH (p:Player {name: 'Puka Nacua'})-[:HAS_PROJECTION]->(pp:PlayerProjection {season: 2026, week: 5, target: 'rec_yds'})-[:FOR_GAME]->(next:Game)
+MATCH (p)-[a:APPEARED_IN]->(g:Game) WHERE g.completed
+WITH p, pp, next, g, a ORDER BY g.season DESC, g.week DESC
+RETURN p.name, next.game_id, pp.p50, pp.p10, pp.p90, pp.baseline,
+       collect(a.rec_yds)[0..4] AS last_4_games
+```
+
+```cypher
+// 12. Constraints and indexes (or run :schema)
 SHOW CONSTRAINTS
 ```
 
@@ -345,7 +367,8 @@ Tip: in the Graph view, click the `Player` chip in the frame's legend and set it
 | The build's full record | `D:/nfl-ml-data/runs/<season>/week<NN>/graph_results.json` (counts, timings, every query's rows, all candidates, the picks); backtests under `runs/digest-backtests/` |
 | What was published | `D:/nfl-ml-data/runs/published_insights.parquet` (backtests keep their own) |
 | Tests | `uv run pytest tests/graph` (no Neo4j); `uv run pytest -m integration tests/graph/test_graph_integration.py` (~7 min, rebuilds the graph for three past "golden" weeks: Saquon Barkley vs the Giants 2024 w7, Justin Jefferson on IR 2023 w7, Jake Browning for Joe Burrow 2023 w13) |
-| Code | `src/nflengine/graph/` (`tables.py`, `load.py`, `schema.cypher`, `queries/`, `insights.py`, `published.py`, `build.py`), `src/nflengine/digest/graph_sections.py` |
+| Code | `src/nflengine/graph/` (`tables.py`, `load.py`, `schema.cypher`, `queries/`, `insights.py`, `published.py`, `build.py`, `projections.py`), `src/nflengine/digest/graph_sections.py` |
+| Player projections | written by the weekly `player` step after the build (`nfl weekly run`); tests `uv run pytest tests/graph/test_projections.py` |
 
 ## 10. Limits and what comes next
 
@@ -353,4 +376,4 @@ Tip: in the Graph view, click the `Player` chip in the frame's legend and set it
 - **Samples are small.** A starter usually missed only a few games; a QB change usually has little shared history. The items say so (`confidence: low` plus a note on what's uncertain), and the LLM is told to keep that wording.
 - **"As of Tuesday" is conservative.** A Tuesday backtest can't see this week's injury report, so its QB changes are always "not confirmed yet". The Saturday injury update (P07) is where these sections get sharper.
 - **Q1 looks back 2 seasons**, so "played 17 games for the Seahawks in 2023" is exact but isn't his whole career with them.
-- **P06** will read Q2 and Q3 rows from `graph_results.json` as player-model features (vacated targets, history with the new QB) and fill `PlayerProjection` nodes. **P08** adds Graph Data Science (passing-network centrality, player similarity) and queries Q5–Q7 and Q9.
+- **P06** recomputes Q2 and Q3 in Polars as player-model features (vacated targets, history with the new QB), so every past week has them, and fills `PlayerProjection` nodes every week. **P08** adds Graph Data Science (passing-network centrality, player similarity) and queries Q5–Q7 and Q9.

@@ -48,7 +48,14 @@ uv run nfl backtest game --variant market --seasons 2018-2025
 uv run nfl backtest game-weights   # W&B sweep over the current-season sample weight (P03)
 uv run nfl train game --season 2026 --week N   # weekly fit -> runs/<season>/week<NN>/predictions_games.parquet (P03)
 
-uv run nfl weekly run --season 2026 --week N   # ingest -> ready -> curate -> ratings -> game -> graph -> digest
+uv run nfl features player          # features/player_features: one row per player-game, as of its week (P06)
+uv run nfl backtest player --target rec_yds   # walk-forward 2019-2025 vs the rolling baseline, live W&B (P06)
+uv run nfl backtest player --target all       # every target x position group (11 models)
+uv run nfl tune player --target rec_yds       # W&B grid sweep, scored on 2017-2018 only (P06)
+uv run nfl train player --season 2026 --week N   # weekly refit -> runs/<season>/week<NN>/predictions_players.parquet
+uv run nfl scoreboard --season 2026 --week N     # score a played week's projections -> accuracy scoreboard
+
+uv run nfl weekly run --season 2026 --week N   # ingest -> ready -> curate -> ratings -> game -> graph -> player -> digest
 uv run nfl weekly run --season 2026 --week N --from-step digest   # resume from a failed step
 uv run nfl digest --season 2026 --week N       # payload -> LLM -> checks -> reports/<season>/week<NN>-digest.md (P04)
 uv run nfl digest --season 2025 --weeks 8-9 --backtest   # past weeks as if live on their Tuesday (P04)

@@ -173,7 +173,7 @@ The digest v0 lives in `src/nflengine/digest/` (the how-to and debugging guide i
 
 | Piece | Module | Notes |
 |---|---|---|
-| Payload | `payload.py` | Pydantic, `extra="forbid"`; every number a `Num {value, display}`. Extra fields beyond the sketch above: `meta.mode` / `run_time` / `sources` (freshness per source) / `early_season`; `report_card.status` (`scored`, `no_saved_predictions`, `first_week`), `not_graded`, `season_to_date`, `calibration`; `games[].status` (`upcoming` / `started`), `kickoff`, `market_fallback`, QB names; `team_trends[].window` / `net_rating` / `people`; `under_the_hood[].kind` (riser / faller / standout), `unit`, `norm_note`, `confidence`; `players_to_watch[].usage_*`, `opp_def_rank` (`source: heuristic` until P06) |
+| Payload | `payload.py` | Pydantic, `extra="forbid"`; every number a `Num {value, display}`. Extra fields beyond the sketch above: `meta.mode` / `run_time` / `sources` (freshness per source) / `early_season`; `report_card.status` (`scored`, `no_saved_predictions`, `first_week`), `not_graded`, `season_to_date`, `calibration`; `games[].status` (`upcoming` / `started`), `kickoff`, `market_fallback`, QB names; `team_trends[].window` / `net_rating` / `people`; `under_the_hood[].kind` (riser / faller / standout), `unit`, `norm_note`, `confidence`; `players_to_watch[].usage_*`, `opp_def_rank` (`source: heuristic`; since P06 only the fallback, see "As built in P06") |
 | Formatting | `format.py` | The only place display strings are made, and the single number parser the checks use (`number_atoms`) |
 | Fact index | `facts.py` | Entity → display strings / number atoms (owners in the `digest-checks` skill); season and week numbers are global |
 | LLM | `llm/` | `LLMClient` protocol, registry keyed by `llm.provider`: `openrouter` (default, D56) and `PlaceholderLLM` (templates fitted to the word budgets; also the fallback when the provider fails). `anthropic` / `openai_compatible` raise "connect in P09". A test checks nothing outside `digest/llm/` imports a provider |
@@ -182,7 +182,7 @@ The digest v0 lives in `src/nflengine/digest/` (the how-to and debugging guide i
 | Meaning in the payload | `build.py` | The LLM never derives an order, direction, venue or tier: `games[].matchup`, `game_highlights` (code-ranked), `model_vs_consensus.text`, change-worded trend deltas, complete stat phrases, tiered defense ranks, time-scoped QB evidence (D53) |
 | Report card | `report_card.py` | Grades the previous week's saved `predictions_games.parquet` (`is_primary` rows) and `watchlist.parquet`; predictions made after kickoff are never graded |
 | Under the hood | `under_hood.py` | NGS / PFR / FTN for week N−1 (D54) |
-| Players to watch | `watchlist.py` | Usage-increase × opponent-weakness heuristic, low confidence (D54) |
+| Players to watch | `watchlist.py` | Usage-increase × opponent-weakness heuristic, low confidence (D54); since P06 the fallback when a week has no player projections |
 | Render | `render.py` | Header, report-card numbers, game table (win % away / home, predicted score, margin, P03 confidence band), footer |
 | Commands | `run.py`, `weekly.py` | `nfl digest` (live or `--backtest`), `nfl weekly run` (resumable with `--from-step`) |
 
@@ -215,9 +215,52 @@ Rishi asked for a more informative digest without bloat: each week the graph fou
 |---|---|---|
 | QB column + ⚠ notes | Game outlook table | Each game's expected starters; ⚠ marks a team whose starter isn't its main one this season, with a note under the table ("Jalon Daniels starts in place of Baker Mayfield (out: thumb)"; "could start ... not confirmed yet" on a Tuesday). Payload `qb_changes` |
 | Starters out this week | Under the game table | Regular starters who won't play (graph Q0), up to 3 per team, QBs first, one line per game. Payload `starters_out` |
-| Players to watch table | Players to watch | All 8 picks (`digest.watchlist_size`): usage now vs before, the opponent's defense tier, the baseline; the prose covers the 4–6 most notable |
+| Players to watch table | Players to watch | All 8 picks (`digest.watchlist_size`): usage now vs before, the opponent's defense tier, the baseline; the prose covers the 4–6 most notable. Since P06 the table shows the model's projection, range, baseline, confidence and main driver ("As built in P06") |
 | More from the graph | After the Non-obvious prose | Up to 6 strong stories that didn't fit (strength ≥ 0.7, no QB changes, ≤ 2 per kind and per game), one line each (`GraphInsight.brief`). Payload `graph_more`; logged as published for novelty |
 | Latest news | Before the footer | Up to 4 recent non-fantasy ESPN headlines about this week's teams, as published (live runs) |
 
 For the *Matchup / risk to watch* prose slot, QB changes count at 80% of their strength (they're all in the table already), so a strong injury ripple or another story usually takes it. The Non-obvious pool gains three non-QB kinds (head coach vs a former team, offense-vs-defense unit mismatch, special-teams edge; see the knowledge-graph guide). Prompt rule 21 tells the LLM not to restate the code-written lists.
 
+## As built in P06
+
+*Players to watch* comes from the player model ([player projections guide](guides/player-projections.md); decisions D64–D67). The report card grades last week's picks and quotes the accuracy scoreboard. The LLM's word budgets are unchanged.
+
+| Piece | Module | Notes |
+|---|---|---|
+| Selection | `models/player_watch.py` | The rule below; `tough_spots`; `watchlist_backtest` (hit rate vs base rate) |
+| Payload items | `digest/players.py` | Model picks, tough spots, the look-back, scoreboard highlights, scoring saved picks (`WatchScorer`) |
+| Numbers | `digest/format.py` | `stat` ("84 receiving yards", "5.3 tackles"), `stat_range` ("52–118 receiving yards"), `vs_baseline` ("23 receiving yards above his baseline"), `driver_effect` ("puts the projection 9 receiving yards above a typical player in his group") |
+| Render | `digest/render.py` | The model table, the tough-spots list, the report card's highlights and look-back |
+| Backtests | `digest/run.py` | `materialize_backtest_player_predictions` copies a week's walk-forward projections into the digest-backtest folder |
+
+**Where the picks come from.** The week's `predictions_players.parquet` in the run folder. The weekly `player` step writes it; a backtest digest copies the main-target rows of `runs/backtests/player/<target>/`, with the outcomes blanked (nobody knew them on that Tuesday). No file, or a `player_status.json` that says `degraded` (the week's refit failed; written by the `player` step and checked first, so an older projection file from an earlier run of the week is never used), means no projections: the digest falls back to the P04 heuristic and says so above the table ("Heuristic picks (no player-model projections this week)") and in the footer (`heuristic-v0`). The pipeline never breaks on it.
+
+**The rule** (doc 04's definition; `select_watchlist`):
+- main stats only (passing, rushing and receiving yards, pressures, tackles);
+- a real role: snap share ≥ 50% over his last 2 games, or a role change (regular teammates who missed the team's last game or are ruled out this week, each counted once, leaving ≥ 15% of the targets for a WR/TE or ≥ 25% of the carries for an RB (`open_tgt` / `open_car`));
+- his game hasn't kicked off at the digest's run time; not Out or Doubtful;
+- ranked by `outperf_z` = (projection − baseline) / the target's typical baseline miss, only above zero, followed teams ×1.15;
+- at most 2 per team, 3 per position group and **3 defenders** (EDGE/DL + LB/S together), relaxed only to fill the list; one row per player (a linebacker is in two pools).
+
+The defense cap is a variety rule. Without it, 5–6 of the 8 picks were defenders every week and a receiver made the list about once a month. It was checked on the 2019–2020 backtests (hit rate 70.2% vs 68.8%) and confirmed on 2021–2025 (67.9% vs 66.9%) before it was kept.
+
+**The payload.** A `WatchItem` with `source: "model"` carries `projection` (the median for yards, the average for counts), `interval` (P10–P90), `baseline`, `vs_baseline` (the gap in words), `matchup`, `group`, `confidence`, `drivers` and three optional notes. Every direction is in words, never a bare sign (D53).
+- `drivers`: up to 3 SHAP drivers as "phrase (puts the projection N unit above / below a typical player in his group)": SHAP measures from the model's average prediction, never from his own baseline or form (the live week-4 fact-check found "his recent form raises the projection" read as "he's in form" for a pass rusher below his own baseline). A driver is kept only if it is at least 20% of the gap to baseline (a 3-yard driver can't stand for a 29-yard gap), same direction first; a driver that rounds to 0, or a phrase with a banned word, is dropped. With none left, `driver_note` = "no single factor stands out".
+- `baseline_note`: where a thin baseline comes from ("his baseline comes from 2 games this season", "... mostly from last season (1 game this season)", "his baseline is the average for players in his role (little history of his own)"); a pressures baseline adds "(pressures data arrives a week late)", because a player who has played 3 games has only 2 counted. Drivers explain the projection against the model's average player, not against his own baseline, so a backup QB can sit 61 yards above a thin baseline while all three drivers lower his projection. The note gives that context without implying a cause.
+- `role_note` (a role change, with the vacated share) and `injury_note` ("listed questionable on this week's injury report").
+
+The heuristic fields (`usage_*`, `opp_def_rank`) are optional now and filled only for heuristic picks.
+
+**The table** (code-written, all 8 picks): Player · Game · Projection · Range (80%) · Baseline · Confidence · Main driver / note, with a note line above it saying what the three numbers are. The prose covers 4–6 picks. Prompt rule 22: copy the numbers with their units and driver text whole; a driver compares him with a typical player in his group, never his own form, never the reason for the gap to his baseline; say `driver_note` when there's no driver; never compare or rank; never say a player "will" reach a number; the baseline note is context, not a reason. A low-confidence pick needs a hedge (the `hedging` check).
+
+**Tough spots** (`tough_spots`, 3 a week): regular starters (snap share ≥ 50%, not low confidence) projected at least a quarter of a typical miss below their own baseline, one per team, never a watch-list player. A code-written list under *Matchup / risk to watch* (under the picks when the graph sections are off): "Nate Landman (Rams LB) vs the Saints: projected 7.3 tackles, 2 tackles below his baseline of 9.2 tackles (range 4–11 tackles)". The prose slot stays the graph's.
+
+**Report card additions** (code-written, under the numbers line):
+- **Last week's watch list:** each saved pick projected vs actual vs range ("projected 4.6 tackles, range 2–7 tackles → actual 4 tackles: inside the range, above his baseline of 1.8 tackles"), and the numbers line adds "watch list 7 of 8 above baseline, 6 inside their range". Picks are graded from the saved `watchlist.parquet` only if made before kickoff (`created_at` = the digest's run time; the projection's own time is `projected_at`). Model picks are scored with `score_predictions` on the season's player history; a stat not yet published (a PFR pressure count) isn't scored ("no result yet"). The scoreboard catches up by itself: the weekly `player` step re-scores every earlier week on each run (`score_weeks`), so late pressures reach the highlights a week later. Heuristic picks still grade the P04 way.
+- **Player projections:** 2–3 highlights from the accuracy scoreboard, always including the weakest target: the best target ("receiving yards projections beat the rolling baseline by 9% so far this season (3 weeks scored)"), the weakest ("pressures: not yet better than the rolling baseline (2% worse)", or "the smallest gain, 3% better"), and the 80% ranges (overall coverage, or a target whose ranges are too narrow or wide, outside 72–88%). A target needs 20 scored projections to be named.
+- **No live week scored yet:** a live digest reads only `mode = live` rows (the season file also holds walk-forward re-runs of earlier weeks as `mode = backtest`; they're never quoted as live). With none, the first line says "no live week of player projections has been scored yet", followed by up to 2 lines from the walk-forward backtests, labelled "in walk-forward backtests (2019–2025)". A backtest digest uses its own season's earlier backtest weeks, or earlier seasons ("in earlier backtest seasons (2024)").
+- The season scorecard's `player_mae_vs_baseline` is the graded week's n-weighted mean improvement % from the scoreboard (live rows for a live digest).
+
+**Checks.** A pick's or tough spot's numbers belong to the player; a look-back line to its player; the highlights to the model. The placeholder writer covers model picks: "the model projects 85 receiving yards, 25 receiving yards above his baseline of 60 receiving yards (range 60–135 receiving yards, low confidence)".
+
+**Backtest digests** (2025 weeks 8 and 9, placeholder writer): both pass every fail-level check (warnings only: a short game-outlook blurb from the template writer, and the name heuristic tripping on "J.J. McCarthy"), and week 9's report card grades week 8's model picks (6 of 8 above baseline, 6 inside their range). On the 2019–2025 walk-forward backtests the watch list's hit rate is **69.5%** against a base rate of **42.2%** (992 picks): every season between 66% and 73%, every group above 61% (EDGE/DL lowest at 61.1% vs a 37.3% base rate). The picks are 36% high, 50% medium and 14% low confidence. A backtest digest rewrites a week's copied projections (and rebuilds its watch list) when the walk-forward files are newer, so a look-back never grades picks from superseded projections.

@@ -131,6 +131,18 @@ Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/particip
 - **`team_ratings.prior_weight`:** 1.0 in week 1, about 0.72–0.85 in week 2, 0.48–0.56 in week 4, 0.41–0.51 in week 5.
 - **The knowledge graph mirrors these tables as of a week** (`nfl graph build`). For multi-hop questions (a player's teams, injury ripples, QB-receiver history) see the `neo4j-graph` skill and the run folder's `graph_results.json`.
 
+## Quirks found in P06 (checked live 2026-10-04)
+- **Tackles = `def_tackles_solo + def_tackle_assists`** (correlates 0.97–0.99 with PFR's `def_tackles_combined`). `def_tackles_with_assist` is something else (0.80–0.88): don't add it.
+- **PFR defense rows exist only for defenders with a stat.** About 28% of defensive player-games with snaps have no `pfr_def` row (mostly rotational DTs at ~30% of snaps): when PFR has rows for that team-game, a missing player row means 0 pressures; a team-game with no PFR rows at all is "not published yet" (null). `pfr_rush` carries only `rushing_broken_tackles` and `pfr_rec` only `receiving_broken_tackles` (the other column is all null).
+- **Carry share from play-by-play, not the box score:** `player_games.carries` includes kneels and other plays outside `rush == 1`, so carries / team rushes can exceed 1. Count rush plays per `rusher_player_id` (no two-point tries) instead.
+- **`plays.pass_oe` is in percentage points** (divide by 100 for a rate); `xpass` is 0–1.
+- **"Probable" existed until 2015:** 14–17% of player-weeks are on the injury report in 2012–2015, 3–6% from 2016. A feature like "listed at all" changes meaning across eras; use Out / Doubtful / Questionable (and practice participation, which is stable).
+- **DuckDB hands `games.kickoff_utc` back in the machine's time zone** (America/Toronto here) when read with `.pl()`: convert with `dt.convert_time_zone("UTC")` before comparing with a UTC run time. The parquet read (`pl.read_parquet`) keeps UTC.
+- **Player-game oddities:** a few box-score rows have a null `player_id` (about one per week since 2012); a traded player can appear for both teams in one week (2019 weeks 16–17, 2021 week 12: 0 snaps for the old team). `features.player_data.player_history` drops the first and keeps the row with the most snaps.
+- **Blitz sources disagree:** FTN `n_blitzers > 0` vs PFR `times_blitzed` correlate only 0.69 per team-game (both are features).
+- **NGS receiving separation barely predicts volume** (rank correlation with receiving yards −0.03 for WRs).
+- **Player feature table (P06):** `features/player_features.parquet` (+ DuckDB view), one row per (player, game), built by `nfl features player`; every column is as of the row's week (`features/player.py`). Model outputs: `runs/<season>/week<NN>/predictions_players.parquet` (live), `runs/backtests/player/<key>/` (walk-forward 2017–2025), `runs/<season>/accuracy_scoreboard.parquet`; schema in `models/player_schema.py`.
+
 ## Recipes
 
 **Open the data:**

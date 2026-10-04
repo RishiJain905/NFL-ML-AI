@@ -209,7 +209,7 @@ The how-to and debugging guide is the `neo4j-graph` skill; decisions D58–D62.
 | Digest | `digest/graph_sections.py` | Reads or builds the week's results, re-picks with the digest's run time, records what was published |
 
 **Schema as built** (differences from the tables above):
-- Model outputs and the log use one string key each: `TeamWeek.key` ("KC:2026:4", plus the composite index), `GamePrediction.key` (game\|version\|variant, with `is_primary`), `PublishedInsight.key` (season-week:`insight_id`). `PlayerProjection` has its constraint, ready for P06.
+- Model outputs and the log use one string key each: `TeamWeek.key` ("KC:2026:4", plus the composite index), `GamePrediction.key` (game\|version\|variant, with `is_primary`), `PublishedInsight.key` (season-week:`insight_id`). `PlayerProjection` has its constraint (filled from P06; see "As built in P06").
 - `Game` also has `home_team`, `away_team`, `completed`, `stadium_id`, and for the week being built `home_qb_expected` / `away_qb_expected` (the game model's expected starters) with `home_qb_source` / `away_qb_source` (Tuesday rule `last_game` ... vs live `schedule`, `depth_chart`, `injury_next`).
 - `Player` gets `dropbacks` next to `scramble_rate` (its sample) and `draft_year`; `position_group` comes from `players`, else from the position.
 - `PLAYED_FOR` adds `weeks`, `roster_weeks` (the actual list) and `status_last` (`RES` = reserve list); statuses that mean "not on the team" (CUT, RET, UFA, RFA, TRD, TRC, TRT) are left out.
@@ -227,3 +227,17 @@ The how-to and debugging guide is the `neo4j-graph` skill; decisions D58–D62.
 - Depth-chart slots changed format in 2025: ≤2024 lists three rank-1 `WR` slots (and two `CB`), 2025+ one ranked list per position. "Next on the chart" is only reliable for single-slot positions.
 - A with / without comparison must start at the player's first start: counting the games before he was a starter compared a rookie lineman's bench games with his starts and read "the offense was better without him" (D59).
 - On a Saturday run the week-4 report changed several picks (a starting QB ruled out, Q3; several Out starters, Q2), so the Saturday injury update (P07) will matter for these sections.
+
+## As built in P06
+
+The player model writes its projections into the graph (`graph/projections.py`; the model is in the [player projections guide](guides/player-projections.md)).
+
+`(:Player)-[:HAS_PROJECTION]->(:PlayerProjection)-[:FOR_GAME]->(:Game)`
+
+- **One node per player × game × target × model version.** `key` = `<player_id>|<game_id>|<target key>|<model_version>`, for example `<player_id>|<game_id>|rec_yds-wrte|player-model-v1:2026-w05`. The target key names the position group too, because a linebacker gets a pressures projection (EDGE/DL) and a tackles projection (LB/S) for the same game. The doc's sketch key (`player_id`, `game_id`, `model_version`) couldn't tell those apart.
+- **Properties:** `player_id`, `player`, `team`, `opponent`, `game_id`, `season`, `week`, `target`, `target_label`, `group`, `unit`, `kind` (amount / count), `is_main`, `p10`, `p50`, `p90`, `mean`, `baseline`, `baseline_p50` (D65), `baseline_source`, `outperformance`, `outperf_z`, `confidence`, `model_version`, `feature_hash`, `trained_through`, `created_at` (ISO text) and `top_drivers` (the driver phrases, largest first). Nulls aren't stored (Neo4j skips them).
+- **When:** the weekly `player` step writes the week's projections after it projects them (D67). The `graph` step runs before it and wipes the database, so the projections are always written after the build; `nfl graph build` alone leaves no projections. Backtest digests never write them.
+- **How:** batched `UNWIND` (5,000 rows per transaction): `MERGE` on the constrained `key`, `SET pp = r.props`, then `MERGE` of both relationships. Re-running a week rewrites the same nodes and edges. A projection whose `Player` or `Game` node is missing is still written, unlinked; the result counts how many were linked.
+- **Fail-soft:** Neo4j down, bad credentials or any driver error returns `status = unavailable` with `graph.client.safe_error` text (never the driver's message), and the weekly run carries on. The step logs one line (`ProjectionWriteResult.summary`): "graph projections: N written (N linked to players, N to games) in S s".
+- **Indexes:** `projection_key` (unique), plus `(season, week)` and `player_id` (`schema.cypher`).
+- **Not in the build's count check:** the projections are written after it, so `graph_counts` doesn't include them.

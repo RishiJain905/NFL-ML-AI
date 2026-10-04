@@ -10,7 +10,7 @@ One W&B project: **`nfl-analytics-engine`**. Runs are organized by `group` and `
 |---|---|---|
 | `track1-ratings` | `tune`, `eval` | Rating half-life / prior pull-back tuning, trend validation |
 | `track1-game` | `tune`, `train`, `eval`, `backtest` | Game model experiments, walk-forward backtests (`bt/*` curves, step `bt/step`), the current-season weight sweep, and weekly fits that log the `game-model` artifact |
-| `track1-player` | `tune`, `train`, `eval` | Player model experiments, one tag per position group |
+| `track1-player` | `tune`, `train`, `eval`, `backtest` | Player model (P06): one walk-forward backtest per target × group (`bt/*` curves, LightGBM `lgb/curve_<season>`, scoreboard rows, feature importance, SHAP summary), a grid sweep per target, the weekly fit (`player-model` artifact) and the weekly scoreboard run (`scoreboard/*` curves + the `accuracy_scoreboard` table); tags `group:<qb/rb/wrte/edge/lbs>`, `target:<name>` |
 | `track1-graph` | `build` | Graph rebuilds (`nfl graph build` and the weekly `graph` step; tag `live` / `backtest`): a `load/*` curve per loaded table (seconds, rows, rows per second), `count/node/*` and `count/rel/*`, `time/*` per phase, `query/<name>/rows` and `/seconds`, `insights/*`, and tables of the candidates and picks. Golden tests run in pytest (`-m integration`), not W&B (P05) |
 | `digest-dev` | `backtest` | Prompt and section experiments on past weeks |
 | `track2-bdb` | `baseline`, `train`, `eval` | Big Data Bowl experiments |
@@ -28,6 +28,12 @@ Local W&B files go under the data root on D: (`WANDB_DIR={NFL_DATA_ROOT}/wandb`)
 The charts fill in as training happens.
 
 **Accuracy scoreboard:** every stat in [11-prediction-targets.md](11-prediction-targets.md) logs its error vs baseline, improvement %, and interval coverage per week to a W&B Table, `accuracy_scoreboard`. A dashboard panel shows all stats side by side.
+
+**As built in P06 (player model):**
+- **LightGBM curves:** a walk-forward backtest refits every target about 160 times, so the per-iteration W&B callback would bury the charts. Instead each reported season's opening fit is replayed with the previous season held out and logged as one `lgb/curve_<season>` chart (train vs validation loss per boosting round).
+- **Accuracy scoreboard:** `runs/<season>/accuracy_scoreboard.parquet` on D: holds one row per (week, target, group); `mode = live` rows are graded pre-kickoff projections (from week 4 of 2026, scored by week 5's run), `mode = backtest` rows are walk-forward re-runs (2026 weeks 1–3; every 2019–2025 week in `runs/backtests/player/scoreboard.parquet`). The weekly `scoreboard-S-wNN` run logs the table and one `scoreboard/improvement_<target>_<group>` and `scoreboard/coverage_<target>_<group>` curve per model over the season: that's the dashboard panel until P07's W&B Report. Count targets are scored against the baseline's median (D65).
+- **Artifacts:** one `player-model` artifact holds all 11 models' boosters (not one per group).
+- Details: [W&B guide §4.7 and §6.3b](guides/weights-and-biases.md), [player model card](model_cards/player-model-v1.md).
 
 ## What each training or evaluation run logs
 

@@ -34,6 +34,7 @@ One guide per major technology or component, written for a reader who's new to i
 | [Knowledge graph (Neo4j)](guides/knowledge-graph.md) | Neo4j in two minutes, what our graph holds, a Neo4j Browser walkthrough, each Cypher query in the library, how graph findings reach the digest (P05) |
 | [Weights & Biases](guides/weights-and-biases.md) | Every W&B run, chart, table and artifact, step by step through the weekly run and the research runs, and what to check each week |
 | [The LLM digest writer](guides/llm-digest-writer.md) | What the LLM does and doesn't do, the prompt, the checks it must pass, cost and latency, and how to switch the model or provider safely |
+| [Player projections](guides/player-projections.md) | The player model (P06): LightGBM, quantile ranges, count distributions, SHAP drivers in a few minutes; how projections become the watch list, tough spots, the look-back and the accuracy scoreboard; files, W&B runs, commands, how to change it safely |
 
 ## Weekly graph queries
 
@@ -47,6 +48,7 @@ One guide per major technology or component, written for a reader who's new to i
 |---|---|
 | [Team ratings, Elo, trend](model_cards/team_ratings.md) | P02 |
 | [Game model v0](model_cards/game-model-v0.md) | P03 |
+| [Player model v1](model_cards/player-model-v1.md): overview of all 11 target models, plus one card per target family: [QB](model_cards/player-qb.md), [RB](model_cards/player-rb.md), [WR/TE](model_cards/player-wrte.md), [defense](model_cards/player-defense.md) | P06 |
 
 `plans/` is the phase-by-phase build plan. `archive/` holds the original starter docs, for reference only.
 

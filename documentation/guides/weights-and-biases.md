@@ -60,6 +60,10 @@ W&B also records the exact command line, the full git commit and the machine on 
 | `track1-game` | `tune` | random, one per weight | `nfl backtest game-weights` (a sweep) |
 | `track1-game` | `train` | `train-<season>-w<NN>` | `nfl train game`, the weekly `game` step |
 | `track1-graph` | `build` | `graph-<season>-w<NN>`; `graph-<season>-w<NN>-backtest` | `nfl graph build`, the weekly `graph` step, `nfl digest --graph build` (live) |
+| `track1-player` | `backtest` | `backtest-<target>-<group>`, e.g. `backtest-rec_yds-wrte` | `nfl backtest player` (P06; one run per target x position group) |
+| `track1-player` | `tune` | random, one per configuration | `nfl tune player` (a sweep per target, `tune-<target>-<group>`) |
+| `track1-player` | `train` | `train-<season>-w<NN>` | `nfl train player`, the weekly `player` step |
+| `track1-player` | `eval` | `scoreboard-<season>-w<NN>` | `nfl scoreboard`, the weekly `player` step (scores week N−1) |
 | `weekly-pipeline` | `main` | `digest-<season>-w<NN>` | `nfl digest` (live), the weekly `digest` step |
 | `digest-dev` | `backtest` | `digest-<season>-w<NN>-backtest-<writer>`, e.g. `digest-2025-w09-backtest-openrouter` | `nfl digest --backtest` |
 
@@ -75,10 +79,11 @@ Run names aren't unique: re-running a week makes a second `train-2026-w04`. The 
 | `prod-candidate` | Weekly fits (`train`) | A live fit (promoted or not; see the `production` alias in §8) |
 | `live` / `backtest` | Graph builds | Live week or a past week's Tuesday |
 | `backtest` | Backtest digests | |
-| `p00`, `p02`, `p03`, `p05` | Everything | The phase whose code made the run (hard-coded per module: digests say `p05` even though the digest arrived in P04) |
+| `p00`, `p02`, `p03`, `p05`, `p06` | Everything | The phase whose code made the run (hard-coded per module: digests say `p05` even though the digest arrived in P04) |
 | `ratings`, `elo`, `trend`, `sweep` | Ratings runs; `sweep` also on game-weight runs | Run family |
 | `game`, `variant:model_only` / `variant:market`, `qb:tuesday` / `qb:actual` | Game backtests and sweep runs (`game` on the weekly fit too) | Which configuration |
 | `graph` | Graph builds | |
+| `player`, `group:<qb, rb, wrte, edge or lbs>`, `target:<name>`, `scoreboard`, `smoke` | Player-model runs (P06) | Position group and target of a backtest or sweep; `scoreboard` on the live scoring run; `smoke` on a test backtest (`--smoke`, nothing saved) |
 | `digest`, `llm:<writer>`, `graph:<status>` | Digests | Writer (`openrouter` or `placeholder`) and whether the graph sections were in (`ok`, `unavailable`, `off`) |
 
 **Useful filters:** "everything for 2026 week 4" = tags `season:2026` + `week:04`. "Only what was published" = tag `prod` (digests only) or group `weekly-pipeline`. "Only Rishi's runs" = tag `launched-by:rishi`.
@@ -131,7 +136,7 @@ W&B redesigns its pages now and then, so the names below are the ideas, not exac
 
 ## 4. The weekly run, step by step
 
-`uv run nfl weekly run --season S --week N` runs seven steps in this order (`src/nflengine/weekly.py`). Only the last three create W&B runs. Every step's status, start and finish time and a one-line detail (which includes the W&B URL for the last three) go to **`runs/<season>/week<NN>/weekly_run.json`** on D:. That file is the only record of the whole run. There is no W&B run for the pipeline as a whole yet (P07).
+`uv run nfl weekly run --season S --week N` runs eight steps in this order (`src/nflengine/weekly.py`). Only the last four create W&B runs. Every step's status, start and finish time and a one-line detail (which includes the W&B URL for the last four) go to **`runs/<season>/week<NN>/weekly_run.json`** on D:. That file is the only record of the whole run. There is no W&B run for the pipeline as a whole yet (P07).
 
 | # | Step | Same as | W&B run? | Where its record lives instead |
 |---|---|---|---|---|
@@ -141,7 +146,8 @@ W&B redesigns its pages now and then, so the names below are the ideas, not exac
 | 4 | `ratings` | `nfl ratings build` | **No** | Tables `features/team_ratings`, `team_elo`, `team_trends`, `team_trend_drivers` (parquet); `features/_meta/team_ratings.json` (parameters, row counts, git commit, dataset version); `runs/<season>/week<NN>/ratings_sanity.md` |
 | 5 | `game` | `nfl train game` | **Yes**: `track1-game` / `train` | Also `runs/<season>/week<NN>/predictions_games.parquet` and `models/game-model/<season>-w<NN>/` |
 | 6 | `graph` | `nfl graph build` | **Yes**: `track1-graph` / `build` | Also `runs/<season>/week<NN>/graph_results.json` |
-| 7 | `digest` | `nfl digest` | **Yes**: `weekly-pipeline` / `main` | Also the run folder files and `reports/<season>/week<NN>-digest.md` |
+| 7 | `player` (P06) | `nfl scoreboard` (every earlier week) + `nfl train player` | **Yes**: `track1-player` / `eval` (`scoreboard-S-wNN`) and `track1-player` / `train` | Also `runs/<season>/week<NN>/predictions_players.parquet`, `runs/<season>/accuracy_scoreboard.parquet`, `runs/<season>/player_walkforward.parquet`, `models/player-model/<season>-w<NN>/`, `PlayerProjection` nodes in Neo4j |
+| 8 | `digest` | `nfl digest` | **Yes**: `weekly-pipeline` / `main` | Also the run folder files and `reports/<season>/week<NN>-digest.md` |
 
 **The first four steps** don't log to W&B because they're data plumbing, not models: there's nothing to chart. Their health shows up indirectly: `dataset_version` in every later run's config says which snapshot and curate run the models saw, and the digest's footer and `payload.json` (`meta.sources`) say how fresh each source was. Sending row counts and freshness to W&B is P07 work.
 
@@ -235,7 +241,35 @@ The load points don't carry the table's name (a W&B curve can only hold numbers)
 
 **Artifact `graph-results`** (type `graph`, new in P05): one file, `graph_results.json` (counts, expected counts, timings, every query's rows, every candidate, the picks, what was skipped and why). Aliases: `<season>-w<NN>` for live builds, `<season>-w<NN>-backtest` for backtest builds. Metadata: season, week, mode, run time, node and relationship totals, the picked insight ids. Only successful builds log it. It matters because **the copy on D: is overwritten by every rebuild of that week**: the week-4 file on D: now comes from `binb1iho` (03:34 UTC), built after the digest, and the artifact versions keep each build. `graph-results:v0` (`binb1iho`) is the first version; the earlier builds predate the artifact. **Planned reader:** P06 reads Q2 (injury ripple) and Q3 (QB change) rows from it as player-model features (comment in `build.py`).
 
-### 4.7 Step `digest`: the published digest (`digest-<season>-w<NN>`)
+### 4.7 Step `player`: scoreboard + weekly player fit (P06)
+
+**What it does** (`_player` in `weekly.py`; code in `src/nflengine/models/player_runs.py`; how the model works: [player projections guide](player-projections.md)):
+1. **Scores the season so far** (`score_weeks`, skipped in week 1): every earlier week's saved `predictions_players.parquet` (only rows made before kickoff) against the box scores, re-scored each run because PFR pressures arrive a week late, upserts `mode = live` rows into `runs/<season>/accuracy_scoreboard.parquet`, and logs one run `scoreboard-S-wNN` (group `track1-player`, job type `eval`, tags `p06`, `player`, `scoreboard`, `season:…`, `week:…`).
+2. **Refits and projects week N** (`run_train`): every one of the 11 target models is refit for each week of the season up to N, continuing the canonical backtest's walk-forward history, then projects week N. One run `train-S-wNN` (job type `train`, tags `p06`, `player`, `season:…`, `week:…`, `prod-candidate`).
+3. **Writes `PlayerProjection` nodes** into Neo4j (no W&B run; the step's detail line says how many).
+
+A failed refit makes the step `degraded`, writes `player_status.json` = degraded in the run folder, and the digest falls back to the labelled P04 heuristic watch list (D67).
+
+**Scoreboard run (`scoreboard-S-wNN`).** The x-axis of its curves is **`scoreboard/week`**, the scored week. Every run redraws the whole season from the file, so the newest one is the season view (like the digest's `season/*` charts).
+
+| Chart / table | What it shows | How to read it |
+|---|---|---|
+| `scoreboard/improvement_<target>_<group>` (e.g. `scoreboard/improvement_rec_yds_wrte`) | That week's % improvement in MAE over the rolling baseline (counts: against the baseline's median, D65) | Positive = better than the baseline. One week is noisy (30–300 players); look at several weeks. Backtest pooled values: model card |
+| `scoreboard/coverage_<target>_<group>` | Share of that week's results inside the P10–P90 range | About 0.8 is right; under 0.7 means ranges too narrow |
+| `accuracy_scoreboard` (table) | Every row of the season file: `season, week, target, position_group, target_label, n_scored, n_not_played, mae_model, mae_baseline, improvement_pct, coverage_80, brier_*` (P08), `mode` | `mode = live` rows are graded pre-kickoff projections; `mode = backtest` rows are the season's earlier weeks re-run walk-forward by the weekly fit (2026 weeks 1–3, before the model existed) |
+
+Until a live week is scored (the first is week 4, scored by week 5's run), the curves are drawn from the `backtest` rows: the first season scoreboard run, `ip2ny9sz` (`scoreboard-2026-w03`), shows 2026 weeks 1–3 re-run walk-forward (11 rows a week; average improvement +3.5%, +8.7%, +5.5%; coverage 0.77–0.82).
+
+**Weekly fit run (`train-S-wNN`).**
+- `projections_main` (table): the main stat per group for every projected player, sorted by `outperf_z` (player, team, opponent, P10 / P50 / P90, baseline, outperformance, confidence).
+- `projections_per_target` (bar): projections per model this week (a sanity check of the slate).
+- `top_outperformance` (bar): the 15 biggest projected jumps over baseline (z).
+- Summary: `projections`, `players`, `low_confidence_share`.
+- Real runs (2026 week 4): `u5k0ivia` (first live fit), `kl4fzvl8` (the re-run after the Sol review, behind the published digest `0eh6h6ll`): 1,860 projections for the 15 games that hadn't kicked off.
+- Config: per target the feature count and hash, training rows, trained-through week, range parameter (conformal shift or NB dispersion), scale, settings.
+- **Artifact `player-model`** (type `model`): every booster (`<target>-<group>-<q10|q50|q90|mean>.txt`) plus `meta.json`; aliases `<season>-w<NN>` (+ `production` with `--promote`); description = the [player model card](../model_cards/player-model-v1.md).
+
+### 4.8 Step `digest`: the published digest (`digest-<season>-w<NN>`)
 
 **What it does:** builds the payload (including the report card on last week's saved predictions), has the writer produce the prose, runs the checks, renders the digest, updates the season scorecard on D:, then opens one W&B run and logs everything. Code: `run_digest`, `log_digest_run`, `log_digest_charts`, `season_series` in `src/nflengine/digest/run.py`. How the checks work is in the [LLM writer guide](llm-digest-writer.md).
 
@@ -244,7 +278,7 @@ The load points don't carry the table's name (a W&B curve can only hold numbers)
 | Group / job type | `weekly-pipeline` / `main` |
 | Name | `digest-2026-w04` |
 | Tags | `p05`, `digest`, `season:2026`, `week:04`, `llm:openrouter`, `graph:ok`, `prod`, `launched-by:…` |
-| Real runs | `o0skjazq` (the published week-4 digest); earlier same-week passes `0rbvplt9`, `vvit9fdd`, `gf5j6sr1` (Neo4j-down test), `755t5su2`, `ev79x0i8` |
+| Real runs | `0eh6h6ll` (the published week-4 digest with the player model, P06); before it `n1ifxdb0` (before the fact-check's driver wording) and `78r6sgfa` (P06 first live pass), `o0skjazq` (the P05 digest); earlier same-week passes `0rbvplt9`, `vvit9fdd`, `gf5j6sr1` (Neo4j-down test), `755t5su2`, `ev79x0i8` |
 
 **Config:** `season`, `week`, `mode`, `run_time`, `prompt_hash` (changes whenever a prompt file changes), `llm_provider`, `llm_model` (`z-ai/glm-5.3-flash`), `word_budgets` (per section), `followed_teams`, `git_commit`, `dataset_version`.
 
@@ -296,6 +330,7 @@ The load points don't carry the table's name (a W&B curve can only hold numbers)
 | ratings | none | none | none | `runs/<S>/week<NN>/ratings_sanity.md` |
 | game | `track1-game` / `train`, `train-S-wNN` | `slate/*` lines, `slate_home_win_pct` bar | `game-model:S-wNN` (+ `production` with `--promote`) | `games`, `market_fallback_games`; the gap between `slate/home_win_prob_model_only` and `_market` |
 | graph | `track1-graph` / `build`, `graph-S-wNN` | `load/*` lines, `graph_counts` and `query_seconds` bars | `graph-results:S-wNN` | `status`, `count_mismatches`, `query/max_seconds`, `insights/picked` |
+| player | `track1-player` / `eval` `scoreboard-S-wNN` + `track1-player` / `train` `train-S-wNN` | `scoreboard/*` lines; `projections_per_target`, `top_outperformance` bars | `player-model:S-wNN` | `weekly_run.json` → `player` detail (projections, graph nodes); `scoreboard/improvement_*` for last week; `low_confidence_share` |
 | digest | `weekly-pipeline` / `main`, `digest-S-wNN` | `season/*` lines, `words_per_section` and `check_issue_counts` bars | `digest:S-wNN` | `checks_passed`, `banner`, `graph_status`, `llm/fallback`; `season/cum_brier_model` vs `_elo` |
 
 ### What to check each week in 2 minutes
@@ -355,6 +390,19 @@ Full chart-by-chart notes: [game model card → Reading the W&B charts](../model
 
 `nfl features game` (builds `features/game_features.parquet`) has no W&B run; its record is `features/_meta/game_features.json`.
 
+### 6.3b Player model research (`track1-player`; `src/nflengine/models/player_runs.py`, P06)
+
+Full chart-by-chart notes and real values: [player model card → Reading the W&B charts](../model_cards/player-model-v1.md#reading-the-wb-charts).
+
+**`nfl backtest player --target <name>` (job type `backtest`, name `backtest-<target>-<group>`).** Walk-forward by week, 2019–2025 reported after 2 burn-in seasons (2017–2018). Tags `p06`, `player`, `group:…`, `target:…`. Config: the LightGBM settings, `weights`, `feature_hash`, `features`, `n_features`, `report_seasons`, `burn_in_seasons`, `dataset_version`, `git_commit`. Predictions + summary go to `runs/backtests/player/<target>-<group>/`; their scoreboard rows to `runs/backtests/player/scoreboard.parquet`.
+- **Live curves, x-axis `bt/step`** (1 = 2019 week 1, about 124 = 2025 week 18): `bt/mae_model`, `bt/mae_baseline` (that week), `bt/cum_mae_model`, `bt/cum_mae_baseline` (**the main chart**: the model line should end below), `bt/improvement_pct`, `bt/cum_improvement_pct`, `bt/coverage_80`, `bt/cum_coverage_80` (should settle near 0.8), `bt/range_param` (the conformal shift for yards, the NB dispersion for counts), `bt/n`, `bt/season`, `bt/week`.
+- **LightGBM training curves** `lgb/curve_<season>` (web only): each reported season's opening fit replayed with the previous season held out, train vs validation loss per boosting round (quantile loss for yards, Poisson deviance for counts). Validation should flatten, not turn up, by the last round.
+- **End-of-run panels:** `by_season` (table), `mae_by_season` (line), `accuracy_scoreboard` (the weekly rows), `feature_importance` (gain of the last fit, top 25), `shap_summary` (mean |SHAP| over 2025, top 20, in target units), `predictions` (2025 rows).
+- **Summary:** `n_scored`, `mae_model`, `mae_baseline` (counts: the baseline's median, D65), `mae_baseline_mean` (the raw rolling mean), `improvement_pct`, `mae_season_mean_same_rows` / `improvement_vs_season_mean_pct`, `coverage_80`, `spearman_outperformance` (does the projected gap to baseline rank the real one?), `share_role_baseline`, `seasons_beating_baseline` of `seasons`.
+- `--smoke` tags a run `smoke` and saves nothing (the P06 smoke run: `xoahaq4o`).
+
+**`nfl tune player --target <name>` (a sweep per target, job type `tune`).** A W&B grid sweep `tune-<target>-<group>` over `num_leaves` (7 / 15 / 31) × `min_data_in_leaf` (50 / 200) × `n_estimators` (150 / 300), minimizing `tune/mae_model`: a walk-forward over every other week of **2017–2018 only** (never the reported years; pressures, a PFR stat from 2018, uses late 2018 only). Summary `tune/mae_model`, `tune/mae_baseline`, `tune/improvement_pct`, `tune/n`. The best configuration per target goes into `settings.yaml` → `player_model.per_target` (D68).
+
 ### 6.4 Digest backtests (`nfl digest --backtest`; group `digest-dev`, job type `backtest`)
 
 The same code as the live digest, producing a past week as if it were that week's Tuesday. The week's predictions come from the canonical game backtests, copied into `runs/digest-backtests/<season>/week<NN>/` for that week and every earlier week of the season, so the report card grades them exactly as it does live.
@@ -394,7 +442,7 @@ So **the newest digest run is the season dashboard** until P07 builds a W&B Repo
 |---|---|---|---|
 | Game model worse than Elo | Rolling 4-week Brier worse for 3 straight weeks | **By eye only.** `season/brier_model` vs `season/brier_elo` (weekly) and the `cum_*` lines in the newest digest run; both columns are in `season_scorecard`. No rolling 4-week number is computed | Automatic check and alert in P07 |
 | Calibration drift | Season ECE above 0.05 | **Not really visible.** Only a per-week `ece_model` in the scorecard table, which is very noisy on ~15 games (0.13–0.32 every week in the 2025 backtests). The digest's report card shows season-to-date calibration buckets (in `payload.json`). Note: v0 has no calibration layer to refit (calibration `none`, D48), so the doc's response needs a new answer | Season ECE and the alert in P07; calibration curve in the P07 dashboard |
-| Player model worse than baseline | Rolling 4-week MAE worse for a position group for 3 straight weeks | **Doesn't exist yet** (no player model) | `accuracy_scoreboard` table in P06; alert in P07 |
+| Player model worse than baseline | Rolling 4-week MAE worse for a position group for 3 straight weeks | **By eye:** the newest `scoreboard-S-wNN` run's `scoreboard/improvement_*` curves (below 0 = worse than the baseline that week) and its `accuracy_scoreboard` table (P06). No rolling number is computed | Alert in P07 |
 | Data freshness | Any source more than 1 week stale | **Not in W&B.** In the digest footer and `payload.json` → `meta.sources` (inside the `digest` artifact), the `ready` step, and `nfl data-status` | Logged to W&B and alerted in P07 |
 | Checks | Failure rate above 20% of runs over a month | **By eye:** the runs table filtered to group `weekly-pipeline`, column `checks_passed`; also the scorecard's `checks_passed` column | Pass-rate panel in the P07 dashboard; alert in P07 |
 
@@ -408,10 +456,11 @@ P10 (season operations) then reviews any alert each week, and the agent investig
 | `graph-results` | `graph` | `<season>-w<NN>` (live), `<season>-w<NN>-backtest`; `latest` | `graph_results.json` | `nfl graph build` (both modes), weekly `graph` step, `nfl digest --graph build` (live). Successful builds only | Nobody yet. Planned: P06 reads Q2 / Q3 rows as player features |
 | `digest` | `digest` | `<season>-w<NN>`; `latest` | `payload.json`, `raw_llm_output.json`, `checks.json`, `digest.md` | Live `nfl digest`, weekly `digest` step | Nobody (the record of what shipped) |
 | `digest-backtest` | `digest` | `<season>-w<NN>-<writer>`; `latest` | Same four files | `nfl digest --backtest` | Nobody (review record) |
+| `player-model` | `model` | `<season>-w<NN>`; `production` (only with `--promote`; on the `kl4fzvl8` version of `2026-w04`); `latest` | One LightGBM booster file per target model (`<key>-q10/q50/q90.txt` for yards, `<key>-mean.txt` for counts), `meta.json`; description = the player model card | `nfl train player`, weekly `player` step | Nobody yet (the digest reads `predictions_players.parquet` on D:) |
 
 **Where things stand (checked through the W&B API):** `game-model` `v0`–`v3` (`production` on `v1` from `ump6sftd`; `2026-w04` on `v3` from `1vbkvjdj`); `graph-results` `v0` (`2026-w04`, `binb1iho`); `digest` `v0`–`v5` (`2026-w04` on `v5`, `o0skjazq`); `digest-backtest` `v0`–`v31`.
 
-**Planned, not built:** a reference artifact for the training-data snapshot (doc 08); `player-model-*` (P06); `candidate` aliases (P08).
+**Planned, not built:** a reference artifact for the training-data snapshot (doc 08); `candidate` aliases (P08). The player models are one artifact, `player-model`, not one per group (`player-model-wr` in doc 08).
 
 ## 9. Where the build differs from doc 08
 
@@ -421,13 +470,13 @@ P10 (season operations) then reviews any alert each week, and the agent investig
 | `weekly-pipeline` holds production runs, job types `main` and `injury-update` | Only the **digest** runs there (`main`). The weekly fit and graph build go to `track1-game` / `train` and `track1-graph` / `build`. `injury-update` is P07 |
 | Tags: `prod`, model family, position group | `prod` is only on live digests. Live fits are tagged `prod-candidate`, live graph builds `live`. Phase tags (`p02`, `p03`, `p05`), `variant:*`, `qb:*`, `llm:*`, `graph:*` exist and aren't listed |
 | Config: dataset version = "snapshot date + hash"; a reference artifact for the training data | `dataset_version` is the pbp snapshot date plus the curate time, no hash; no data artifact |
-| Plots: ROC / precision-recall, feature importance, SHAP, residuals by week | None yet (v0 is linear; P08). Reliability diagram and by-season Brier exist |
+| Plots: ROC / precision-recall, feature importance, SHAP, residuals by week | Game model: none yet (v0 is linear; P08). Player backtests (P06): `feature_importance` and `shap_summary` bars, `mae_by_season`, LightGBM curves |
 | Weekly run logs freshness, row counts, readiness, model versions (aliases) and feature hash, step timings, market fallback | Freshness and row counts aren't in W&B (`weekly_run.json`, the raw manifest and the digest footer instead). The digest run doesn't record which `game-model` version or graph run it used. The feature hash is in the fit's config only. Market use is `market_data_used` (digest) and `market_fallback_games` (fit) |
 | Digest backtest artifact "aliased `<season>-w<NN>`" | Aliased `<season>-w<NN>-<writer>` |
 | "As built in P05": graph build logs counts, timings, queries, insights, tables | True, plus `load/elapsed_s`, `query/max_seconds`, `count_mismatches` and the **`graph-results` artifact**, which doc 08 doesn't mention yet |
 | Season scorecard columns | Also `picks_total`, `points_mae` and `not_graded`; `checks_passed` is the previous week's digest's |
 | W&B Report "2026 Season Dashboard" | Not built (P07). The newest digest run's `season/*` charts stand in for it |
-| `accuracy_scoreboard` table | Not built (P06) |
+| `accuracy_scoreboard` table | Built in P06: logged by the backtests (backtest rows) and by each weekly `scoreboard-S-wNN` run (the season file), with `scoreboard/*` curves |
 | Drift signals | None automated (P07); calibration's "refit the calibration layer" has no layer to refit in v0 |
 | Model registry: `production` points to what the weekly pipeline uses | The weekly pipeline doesn't read any artifact; it refits every week. `production` moves only with `--promote` and is on `game-model:v1` while week 4's digest used `v3`'s predictions. `candidate` isn't used yet |
 

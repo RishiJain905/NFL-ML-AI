@@ -62,7 +62,7 @@ The goal: someone who has never seen the project can read `documentation/` and u
 
 Rules:
 - **Before closing a phase, list what it introduced** (new tech, services, data stages, W&B runs or artifacts, CLI commands, file formats) and make sure each one is explained in a guide or model card. Name the guides in the phase's end-of-run report.
-- Existing guides: `knowledge-graph.md` (Neo4j, P05), `weights-and-biases.md` (every W&B run, chart and artifact across the weekly cycle), `llm-digest-writer.md` (the digest LLM and how to switch models). Expected next: the player model card (P06), a weekly-operations guide (P07: scheduling, retries, notifications), a Track 2 / Big Data Bowl guide (T00+). Keep `documentation/README.md`'s index current.
+- Existing guides: `knowledge-graph.md` (Neo4j, P05), `weights-and-biases.md` (every W&B run, chart and artifact across the weekly cycle), `llm-digest-writer.md` (the digest LLM and how to switch models), `player-projections.md` (the player model, watch list and accuracy scoreboard, P06). Model cards so far: team ratings, game model v0, player model v1 (overview + QB / RB / WR/TE / defense). Expected next: a weekly-operations guide (P07: scheduling, retries, notifications), a Track 2 / Big Data Bowl guide (T00+). Keep `documentation/README.md`'s index current.
 - New W&B runs, charts or artifacts are added to `guides/weights-and-biases.md` in the same commit that adds them.
 
 ## Working style: keep going, stop only when needed

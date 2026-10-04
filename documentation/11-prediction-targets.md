@@ -90,6 +90,24 @@ These set expectations. **Our own measured baselines from P03 and P06 replace th
 
 Why ~65% accuracy is near the ceiling (and 80%+ isn't reachable for winners over a season) is explained, with evidence, in the game model card's ["Is 64% accuracy good?"](model_cards/game-model-v0.md#is-64-accuracy-good-why-nfl-winners-top-out-around-6570) section.
 
+**Measured in P06** (walk-forward 2019–2025, every regular-season week, only games the player played; [player model card](model_cards/player-model-v1.md)). These replace the public ceilings for player stats. Improvement is over the player-rolling baseline on the same rows; count targets are compared with the baseline's median (D65), because a median beats any mean on MAE by itself.
+
+| Target | MAE model | MAE baseline | Improvement | Without market lines | 80% range held | Seasons better |
+|---|---|---|---|---|---|---|
+| QB passing yards | 56.6 | 59.5 | +5.0% | +4.6% | 81% | 7 / 7 |
+| QB EPA per dropback | 0.230 | 0.241 | +4.7% | +3.9% | 80% | 7 / 7 |
+| RB rushing yards | 19.0 | 20.7 | +7.9% | +8.1% | 81% | 7 / 7 |
+| RB carries | 3.39 | 3.64 | +6.9% | +6.9% | 80% | 7 / 7 |
+| RB receptions | 1.09 | 1.12 | +2.7% | +2.3% | 81% | 7 / 7 |
+| RB scrimmage yards | 23.5 | 25.3 | +7.4% | +7.3% | 80% | 7 / 7 |
+| WR/TE receiving yards | 16.5 | 18.2 | +9.2% | +9.2% | 82% | 7 / 7 |
+| WR/TE targets | 1.62 | 1.70 | +5.2% | +5.2% | 81% | 7 / 7 |
+| WR/TE receptions | 1.20 | 1.24 | +3.4% | +3.4% | 80% | 7 / 7 |
+| EDGE/DL pressures | 0.556 | 0.573 | +3.0% | +3.0% | 85% | 7 / 7 |
+| LB/S tackles | 1.80 | 1.89 | +4.8% | +4.7% | 81% | 7 / 7 |
+
+Yardage lands in the 5–15% band above; usage counts (carries, targets) beat per-play efficiency stats as expected, but catches and pressures, which depend on what the defense allows on a few plays, gain least. The watch list (8 picks a week) beat its players' baselines 69.5% of the time against a 42.2% base rate.
+
 ## The accuracy scoreboard
 
 One row per target per week, logged to a W&B Table (`accuracy_scoreboard`) and kept season-long:
@@ -98,7 +116,7 @@ One row per target per week, logged to a W&B Table (`accuracy_scoreboard`) and k
 
 Views:
 - **W&B dashboard panel:** improvement % by target over the season, plus season-to-date cumulative numbers.
-- **Digest report card** ([06](06-weekly-digest.md)): 2–3 highlights each week (e.g. "receiving-yards projections beat the rolling average by 9% so far this season"), always including at least one weak spot.
+- **Digest report card** ([06](06-weekly-digest.md)): 2–3 highlights each week (e.g. "receiving-yards projections beat the rolling baseline by 9% so far this season"), always including at least one weak spot.
 - **Per-player look-back:** for the watch list, predicted vs actual with the range ("projected 84, range 52–118 → actual 97 ✓ inside the range").
 
 ## Priority order
