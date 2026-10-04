@@ -90,13 +90,24 @@ def test_cli_weekly_and_digest_wiring(monkeypatch) -> None:
 
     import nflengine.weekly as weekly
 
-    def fail(opts, from_step=None, log=print):
-        raise StepFailed("ready", "2026 week 4: NOT READY", exit_code=3)
+    # P07: the CLI goes through run_pipeline. Stub it: never let a CLI test reach the real
+    # data root (an earlier version of this test wrote run records to D: and W&B).
+    seen = {}
 
-    monkeypatch.setattr(weekly, "run_weekly", fail)
-    monkeypatch.setattr(weekly, "state_path", lambda s, w: Path("state.json"))
+    def outcome(status, code):
+        def fake(season, week, **kw):
+            seen.update(kw, season=season, week=week)
+            return weekly.PipelineOutcome(status, code, 2026, 5, "2026 week 4: NOT READY")
+
+        return fake
+
+    monkeypatch.setattr(weekly, "run_pipeline", outcome("not_ready", 3))
     res = runner.invoke(app, ["weekly", "run", "--season", "2026", "--week", "5"])
-    assert res.exit_code == 3 and "--from-step ready" in res.output
+    assert res.exit_code == 3 and "run it again later" in res.output
+    assert seen["season"] == 2026 and not seen["auto"] and seen["from_step"] is None
+    monkeypatch.setattr(weekly, "run_pipeline", outcome("failed", 1))
+    res = runner.invoke(app, ["weekly", "run", "--season", "2026", "--week", "5"])
+    assert res.exit_code == 1 and "--from-step" in res.output
 
 
 def test_cli_digest_passes_llm_override(monkeypatch) -> None:

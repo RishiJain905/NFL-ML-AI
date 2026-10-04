@@ -70,6 +70,7 @@ BURN_IN = 2
 TUNE_SEASONS = (2017, 2018)
 MIN_TRAIN_ROWS = 2000
 PRED_FILE = "predictions_players.parquet"
+UPDATE_PRED_FILE = "predictions_players_update.parquet"  # Saturday injury update (P07)
 SCOREBOARD_FILE = "accuracy_scoreboard.parquet"
 FEATURE_FILE = "player_features.parquet"
 DESCRIPTIONS = Path(__file__).resolve().parents[1] / "features" / "descriptions.yaml"
@@ -917,10 +918,21 @@ def run_train(
     run_date: dt.date | None = None,
     targets: Sequence[Target] = TARGETS,
     use_wandb: bool = True,
+    output: str = "main",
 ) -> dict[str, Any]:
-    """Weekly production fit: predict every target for week N of `season`."""
+    """Weekly production fit: predict every target for week N of `season`.
+
+    `output="update"` (the Saturday injury update, P07) writes
+    `predictions_players_update.parquet` next to the main file and nothing else: no model
+    files or meta, no `player_status.json`, no walk-forward or scoreboard rows, no W&B run,
+    never promoted. Games that already kicked off keep the main file's pre-kickoff rows."""
     import wandb
 
+    if output not in ("main", "update"):
+        raise ValueError(f"output must be 'main' or 'update', not {output!r}")
+    if output == "update" and promote:
+        raise ValueError("an injury update never promotes a model")
+    update = output == "update"
     paths = ensure_data_root()
     games = pl.read_parquet(paths.curated / "games.parquet")
     latest = last_asof_week(games, season)
@@ -937,7 +949,8 @@ def run_train(
     version = f"{FAMILY}-{MODEL_VERSION}:{tag}"
     created = tuesdays(data.inp.games)
     model_dir = paths.models / FAMILY / tag
-    model_dir.mkdir(parents=True, exist_ok=True)
+    if not update:
+        model_dir.mkdir(parents=True, exist_ok=True)
     all_preds, walk, meta_t = [], [], {}
     for target in targets:
         frame = target_data(data, target)
@@ -980,7 +993,7 @@ def run_train(
                 features=feats,
             )
         )
-        if earlier.height:
+        if earlier.height and not update:
             walk.append(
                 assemble(
                     earlier,
@@ -994,8 +1007,9 @@ def run_train(
                     features=feats,
                 )
             )
-        for name, b in fit.boosters.items():
-            b.save_model(str(model_dir / f"{target.key}-{name}.txt"))
+        if not update:
+            for name, b in fit.boosters.items():
+                b.save_model(str(model_dir / f"{target.key}-{name}.txt"))
         meta_t[target.key] = {
             "features": len(feats),
             "feature_hash": fhash,
@@ -1030,6 +1044,18 @@ def run_train(
     preds, kept = keep_started_players(preds, pred_path, now)
     if kept:
         log(f"kept the saved projections of {kept} game(s) that already kicked off")
+    if update:
+        out_path = run_dir / UPDATE_PRED_FILE
+        preds.write_parquet(out_path, compression="zstd")
+        log(f"update projections -> {out_path} ({preds.height} rows)")
+        return {
+            "predictions": out_path,
+            "models": None,
+            "url": None,
+            "table": preds,
+            "aliases": [],
+            "kept": kept,
+        }
     preds.write_parquet(pred_path, compression="zstd")
     from nflengine.models.player_schema import write_status
 

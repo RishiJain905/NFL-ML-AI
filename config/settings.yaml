@@ -31,7 +31,31 @@ sources:
   odds_api: true          # needs ODDS_API_KEY (ODDS_API_KEY2 = backup)
 
 flags:
-  injury_update_enabled: false   # Saturday injury update (P07)
+  injury_update_enabled: true    # Saturday injury update, run by hand (P07, D73; Q04)
+
+ops:                      # weekly operations (P07; manual-first, D71)
+  data_lag_hours: 10      # --as-of simulations: a game counts as final + in play-by-play
+                          # this long after kickoff (MNF 20:15 ET -> ready by Tuesday ~06:15)
+  neo4j_start_timeout_s: 180   # wait for Neo4j after `docker compose up -d`
+  docker_start_timeout_s: 240  # wait for Docker Desktop to come up (Windows)
+  wandb_alerts: true      # failures + drift alerts also go to W&B (its own email / app)
+  promote_auto: true      # `--auto` moves the `production` alias to each live fit (D72)
+
+drift:                    # documentation/08 -> Drift signals; alerts only, never retunes
+  rolling_weeks: 4        # rolling window for the game and player comparisons
+  streak_weeks: 3         # ... worse than the baseline this many graded weeks in a row
+  ece_max: 0.05           # season ECE of the game model ...
+  ece_noise_adjust: true  # ... or the 90th percentile of a perfectly calibrated model's ECE
+                          # at this many games if higher (~0.11): 0.05 alone alerted in 85%
+                          # of 2019-2025 weeks, the noise floor is ~0.08 (D75)
+  ece_min_games: 64       # season ECE is noise before this many graded games (~4 weeks)
+  stale_days: 7           # a source whose newest snapshot is older than this is stale
+  checks_window_weeks: 4  # "over a month"
+  checks_fail_rate_max: 0.20
+
+injury_update:            # Saturday injury update (documentation/06; P07)
+  min_prob_move: 0.05     # materiality: a win probability moved >= 5 points ...
+  watch_status_change: true   # ... or a watch-list player's injury status changed
 
 ratings:                  # tuned in P02 (D46; sweep dwyj31wk + pbpcouy1, approved 2026-10-03)
   half_life_weeks: 12          # recency half-life of plays (and of the fading prior)

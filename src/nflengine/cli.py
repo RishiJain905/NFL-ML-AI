@@ -642,7 +642,7 @@ def digest(
 
 
 weekly_app = typer.Typer(
-    help="The weekly pipeline (manual in P04, scheduled in P07).",
+    help="The weekly pipeline (P04; calendar, lock, run records and the injury update in P07).",
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
 )
@@ -651,37 +651,256 @@ app.add_typer(weekly_app, name="weekly")
 
 @weekly_app.command("run")
 def weekly_run(
-    season: int = typer.Option(..., help="Season."),
-    week: int = typer.Option(..., help="The week to preview (week N; week N-1 must be done)."),
+    season: int | None = typer.Option(None, help="Season (omit with --auto)."),
+    week: int | None = typer.Option(
+        None, help="The week to preview (week N; week N-1 must be done). Omit with --auto."
+    ),
+    auto: bool = typer.Option(
+        False,
+        "--auto",
+        help="Work out the season and week from the calendar; skip a week already published; "
+        "exit 3 if the previous week isn't final yet (P07).",
+    ),
+    as_of: str | None = typer.Option(
+        None,
+        "--as-of",
+        help="Pretend the run starts at this moment (ISO; no offset = US Eastern). In the "
+        "past it simulates the week: readiness from kickoff + data lag, the digest as a "
+        "backtest.",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show the calendar plan and what would run; run nothing."
+    ),
     from_step: str | None = typer.Option(
         None,
         help="Resume from: ingest | ready | curate | ratings | game | graph | player | digest.",
     ),
-    promote: bool = typer.Option(
-        False,
-        "--promote",
-        help="Give this week's game-model and player-model artifacts the `production` alias.",
+    promote: bool | None = typer.Option(
+        None,
+        "--promote/--no-promote",
+        help="Give this week's game-model and player-model artifacts the `production` alias "
+        "(default: yes with --auto, no otherwise).",
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="With --auto: run even if the week is already published."
     ),
     llm: str | None = typer.Option(
         None, "--llm", help="Override llm.provider for the digest step (e.g. placeholder)."
     ),
+    no_wandb: bool = typer.Option(
+        False, "--no-wandb", help="Skip the pipeline and dashboard W&B runs (steps still log)."
+    ),
     launched_by: str | None = LAUNCHED_BY,
 ) -> None:
     """ingest -> readiness -> curate -> ratings -> game -> graph -> player -> digest
-    (resumable)."""
-    from nflengine.weekly import StepFailed, WeeklyOptions, run_weekly, state_path
+    (resumable), then the run summary, drift checks and dashboard. Exit codes: 0 done
+    (or nothing to do), 1 failed, 2 usage error, 3 not ready (retry later), 4 another run
+    holds the lock, 5 data drive missing."""
+    from nflengine.paths import DataRootError
+    from nflengine.weekly import EXIT_NO_DRIVE, escape, parse_as_of, run_pipeline
 
-    opts = WeeklyOptions(season, week, launched_by=launched_by, promote=promote, llm=llm)
+    if not auto and (season is None or week is None):
+        raise typer.BadParameter("give --season and --week, or --auto")
     try:
-        run_weekly(opts, from_step=from_step, log=console.print)
-    except StepFailed as e:
-        console.print(f"[red]{e}[/]")
-        console.print(
-            f"State: {state_path(season, week)}. Fix it, then resume with "
-            f"`nfl weekly run --season {season} --week {week} --from-step {e.step}`."
+        when = parse_as_of(as_of) if as_of else None
+        out = run_pipeline(
+            season,
+            week,
+            auto=auto,
+            as_of=when,
+            dry_run=dry_run,
+            from_step=from_step,
+            launched_by=launched_by,
+            promote=promote,
+            llm=llm,
+            force=force,
+            use_wandb=not no_wandb,
+            log=console.print,
         )
-        raise typer.Exit(e.exit_code) from None
-    console.print(f"[green]Weekly run for {season} week {week:02d} finished.[/]")
+    except DataRootError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(EXIT_NO_DRIVE) from None
+    except ValueError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(1) from None
+    style = {"ok": "green", "already_done": "green", "idle": "green", "planned": "cyan"}
+    console.print(f"[{style.get(out.status, 'yellow')}]{out.status}: {escape(out.message)}[/]")
+    if out.status in ("failed", "not_ready") and out.week is not None:
+        if out.status == "failed":
+            console.print(
+                f"Fix it, then resume with `nfl weekly run --season {out.season} --week "
+                f"{out.week} --from-step <step>` (documentation/runbook.md)."
+            )
+        else:
+            console.print("Not ready: run it again later (the week before isn't final yet).")
+    if out.summary_path:
+        console.print(f"Run summary: {out.summary_path}")
+    raise typer.Exit(out.exit_code)
+
+
+@weekly_app.command("status")
+def weekly_status(
+    as_of: str | None = typer.Option(
+        None, "--as-of", help="Look at the calendar at this moment (ISO; no offset = ET)."
+    ),
+) -> None:
+    """What the calendar says now, the target week's step states, the lock and recent runs."""
+    import json
+
+    from nflengine.ops.calendar import load_schedules, plan_week
+    from nflengine.ops.lock import is_locked, lock_path, read_holder
+    from nflengine.ops.records import history_path, read_history
+    from nflengine.paths import DataRootError, ensure_data_root
+    from nflengine.weekly import EXIT_NO_DRIVE, parse_as_of
+
+    try:
+        paths = ensure_data_root()
+    except DataRootError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(EXIT_NO_DRIVE) from None
+    plan = plan_week(load_schedules(paths), parse_as_of(as_of) if as_of else None)
+    for line in plan.describe():
+        console.print(line)
+    lp = lock_path(paths.runs)
+    console.print(f"lock: {'held by ' + json.dumps(read_holder(lp)) if is_locked(lp) else 'free'}")
+    for wk in [w for w in (plan.previous_week, plan.week) if w]:
+        state_file = paths.run_dir(plan.season, wk) / "weekly_run.json"
+        if not state_file.exists():
+            console.print(f"week {wk}: no weekly run yet")
+            continue
+        steps = json.loads(state_file.read_text()).get("steps", {})
+        line = ", ".join(f"{n} {s.get('status')}" for n, s in steps.items())
+        console.print(f"week {wk}: {line or 'no steps'}")
+    hist = read_history(history_path(paths.runs, plan.season))
+    if hist.height:
+        console.print("recent runs:")
+        cols = ["week", "kind", "status", "finished", "on_time", "drift_alerts"]
+        for r in hist.tail(5).select(cols).iter_rows(named=True):
+            console.print("  " + ", ".join(f"{k} {v}" for k, v in r.items()))
+
+
+@weekly_app.command("injury-update")
+def weekly_injury_update(
+    season: int | None = typer.Option(None, help="Season (omit with --auto)."),
+    week: int | None = typer.Option(None, help="The week whose digest to update."),
+    auto: bool = typer.Option(
+        False, "--auto", help="The week the calendar is in (the slate about to be played)."
+    ),
+    no_ingest: bool = typer.Option(
+        False, "--no-ingest", help="Use the data already on D: (no re-ingest / re-curate)."
+    ),
+    no_players: bool = typer.Option(
+        False, "--no-players", help="Skip the player refit (~1 min); games and statuses only."
+    ),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Skip the W&B run."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Saturday injury update: re-ingest injuries, news and lines, re-predict the week, and
+    publish a short addendum only if something material changed (documentation/06)."""
+    from nflengine.ops.calendar import load_schedules, plan_week
+    from nflengine.ops.injury_update import run_injury_update
+    from nflengine.ops.lock import LockHeld, lock_path, run_lock
+    from nflengine.ops.records import append_history, history_path, iso, utc_now
+    from nflengine.paths import DataRootError, ensure_data_root
+    from nflengine.weekly import EXIT_LOCKED, EXIT_NO_DRIVE, escape, scrub
+
+    try:
+        paths = ensure_data_root()
+    except DataRootError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(EXIT_NO_DRIVE) from None
+    if auto:
+        plan = plan_week(load_schedules(paths))
+        season, week = plan.season, plan.week
+        if week is None:
+            console.print("offseason: nothing to update")
+            raise typer.Exit(0)
+    if season is None or week is None:
+        raise typer.BadParameter("give --season and --week, or --auto")
+    hist = history_path(paths.runs, season)
+    started = utc_now()
+
+    def record(status: str, finished=None) -> None:  # inside the lock: never races a run
+        finished = finished or utc_now()
+        append_history(
+            hist,
+            {
+                "season": season,
+                "week": week,
+                "kind": "injury-update",
+                "run_id": started.strftime("%Y%m%dT%H%M%SZ"),
+                "started": iso(started),
+                "finished": iso(finished),
+                "status": status,
+                "total_seconds": round((finished - started).total_seconds(), 1),
+                "launched_by": launched_by,
+                "drift_alerts": 0,
+            },
+        )
+
+    try:
+        with run_lock(
+            lock_path(paths.runs), f"nfl weekly injury-update --season {season} --week {week}"
+        ):
+            try:
+                res = run_injury_update(
+                    season,
+                    week,
+                    launched_by=launched_by,
+                    log=console.print,
+                    use_wandb=not no_wandb,
+                    ingest=not no_ingest,
+                    players=not no_players,
+                )
+            except Exception:
+                record("failed")
+                raise
+            degraded = any("failed" in n or "incomplete" in n for n in res.notes)
+            record("degraded" if degraded else "ok", res.finished)
+    except LockHeld as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(EXIT_LOCKED) from None
+    except Exception as e:  # the update's own errors are plain sentences; others are scrubbed
+        console.print(f"[red]injury update failed: {escape(scrub(f'{type(e).__name__}: {e}'))}[/]")
+        raise typer.Exit(1) from None
+    if res.material:
+        console.print(f"[green]material change: addendum published -> {res.report_path}[/]")
+    else:
+        console.print("[green]nothing material changed: no addendum published[/]")
+    console.print(f"Details: {res.summary_path}")
+    if res.url:
+        console.print(f"W&B: {res.url}")
+
+
+# ---- season dashboard (P07) -----------------------------------------------------------------
+
+dashboard_app = typer.Typer(
+    help="The W&B season dashboard (P07): one run per weekly run + a W&B Report.",
+    no_args_is_help=True,
+    pretty_exceptions_show_locals=False,
+)
+app.add_typer(dashboard_app, name="dashboard")
+
+
+@dashboard_app.command("update")
+def dashboard_update(
+    season: int = typer.Option(..., help="Season."),
+    week: int = typer.Option(..., help="The week of the newest weekly run."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Log the season-to-date dashboard run (the weekly run does this by itself)."""
+    from nflengine.ops.dashboard import log_season_dashboard
+
+    url = log_season_dashboard(season, week, launched_by=launched_by, log=console.print)
+    console.print(f"dashboard run: {url}" if url else "[yellow]dashboard run not logged[/]")
+
+
+@dashboard_app.command("build")
+def dashboard_build(season: int = typer.Option(..., help="Season.")) -> None:
+    """Create (or update in place) the W&B Report "<season> Season Dashboard"."""
+    from nflengine.ops.dashboard import build_report
+
+    console.print(f"report: {build_report(season, log=console.print)}")
 
 
 # ---- knowledge graph (P05) ---------------------------------------------------------------------

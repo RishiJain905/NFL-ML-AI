@@ -15,6 +15,25 @@ TRUE_HFA = 0.04
 PAIRINGS = [((0, 1), (2, 3)), ((0, 2), (1, 3)), ((0, 3), (1, 2))]
 
 
+@pytest.fixture(autouse=True)
+def _no_real_wandb_runs(request, monkeypatch):
+    """No unit test may create a real W&B run or send a W&B alert (P07: a CLI test once
+    reached the real pipeline and logged failed runs). Integration tests are exempt."""
+    if request.node.get_closest_marker("integration") is None:
+        monkeypatch.setenv("WANDB_MODE", "disabled")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_schedule_refresh(monkeypatch):
+    """`weekly.refresh_schedule` would run a real nflverse ingest on the data root (P07).
+    Returns the seasons it was asked to refresh."""
+    import nflengine.weekly as W
+
+    calls: list[int] = []
+    monkeypatch.setattr(W, "refresh_schedule", lambda season, log=print: calls.append(season))
+    return calls
+
+
 def make_league(
     seasons=(2020, 2021, 2022),
     weeks: int = 6,

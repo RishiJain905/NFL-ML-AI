@@ -103,6 +103,9 @@ class AppConfig(BaseModel):
     player_model: dict[str, Any] = Field(default_factory=dict)
     qb: dict[str, Any] = Field(default_factory=dict)
     digest: dict[str, Any] = Field(default_factory=dict)
+    ops: dict[str, Any] = Field(default_factory=dict)  # weekly operations (P07)
+    drift: dict[str, Any] = Field(default_factory=dict)  # drift thresholds (P07, doc 08)
+    injury_update: dict[str, Any] = Field(default_factory=dict)  # Saturday update (P07)
 
 
 def load_app_config(path: Path | None = None) -> AppConfig:

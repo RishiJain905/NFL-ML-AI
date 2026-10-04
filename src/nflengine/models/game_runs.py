@@ -47,6 +47,7 @@ from nflengine.tracking import dataset_version, git_commit, init_run, run_sweep
 GROUP = "track1-game"
 FAMILY = "game-model"
 MODEL_VERSION = "v0"
+UPDATE_PRED_FILE = "predictions_games_update.parquet"  # Saturday injury update (P07)
 REPORT_SEASONS = tuple(range(2018, 2026))
 LABELS = ["margin", "total", "home_win"]
 PROBS = {
@@ -705,10 +706,20 @@ def run_train(
     promote: bool = False,
     log: Callable[[str], None] = print,
     run_date: dt.date | None = None,
+    output: str = "main",
 ) -> dict[str, Any]:
-    """Weekly production fit: predict week N of `season` in both variants."""
+    """Weekly production fit: predict week N of `season` in both variants.
+
+    `output="update"` (the Saturday injury update, P07) writes
+    `predictions_games_update.parquet` next to the main file and nothing else: no model
+    files, no W&B run or artifact, never promoted. Games that already kicked off keep the
+    main file's rows (no new numbers after kickoff)."""
     import wandb
 
+    if output not in ("main", "update"):
+        raise ValueError(f"output must be 'main' or 'update', not {output!r}")
+    if output == "update" and promote:
+        raise ValueError("an injury update never promotes a model")
     paths = ensure_data_root()
     games = pl.read_parquet(paths.curated / "games.parquet")
     latest = last_asof_week(games, season)
@@ -760,6 +771,18 @@ def run_train(
     table, kept = keep_started(table, pred_path, dt.datetime.now(dt.UTC))
     if kept:
         log(f"kept the saved predictions of {len(kept)} game(s) that already kicked off: {kept}")
+    if output == "update":
+        out_path = run_dir / UPDATE_PRED_FILE
+        table.write_parquet(out_path, compression="zstd")
+        log(f"update predictions -> {out_path}")
+        return {
+            "predictions": out_path,
+            "models": None,
+            "url": None,
+            "table": table,
+            "aliases": [],
+            "kept": kept,
+        }
     table.write_parquet(pred_path, compression="zstd")
     model_dir = paths.models / FAMILY / tag
     meta = {
