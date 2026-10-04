@@ -252,9 +252,16 @@ class GraphInsight(Model):
 
     insight_id: str  # stable across weeks for the same story (novelty)
     insight_type: Literal[
-        "revenge", "injury_ripple", "qb_change", "common_opponents", "trend_mismatch"
+        "revenge",
+        "injury_ripple",
+        "qb_change",
+        "common_opponents",
+        "trend_mismatch",
+        "coach_reunion",
+        "unit_mismatch",
+        "special_teams",
     ]
-    section: Literal["matchup_risk", "non_obvious"]
+    section: Literal["matchup_risk", "non_obvious", "more"]  # more = a code-written one-liner
     strength: float
     confidence: Literal["low", "medium"] = "low"
     graph_query: str
@@ -263,9 +270,36 @@ class GraphInsight(Model):
     teams: list[str] = Field(default_factory=list)  # the game's two teams first
     people: list[GraphPerson] = Field(default_factory=list)
     headline: str  # code-made, no numbers
+    # code-made one line (with the key number) for the "More from the graph" list
+    brief: str = ""
     facts: list[GraphFact] = Field(default_factory=list)
     sample: Num  # what the main comparison rests on ("5 games without him")
     note: str = ""  # caveat to keep ("Descriptive: ...")
+
+
+class QBChangeNote(Model):
+    """A team whose expected starting QB isn't its main starter this season (graph Q3),
+    flagged in the game table. `text` is code-made and time-scoped."""
+
+    game_id: str
+    team: str
+    team_name: str
+    qb: str
+    regular: str
+    confirmed: bool  # schedule / depth chart / injury report named him (a live run)
+    text: str  # "Jalon Daniels starts for Baker Mayfield (out: thumb)"
+
+
+class StarterOut(Model):
+    """A regular starter who won't play this week (graph Q0), for the code-written list."""
+
+    game_id: str
+    team: str
+    team_name: str
+    player: str
+    player_id: str
+    position: str
+    text: str  # "QB Baker Mayfield (out: thumb)"
 
 
 class NewsItem(Model):
@@ -287,6 +321,11 @@ class Payload(Model):
     under_the_hood: list[UnderHoodItem] = Field(default_factory=list)
     players_to_watch: list[WatchItem] = Field(default_factory=list)
     graph_insights: list[GraphInsight] = Field(default_factory=list)  # P05: picked items
+    # code-written graph extras (after P05): QB-change flags for the game table, starters
+    # out, and the strong stories that didn't fit the prose ("More from the graph")
+    qb_changes: list[QBChangeNote] = Field(default_factory=list)
+    starters_out: list[StarterOut] = Field(default_factory=list)
+    graph_more: list[GraphInsight] = Field(default_factory=list)
     news: list[NewsItem] = Field(default_factory=list)
 
     def to_json(self) -> str:

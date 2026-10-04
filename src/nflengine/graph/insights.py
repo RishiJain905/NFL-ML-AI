@@ -14,7 +14,14 @@ Turns query-library rows into digest items and picks the week's few:
    skipped (novelty); a player is the subject of one item at most.
 4. **Pick**: the top 1 for *Matchup / risk to watch* (injury ripple, QB change; a trend
    mismatch if neither exists), the top 1-2 for *Non-obvious insights* (revenge, common
-   opponents, trend mismatch), from different games, preferring two different kinds.
+   opponents, trend mismatch, coach reunion, unit mismatch, special teams), from different
+   games, preferring two different kinds. QB changes rank at `QB_RISK_WEIGHT` of their
+   strength for the prose slot: every QB change is already flagged in the game table, so a
+   strong non-QB story should win the section (Rishi, after P05).
+5. **More from the graph**: the strong stories that didn't fit the two prose sections
+   (strength >= `MORE_MIN`, no QB changes, at most `MORE_PER_TYPE` per kind and
+   `MORE_PER_GAME` per game, `MORE_MAX` in all), rendered by code as one line each
+   (`GraphInsight.brief`). In a typical week 6-14 strong stories used to be dropped.
 
 `insight_id`s are stable across weeks for the same story (`injury_ripple:<starter>`,
 `revenge:<player>:<opponent>`, `qb_change:<team>:<qb>`, `common_opponents:<game>`,
@@ -34,13 +41,25 @@ from nflengine.digest.payload import GraphFact, GraphInsight, GraphPerson
 
 NOVELTY_WEEKS = 3
 FOLLOWED_BOOST = 0.1
+QB_RISK_WEIGHT = 0.8  # QB changes are all in the game table; a strong non-QB story wins
+MORE_MIN = 0.7
+MORE_MAX = 6
+MORE_PER_TYPE = 2
+MORE_PER_GAME = 2
 SECOND_PICK_MIN = 0.45  # a second non-obvious item only when it's reasonably strong
 LOW_SAMPLE = 4  # games behind a with / without comparison below this -> low confidence
 GRAPH_SINCE = 2018  # first season in the graph (seasons.graph_start)
 
 SECTION_TYPES = {
     "matchup_risk": ("injury_ripple", "qb_change"),
-    "non_obvious": ("revenge", "common_opponents", "trend_mismatch"),
+    "non_obvious": (
+        "revenge",
+        "common_opponents",
+        "trend_mismatch",
+        "coach_reunion",
+        "unit_mismatch",
+        "special_teams",
+    ),
 }
 QUERY_OF = {
     "revenge": "q1_revenge",
@@ -48,9 +67,14 @@ QUERY_OF = {
     "qb_change": "q3_qb_change",
     "common_opponents": "q4_common_opponents",
     "trend_mismatch": "q8_trend_mismatch",
+    "coach_reunion": "q5_coach_reunion",
+    "unit_mismatch": "q11_unit_mismatch",
+    "special_teams": "q12_special_teams",
 }
+# library queries whose rows are data for code-written digest parts, not insights
+DATA_QUERIES = ("q0_starters_out",)
 # people roles that make a player the subject of an item (used once per digest)
-SUBJECT_ROLES = ("out", "former player", "expected starter")
+SUBJECT_ROLES = ("out", "former player", "expected starter", "head coach")
 
 
 @dataclass
@@ -174,6 +198,13 @@ def _injury_ripple(r: dict[str, Any], season: int) -> GraphInsight | None:
         )
     if not facts:
         return None
+    brief = head
+    if tw is not None and two is not None:
+        side = "defense allowed" if r.get("defense") else "offense averaged"
+        brief = (
+            f"{who} is out; in {n_wo} {_games_word(n_wo)} without him since {since} the "
+            f"{nickname(team)} {side} {F.epa(two).display}, against {F.epa(tw).display} with him."
+        )
     return GraphInsight(
         insight_id=f"injury_ripple:{s_id}",
         insight_type="injury_ripple",
@@ -187,6 +218,7 @@ def _injury_ripple(r: dict[str, Any], season: int) -> GraphInsight | None:
         headline=head,
         facts=facts,
         sample=F.text_num(f"{n_wo} {_games_word(n_wo)} without him", n_wo),
+        brief=brief,
     )
 
 
@@ -248,6 +280,11 @@ def _revenge(r: dict[str, Any], season: int) -> GraphInsight:
         ),
         facts=facts,
         sample=F.text_num(f"{games_old} {_games_word(games_old)} with them", games_old),
+        brief=(
+            f"{name} ({nickname(team)} {r.get('position') or ''}".rstrip()
+            + f") faces the {nickname(opp)}, his team for {games_old} "
+            f"{_games_word(games_old)} in {seasons}."
+        ),
     )
 
 
@@ -325,6 +362,7 @@ def _qb_change(r: dict[str, Any], season: int) -> GraphInsight:
         people=people,
         headline=head,
         facts=facts,
+        brief=head,
         sample=F.text_num(
             f"{qt_total} career targets from {qb} to {_poss(team)} current receivers", qt_total
         ),
@@ -409,6 +447,17 @@ def _common_opponents(r: dict[str, Any], season: int) -> GraphInsight | None:
         facts=facts,
         sample=F.text_num(f"{n} common {'opponent' if n == 1 else 'opponents'}", n),
         note="A small sample: a few games against shared opponents.",
+        brief=(
+            f"{facts[0].text}."
+            if len(common) == 1
+            else f"The {nickname(a)} and the {nickname(b)} have {n} common opponents this "
+            "season"
+            + (
+                f"; {facts[len(common[:3])].text[0].lower()}{facts[len(common[:3])].text[1:]}."
+                if abs(edge) >= 1
+                else "."
+            )
+        ),
     )
 
 
@@ -445,6 +494,10 @@ def _trend_mismatch(r: dict[str, Any], season: int) -> GraphInsight:
         ],
         sample=F.weeks(n),
         note="Descriptive: trends don't predict the next game on their own.",
+        brief=(
+            f"The {nickname(up)} are {F.epa_change(d_up, n).display} and the "
+            f"{nickname(down)} {F.epa_change(d_down, n).display} (net rating, descriptive)."
+        ),
     )
 
 
@@ -455,6 +508,12 @@ CONVERTERS: dict[str, Callable[[dict[str, Any], int], GraphInsight | None]] = {
     "q4_common_opponents": _common_opponents,
     "q8_trend_mismatch": _trend_mismatch,
 }
+# the non-QB story queries added after P05 (coach vs former team, unit mismatch, special
+# teams) live in insights_extra.py; imported here, after the helpers above exist, so that
+# module may import them
+from nflengine.graph.insights_extra import CONVERTERS as _EXTRA_CONVERTERS  # noqa: E402
+
+CONVERTERS.update(_EXTRA_CONVERTERS)
 
 
 # ---- candidates and selection --------------------------------------------------------------------
@@ -487,6 +546,7 @@ def candidates(
 class Selection:
     matchup_risk: list[GraphInsight] = field(default_factory=list)
     non_obvious: list[GraphInsight] = field(default_factory=list)
+    more: list[GraphInsight] = field(default_factory=list)  # one-liners after the prose
     skipped: dict[str, list[str]] = field(default_factory=dict)  # reason -> insight ids
 
     @property
@@ -526,7 +586,13 @@ def select(
     pool.sort(key=lambda c: (-c.strength, c.insight_id))
 
     used: set[str] = set()
-    risk = [c for c in pool if c.insight_type in SECTION_TYPES["matchup_risk"]]
+    risk = sorted(
+        (c for c in pool if c.insight_type in SECTION_TYPES["matchup_risk"]),
+        key=lambda c: (
+            -c.strength * (QB_RISK_WEIGHT if c.insight_type == "qb_change" else 1.0),
+            c.insight_id,
+        ),
+    )
     if not risk:  # no injury or QB story: a trend mismatch is the risk angle
         risk = [c for c in pool if c.insight_type == "trend_mismatch"]
     if risk:
@@ -542,6 +608,8 @@ def select(
     for c in others:
         if len(sel.non_obvious) >= 2:
             break
+        if c.insight_type == "unit_mismatch" and c.confidence == "low":
+            continue  # early-season ratings still lean on the prior: "More" list only
         if _subjects(c) & used:
             sel.skipped["duplicate_player"].append(c.insight_id)
             continue
@@ -561,4 +629,25 @@ def select(
         sel.non_obvious.append(c.model_copy(update={"section": "non_obvious"}))
         used |= _subjects(c)
         games_used.add(c.game_id)
+
+    # the strong stories that didn't fit: one line each, varied, never a QB change (the
+    # game table flags those), never a player already in the digest's graph sections
+    taken = {c.insight_id for c in sel.picked}
+    per_type: dict[str, int] = {}
+    per_game: dict[str, int] = {}
+    for c in pool:
+        if len(sel.more) >= MORE_MAX or c.strength < MORE_MIN:
+            break
+        if c.insight_id in taken or c.insight_type == "qb_change" or not c.brief:
+            continue
+        if _subjects(c) & used:
+            continue
+        if per_type.get(c.insight_type, 0) >= MORE_PER_TYPE:
+            continue
+        if per_game.get(c.game_id, 0) >= MORE_PER_GAME:
+            continue
+        sel.more.append(c.model_copy(update={"section": "more"}))
+        used |= _subjects(c)
+        per_type[c.insight_type] = per_type.get(c.insight_type, 0) + 1
+        per_game[c.game_id] = per_game.get(c.game_id, 0) + 1
     return sel

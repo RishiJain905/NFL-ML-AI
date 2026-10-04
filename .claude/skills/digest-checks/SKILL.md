@@ -75,7 +75,8 @@ Team aliases: code, nickname, full name, location (not "New York" / "Los Angeles
 - `nfl digest --graph auto|build|read|off`: a backtest builds the graph as of its Tuesday (~1.5 min); a live run reads the weekly `graph` step's `graph_results.json` and builds only if it's missing. `meta.graph_status` = ok / unavailable / off.
 - `matchup_risk` (80) and `non_obvious` (90) are tagged `phase: P05` in `sections.yaml` and switched on through `synthesize(..., enabled_phases=state.enabled_phases)` only when the graph is `ok`. A section with no pick is fixed code text (`graph_sections.NO_ITEM`). Unavailable: no sections, an info banner (`render.graph_banner`) and a footer line.
 - The text is code-made (`graph/insights.py`): one claim and its owners per fact. Never add a fact whose numbers the LLM must interpret (a sign, better / worse, who won): write the word in code ("worse without him", "lost to the Vikings by 7").
-- After the digest is written, `record_published` appends the picks to the published-insight log (novelty, 3 weeks).
+- After the digest is written, `record_published` appends the picks to the published-insight log (novelty, 3 weeks), plus the "More from the graph" items (code-written, always shown).
+- **Code-written graph extras (D63)**: the game table's QBs column + ⚠ notes (`payload.qb_changes`, from Q3 rows), "Starters out this week" (`starters_out`, from Q0 rows, ≤ 3 per team, QBs first), the watch-list table (all `digest.watchlist_size` = 8 picks), "More from the graph" (`graph_more`: `insights.select(...).more`, strength ≥ 0.7, no QB changes, ≤ 2 per kind / game, ≤ 6) and "Latest news" (≤ 4 ESPN headlines). They're rendered by `render.py`, not the LLM; prompt rule 21 says not to restate them; `facts.py` registers everyone they name. QB changes rank at 80% for the Matchup / risk slot (`QB_RISK_WEIGHT`).
 
 ## 7. Placeholder writer rules (`llm/placeholder.py`)
 - Uses only display strings; every sentence with a number names its owner.

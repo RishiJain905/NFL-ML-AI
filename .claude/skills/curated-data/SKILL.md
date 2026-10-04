@@ -127,6 +127,8 @@ Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/particip
 - **Depth-chart slot formats:** to 2024, three rank-1 `WR` rows (one per slot) and two `CB` slots; 2025+, one ranked list per position (`WR` 1..8). "Rank + 1" is the backup only at single-slot positions (QB, RB, TE, C, LT ...). The 2026 charts are daily snapshots with `snap_date` (one per team-week).
 - **PFR ids:** `players.pfr_id` maps them to `gsis_id` (22.7k of 24.8k players have one); `draft_picks.gsis_id` is set for almost every pick since 2010.
 - **`rosters_weekly.status`:** ACT, DEV (practice squad), RES (reserve / IR), INA (game-day inactive), CUT, RET, PUP, RSN, SUS, NWT, UFA, EXE, RSR, TRC, TRD, TRT, RFA, E01, E14. "On the team" = anything but CUT, RET, UFA, RFA, TRD, TRC, TRT. `game_type` is REG / WC / DIV / CON / SB.
+- **Special teams in `plays`:** `special_teams_play` is 0 on every `field_goal` (1 only on kickoffs, punts, extra points): select by `play_type` in kickoff / punt / field_goal / extra_point. On a kickoff `posteam` is the **receiving** team (`epa` is always posteam's); on punts, field goals and extra points it's the kicking team. Since 2024 a kickoff averages about +0.25 EPA to the receiver and a field goal about +0.2 (2025–26) to the kicker, so center per (season, play type) before comparing teams.
+- **`team_ratings.prior_weight`:** 1.0 in week 1, about 0.72–0.85 in week 2, 0.48–0.56 in week 4, 0.41–0.51 in week 5.
 - **The knowledge graph mirrors these tables as of a week** (`nfl graph build`). For multi-hop questions (a player's teams, injury ripples, QB-receiver history) see the `neo4j-graph` skill and the run folder's `graph_results.json`.
 
 ## Recipes

@@ -207,3 +207,17 @@ The knowledge-graph sections (6 and 7) are on. Decisions D60 and D61; the graph 
 - **Fail-soft.** If the graph is unavailable, the digest publishes without sections 6–7, with an ℹ️ banner and a "Knowledge graph: unavailable (...)" footer line.
 - **Novelty.** After a digest is written, the picks its prose actually names are appended to `published_insights.parquet` (the log never loses a published pick, even on a re-run) (live in `runs/`, backtests in `runs/digest-backtests/`) and, when Neo4j is up, added as `PublishedInsight` nodes; the same story isn't picked again for 3 weeks.
 
+### After P05: more of what the graph finds (D63)
+
+Rishi asked for a more informative digest without bloat: each week the graph found 6–14 strong stories that the two prose sections had no room for, and QB changes crowded out everything else. The LLM's prose budgets are unchanged; the additions are written by code:
+
+| Part | Where | What |
+|---|---|---|
+| QB column + ⚠ notes | Game outlook table | Each game's expected starters; ⚠ marks a team whose starter isn't its main one this season, with a note under the table ("Jalon Daniels starts in place of Baker Mayfield (out: thumb)"; "could start ... not confirmed yet" on a Tuesday). Payload `qb_changes` |
+| Starters out this week | Under the game table | Regular starters who won't play (graph Q0), up to 3 per team, QBs first, one line per game. Payload `starters_out` |
+| Players to watch table | Players to watch | All 8 picks (`digest.watchlist_size`): usage now vs before, the opponent's defense tier, the baseline; the prose covers the 4–6 most notable |
+| More from the graph | After the Non-obvious prose | Up to 6 strong stories that didn't fit (strength ≥ 0.7, no QB changes, ≤ 2 per kind and per game), one line each (`GraphInsight.brief`). Payload `graph_more`; logged as published for novelty |
+| Latest news | Before the footer | Up to 4 recent non-fantasy ESPN headlines about this week's teams, as published (live runs) |
+
+For the *Matchup / risk to watch* prose slot, QB changes count at 80% of their strength (they're all in the table already), so a strong injury ripple or another story usually takes it. The Non-obvious pool gains three non-QB kinds (head coach vs a former team, offense-vs-defense unit mismatch, special-teams edge; see the knowledge-graph guide). Prompt rule 21 tells the LLM not to restate the code-written lists.
+

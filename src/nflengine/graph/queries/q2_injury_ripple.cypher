@@ -151,6 +151,13 @@ WITH *,
          WHEN abs(team_without - team_with) >= 0.15 THEN 1.0
          ELSE abs(team_without - team_with) / 0.15
        END * CASE WHEN n_without >= 6 THEN 1.0 ELSE n_without / 6.0 END
+         // a risk is the team doing worse without him; "better without him" is a curiosity
+         * CASE
+             WHEN team_with IS NULL OR team_without IS NULL THEN 1.0
+             WHEN (defense AND team_without > team_with)
+               OR (NOT defense AND team_without < team_with) THEN 1.0
+             ELSE 0.4
+           END
      + 0.15 * CASE WHEN jump >= 1.0 THEN 1.0 WHEN jump <= 0.0 THEN 0.0 ELSE jump END
      AS strength
 RETURN 'injury_ripple' AS insight_type,

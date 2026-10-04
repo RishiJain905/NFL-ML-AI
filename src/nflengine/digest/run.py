@@ -309,7 +309,12 @@ def build_payload(
     )
     uh = select_under_hood(s, w, paths, followed=followed)
     watch = placeholder_watchlist(
-        s, w, paths, followed=followed, injury_week=w if ctx.mode == "live" else None
+        s,
+        w,
+        paths,
+        n_items=int(get_config().digest.get("watchlist_size") or 8),
+        followed=followed,
+        injury_week=w if ctx.mode == "live" else None,
     )
     watch = stamp_watch(watch, games, ctx.run_time)
     # only picks whose game hasn't started: a Saturday run must not "predict" Thursday
@@ -358,6 +363,9 @@ def build_payload(
         under_the_hood=build.build_under_hood(uh),
         players_to_watch=build.build_watch(watch),
         graph_insights=graph.picked,
+        qb_changes=graph.qb_changes,
+        starters_out=graph.starters_out,
+        graph_more=graph.more,
         news=news,
     )
     return Built(payload, report, watch, preds)
@@ -659,6 +667,9 @@ def log_digest_run(
             "market_data_used": payload.meta.market_data_used,
             "graph_status": payload.meta.graph_status,
             "graph_items": len(payload.graph_insights),
+            "graph_more_items": len(payload.graph_more),
+            "qb_changes": len(payload.qb_changes),
+            "starters_out": len(payload.starters_out),
             "games": len(payload.games),
             "team_trends": len(payload.team_trends),
             "under_the_hood_items": len(payload.under_the_hood),

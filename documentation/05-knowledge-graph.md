@@ -203,7 +203,7 @@ The how-to and debugging guide is the `neo4j-graph` skill; decisions D58–D62.
 |---|---|---|
 | Tables | `graph/tables.py` | One Polars frame per node label and relationship type, **as of** `GraphKey(season, week, run_time, mode)` (D58). The visibility table in the module docstring is the leakage contract: results only from completed games before week N; week-N games without scores; week-N depth charts and injury reports only when the run could have seen them |
 | Load | `graph/load.py`, `graph/schema.cypher` | Batched wipe, idempotent schema, `UNWIND` writes (5k / 10k rows per transaction), then a count check against the tables |
-| Queries | `graph/queries/q1_revenge`, `q2_injury_ripple`, `q3_qb_change`, `q4_common_opponents`, `q8_trend_mismatch` | Read transactions; each returns `insight_type`, `strength`, `sample_size` (definitions D59) |
+| Queries | `graph/queries/q1_revenge`, `q2_injury_ripple`, `q3_qb_change`, `q4_common_opponents`, `q8_trend_mismatch`; after P05 also `q5_coach_reunion`, `q11_unit_mismatch`, `q12_special_teams` and the data query `q0_starters_out` | Read transactions; each insight query returns `insight_type`, `strength`, `sample_size` (definitions D59, D63) |
 | Insights | `graph/insights.py`, `graph/published.py` | Code-made headline + facts with owners, selection, novelty from the published-insight log (D60) |
 | Build | `graph/build.py` | `nfl graph build` (W&B `track1-graph` / `build`, artifact `graph-results:<season>-w<NN>`), `graph_results.json` in the run folder, fail-soft mode (D61) |
 | Digest | `digest/graph_sections.py` | Reads or builds the week's results, re-picks with the digest's run time, records what was published |
@@ -214,7 +214,7 @@ The how-to and debugging guide is the `neo4j-graph` skill; decisions D58–D62.
 - `Player` gets `dropbacks` next to `scramble_rate` (its sample) and `draft_year`; `position_group` comes from `players`, else from the position.
 - `PLAYED_FOR` adds `weeks`, `roster_weeks` (the actual list) and `status_last` (`RES` = reserve list); statuses that mean "not on the team" (CUT, RET, UFA, RFA, TRD, TRC, TRT) are left out.
 - `APPEARED_IN` adds `off_snaps`, `def_snaps`, `st_snaps`, `rec_tds`, `rush_tds`, `pass_att`, `completions`, `pass_tds`, `ints`, `target_share`, `qb_hits`, `tackles`, `def_ints`, `passes_defended`, `dropbacks`, `qb_started`, and NGS `ngs_separation`, `ngs_time_to_throw`, `ngs_ryoe`.
-- `PLAYED_IN` adds `opponent`, `points_allowed`, `margin`, `epa_allowed`, `success_allowed`, `epa_margin`, `plays`, `penalty_yards`.
+- `PLAYED_IN` adds `opponent`, `points_allowed`, `margin`, `epa_allowed`, `success_allowed`, `epa_margin`, `plays`, `penalty_yards`, and (after P05) `st_epa` / `st_plays`: net special-teams EPA, centered per season and play type. `TeamWeek` adds `prior_weight`.
 - `ON_INJURY_REPORT` adds `team_id`, `season`, `week`; `DEPTH_CHART` is offense and defense only; `HEAD_COACH_OF` adds `games`; `TRADED_TO` adds `season`.
 - Not built yet: `COORDINATOR_OF` / `WORKED_UNDER` (optional seed, P08), `SIMILAR_TO` (GDS, P08), play-level nodes.
 

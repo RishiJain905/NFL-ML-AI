@@ -23,6 +23,7 @@ Hard rules:
 18. For each team in Team trend shifts, name its first driver by its `unit` with the `change` display ("led by the pass offense, 0.09 more EPA per dropback on offense"), and give the level as "net rating now <net_rating>". Write natural sentences, not field labels ("first driver", "context:"). Evidence is context, not the cause: don't write it as the reason the trend happened.
 19. Describe a matchup only with its `opp_def_rank` display; don't add your own judgement ("a tough matchup", "the softer one").
 20. Graph insights (`graph_insights`): copy each fact's `text` whole, numbers and all the words around them; never move a number to another team or player, never swap who won or lost, and never turn a with / without comparison into a forecast. Write each section only from the items whose `section` matches it, and name their games with the `matchup` string.
+21. Code writes these lists itself, right next to your sections: the game table's QB column and its QB-change notes (`qb_changes`), "Starters out" (`starters_out`), "More from the graph" (`graph_more`) and "Latest news" (`news`). Don't restate them; mention one only when it explains something in your own section.
 
 Format rules:
 - Markdown prose only, no headers (code adds them), no tables.

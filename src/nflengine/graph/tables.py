@@ -10,8 +10,10 @@ plus the live-run rules of `features.qb.live_starters`:
 
 - **Game nodes:** every REG / POST game from `seasons.graph_start` through week W of S
   (week-W games have no scores).
-- **Results** (scores, APPEARED_IN, PLAYED_IN EPA, THREW_TO, officials' games): completed
-  games strictly before (S, W).
+- **Results** (scores, APPEARED_IN, PLAYED_IN EPA and special-teams EPA, THREW_TO,
+  officials' games): completed games strictly before (S, W). `PLAYED_IN.st_epa` is centered
+  on the league's mean EPA per special-teams play type in that season, over those visible
+  plays only.
 - **Rosters** (PLAYED_FOR): `rosters_weekly` rows strictly before (S, W).
 - **Depth charts:** rows strictly before (S, W), plus week-W charts dated (`snap_date`) on
   or before T's date.
@@ -42,6 +44,10 @@ from nflengine.paths import DataPaths
 GAME_TYPES = ("REG", "WC", "DIV", "CON", "SB")
 # rosters_weekly statuses that mean "not on the team that week"
 NOT_ON_TEAM = ("CUT", "RET", "UFA", "RFA", "TRD", "TRC", "TRT")
+# play types that are special-teams plays (PLAYED_IN.st_epa). nflverse: on a kickoff `posteam`
+# is the RECEIVING team, on a punt / field goal / extra point the kicking team; `epa` is
+# always posteam's, so the other side's is -epa (FG plays have `special_teams_play` = 0)
+ST_PLAY_TYPES = ("kickoff", "punt", "field_goal", "extra_point")
 # depth-chart slots that are special teams (left out of DEPTH_CHART)
 SPECIAL_SLOTS = ("KR", "PR", "H", "LS", "P", "PK", "K", "KOR", "PK/KO", "KO")
 NODE_KEYS = {
@@ -391,8 +397,11 @@ def team_week_inputs(paths: DataPaths, key: GraphKey) -> pl.DataFrame:
     if not (feats / "team_ratings.parquet").exists():
         return pl.DataFrame()
     keys = ["season", "week", "team"]
+    path = feats / "team_ratings.parquet"
+    # prior_weight: the preseason prior's share of the rating (1 in week 1, ~0.5 by week 4)
+    extra = [c for c in ("prior_weight",) if c in pl.read_parquet_schema(path)]
     rt = pl.read_parquet(
-        feats / "team_ratings.parquet",
+        path,
         columns=[
             *keys,
             "off_epa",
@@ -402,6 +411,7 @@ def team_week_inputs(paths: DataPaths, key: GraphKey) -> pl.DataFrame:
             "off_rush_epa",
             "def_pass_epa",
             "def_rush_epa",
+            *extra,
         ],
     )
     out = rt
@@ -850,6 +860,7 @@ def played_in(inp: GraphInputs, key: GraphKey) -> pl.DataFrame:
             dfn, on=["game_id", "team_id"], how="left"
         )
         out = out.with_columns((pl.col("epa_per_play") - pl.col("epa_allowed")).alias("epa_margin"))
+        out = out.join(special_teams_epa(inp.plays, seen), on=["game_id", "team_id"], how="left")
     if inp.team_games.height:
         tg = (
             inp.team_games.join(seen, on="game_id")
@@ -863,6 +874,43 @@ def played_in(inp: GraphInputs, key: GraphKey) -> pl.DataFrame:
         )
         out = out.join(tg, on=["game_id", "team_id"], how="left")
     return _ends(out.sort("season", "week", "game_id", "team_id"), "team_id", "game_id")
+
+
+def special_teams_epa(plays: pl.DataFrame, seen: pl.DataFrame) -> pl.DataFrame:
+    """Net special-teams EPA per (game, team) over the visible games in `seen`: kickoffs,
+    punts, field goals and extra points. Each play's EPA is posteam's (on a kickoff, the
+    receiving team), so posteam gets +epa and defteam -epa; the two sides of a game sum to 0.
+    Every play is first centered on the league's mean for its (season, play type) over the
+    same visible plays (a kickoff averages about +0.25 EPA to the receiver since the 2024
+    rule change, a field goal about +0.2 to the kicker), so a team isn't charged for simply
+    kicking off more often (`st_epa` = EPA above an average unit). `st_plays` is its count."""
+    schema = {
+        "game_id": pl.String,
+        "team_id": pl.String,
+        "st_epa": pl.Float64,
+        "st_plays": pl.Int32,
+    }
+    if plays.is_empty() or "play_type" not in plays.columns:
+        return pl.DataFrame(schema=schema)
+    st = plays.join(seen, on="game_id").filter(
+        pl.col("play_type").is_in(ST_PLAY_TYPES)
+        & pl.col("epa").is_not_null()
+        & pl.col("posteam").is_not_null()
+        & pl.col("defteam").is_not_null()
+    )
+    st = st.with_columns(
+        (pl.col("epa") - pl.col("epa").mean().over("season", "play_type")).alias("_epa")
+    )
+    sides = pl.concat(
+        [
+            st.select("game_id", pl.col("posteam").alias("team_id"), "_epa"),
+            st.select("game_id", pl.col("defteam").alias("team_id"), -pl.col("_epa")),
+        ]
+    )
+    out = sides.group_by("game_id", "team_id").agg(
+        pl.col("_epa").sum().alias("st_epa"), pl.len().cast(pl.Int32).alias("st_plays")
+    )
+    return out.cast(schema)  # type: ignore[arg-type]
 
 
 def threw_to(inp: GraphInputs, key: GraphKey) -> pl.DataFrame:
@@ -1065,7 +1113,11 @@ def team_week_frames(inp: GraphInputs) -> tuple[pl.DataFrame, pl.DataFrame, pl.D
         "off_rush_epa",
         "def_pass_epa",
         "def_rush_epa",
-        *[c for c in ("elo", "trend_delta", "perf_vs_expected", "net_epa_prev") if c in tw.columns],
+        *[
+            c
+            for c in ("elo", "trend_delta", "perf_vs_expected", "net_epa_prev", "prior_weight")
+            if c in tw.columns
+        ],
         *([pl.col("direction").alias("trend_dir")] if "direction" in tw.columns else []),
     )
     has = nodes.select(pl.col("team_id").alias("s"), pl.col("key").alias("e"))

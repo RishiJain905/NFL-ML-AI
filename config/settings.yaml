@@ -68,6 +68,7 @@ game_model:               # game model v0 (P03; documentation/04 -> B)
 qb: {}                    # QB status feature (features/qb.py QBParams); defaults in code
 
 digest:                   # prose word budgets per section (documentation/06)
+  watchlist_size: 8       # players to watch (all in a table; the prose covers the top ones)
   word_budgets:
     report_card: 60
     game_outlook: 80

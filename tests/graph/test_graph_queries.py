@@ -79,7 +79,10 @@ def test_the_query_parser_helper_on_a_known_query() -> None:
     assert "window_weeks" in names and names[-1] == "strength"
 
 
-@pytest.mark.parametrize("name", list(Q.LIBRARY))
+INSIGHT_QUERIES = [n for n in Q.LIBRARY if n not in gi.DATA_QUERIES]
+
+
+@pytest.mark.parametrize("name", INSIGHT_QUERIES)
 def test_every_query_returns_the_columns_the_digest_needs(name: str) -> None:
     names = returned_names(name)
     assert {"insight_type", "strength", "sample_size", "game_id", "team", "opponent"} <= set(names)
@@ -117,7 +120,7 @@ def test_the_position_groups_the_queries_use_exist_in_the_graph() -> None:
 ROW_KEY = re.compile(r"""\br(?:\[['"](\w+)['"]\]|\.get\(['"](\w+)['"])""")
 
 
-@pytest.mark.parametrize("name", list(Q.LIBRARY))
+@pytest.mark.parametrize("name", INSIGHT_QUERIES)
 def test_every_column_a_converter_reads_is_returned_by_its_query(name: str) -> None:
     src = inspect.getsource(gi.CONVERTERS[name])
     read = {a or b for a, b in ROW_KEY.findall(src)}

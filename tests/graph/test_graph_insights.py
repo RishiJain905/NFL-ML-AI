@@ -209,8 +209,9 @@ def test_team_phrases_and_possessives() -> None:
 
 
 def test_converters_cover_the_query_library() -> None:
-    assert set(gi.CONVERTERS) == set(queries.LIBRARY)
-    assert set(gi.QUERY_OF.values()) == set(queries.LIBRARY)
+    insight_queries = set(queries.LIBRARY) - set(gi.DATA_QUERIES)
+    assert set(gi.CONVERTERS) == insight_queries
+    assert set(gi.QUERY_OF.values()) == insight_queries
     types = {t for ts in gi.SECTION_TYPES.values() for t in ts}
     assert types == set(gi.QUERY_OF)
 
@@ -956,8 +957,8 @@ def test_a_player_is_the_subject_of_one_item_at_most() -> None:
     assert sel.skipped["duplicate_player"] == ["rev1"]
 
 
-def test_subject_roles_are_out_former_player_and_expected_starter() -> None:
-    assert gi.SUBJECT_ROLES == ("out", "former player", "expected starter")
+def test_subject_roles_are_out_former_player_expected_starter_and_head_coach() -> None:
+    assert gi.SUBJECT_ROLES == ("out", "former player", "expected starter", "head coach")
     cands = [
         mk("qb", "qb_change", 0.9, "g1", people=(("Q", "expected starter"), ("W", "receiver"))),
         mk("rev-q", "revenge", 0.8, "g2", people=(("Q", "former player"),)),

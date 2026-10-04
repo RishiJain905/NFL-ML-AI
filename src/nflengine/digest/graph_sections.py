@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
-from nflengine.digest.payload import GraphInsight
+from nflengine.digest.payload import GraphInsight, QBChangeNote, StarterOut
 from nflengine.digest.prompt import GRAPH_PHASE
 from nflengine.graph.insights import SUBJECT_ROLES
 
@@ -49,6 +49,9 @@ class GraphState:
     built_at: str | None = None
     candidates: int = 0
     skipped: dict[str, list[str]] = field(default_factory=dict)
+    more: list[GraphInsight] = field(default_factory=list)  # "More from the graph"
+    qb_changes: list[QBChangeNote] = field(default_factory=list)  # flags in the game table
+    starters_out: list[StarterOut] = field(default_factory=list)
 
     @property
     def picked(self) -> list[GraphInsight]:
@@ -116,6 +119,12 @@ def graph_state(
         recent_ids=recent,
         kickoff_margin=LIVE_KICKOFF_MARGIN if ctx.mode == "live" else dt.timedelta(0),
     )
+    upcoming = {
+        gid
+        for gid, g in game_infos(games, s, w).items()
+        if g.kickoff is None or g.kickoff > ctx.run_time
+    }
+    queries = data.get("queries", {})
     return GraphState(
         "ok",
         None,
@@ -124,7 +133,105 @@ def graph_state(
         data.get("built_at"),
         len(cands),
         sel.skipped,
+        more=sel.more,
+        qb_changes=qb_change_notes(_rows(queries, "q3_qb_change"), upcoming),
+        starters_out=starters_out(_rows(queries, "q0_starters_out"), upcoming),
     )
+
+
+def _rows(queries: dict, name: str) -> list[dict]:
+    q = queries.get(name) or {}
+    return list(q.get("results") or [])
+
+
+# ---- code-written graph extras (after P05) ------------------------------------------------------
+
+MAX_OUT_PER_TEAM = 3
+# who's listed first in a team's "Starters out" line: QBs, then skill players, then the rest
+OUT_PRIORITY = {"QB": 0, "WR": 1, "TE": 1, "RB": 1, "DL": 2, "LB": 2, "DB": 2, "OL": 2}
+
+
+def qb_change_notes(rows: list[dict], upcoming: set[str]) -> list[QBChangeNote]:
+    """Every QB change the graph found (Q3), for the ⚠ flags under the game table. Text is
+    time-scoped like the graph item: confirmed (a live run's schedule / chart / report) or
+    "could start ... not confirmed yet" (the Tuesday rule)."""
+    from nflengine.digest.names import nickname
+
+    out = []
+    for r in rows:
+        if r.get("game_id") not in upcoming:
+            continue
+        qb, reg = r["qb"], r["regular"]
+        if r.get("qb_confirmed", True) is not False:
+            text = f"{qb} starts in place of {reg}"
+            status = (r.get("regular_status") or "").lower()
+            if status in ("out", "doubtful"):
+                body = (r.get("regular_body_part") or "").lower()
+                text += f" ({status}{': ' + body if body else ''})"
+        else:
+            text = (
+                f"{qb} could start in place of {reg} "
+                "(he started their last game; not confirmed yet)"
+            )
+        out.append(
+            QBChangeNote(
+                game_id=r["game_id"],
+                team=r["team"],
+                team_name=nickname(r["team"]),
+                qb=qb,
+                regular=reg,
+                confirmed=r.get("qb_confirmed", True) is not False,
+                text=text,
+            )
+        )
+    return sorted(out, key=lambda n: (n.game_id, n.team))
+
+
+def _out_text(r: dict) -> str:
+    pos = r.get("position") or r.get("position_group") or ""
+    src = r.get("out_source")
+    if src == "this_week":
+        status = (r.get("status") or "out").lower()
+        body = (r.get("body_part") or "").lower()
+        why = f"{status}{': ' + body if body else ''}"
+    elif src == "reserve":
+        why = "reserve list"
+    else:
+        why = "missed last game"
+    return f"{pos} {r['player']} ({why})".strip()
+
+
+def starters_out(rows: list[dict], upcoming: set[str]) -> list[StarterOut]:
+    """Regular starters who won't play (Q0), at most `MAX_OUT_PER_TEAM` per team: QBs
+    first, then skill players, then by snap share."""
+    from nflengine.digest.names import nickname
+
+    by_team: dict[str, list[dict]] = {}
+    for r in rows:
+        if r.get("game_id") in upcoming:
+            by_team.setdefault(r["team"], []).append(r)
+    out = []
+    for team, rs in by_team.items():
+        rs.sort(
+            key=lambda r: (
+                OUT_PRIORITY.get(r.get("position_group") or "", 3),
+                -(r.get("snap_pct") or 0),
+                r["player_id"],
+            )
+        )
+        for r in rs[:MAX_OUT_PER_TEAM]:
+            out.append(
+                StarterOut(
+                    game_id=r["game_id"],
+                    team=team,
+                    team_name=nickname(team),
+                    player=r["player"],
+                    player_id=r["player_id"],
+                    position=r.get("position") or "",
+                    text=_out_text(r),
+                )
+            )
+    return sorted(out, key=lambda o: (o.game_id, o.team))
 
 
 def fixed_graph_sections(state: GraphState) -> dict[str, str]:
@@ -172,6 +279,7 @@ def record_published(
         return 0
     picked = state.picked if sections is None else rendered(state.picked, sections)
     dropped = {i.insight_id for i in state.picked} - {i.insight_id for i in picked}
+    picked = [*picked, *state.more]  # "More from the graph" is written by code: always shown
     if dropped:
         log(f"[yellow]graph items not in the prose (not logged as published): {sorted(dropped)}[/]")
     record(log_path(ctx.run_root), ctx.season, ctx.week, picked, ctx.run_time)

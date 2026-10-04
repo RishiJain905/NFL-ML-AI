@@ -207,3 +207,66 @@ def test_fail_soft_when_neo4j_is_unreachable(paths, tmp_path, monkeypatch) -> No
     assert res.status == "unavailable" and "unreachable" in (res.error or "")
     saved = gb.load_results(tmp_path / "graph_results.json")
     assert saved and saved["status"] == "unavailable"
+
+
+# ---- the non-QB stories (Q5 coach reunion, Q11 unit mismatch, Q12 special teams) ----------
+
+
+def test_extra_queries_on_the_live_week(driver, paths) -> None:
+    """The three post-P05 queries run without error on the live graph and return sensible
+    rows; special-teams EPA is visible only before week W and nets to 0 within a game."""
+    from nflengine.graph.insights import CONVERTERS
+    from nflengine.graph.queries import LIBRARY, run_query
+
+    latest = _latest_live_week(paths)
+    if latest is None:
+        pytest.skip("no live week with saved predictions")
+    if _LOADED["key"] != "live":
+        _build(driver, paths, *latest, mode="live")
+    season, week = latest
+    for name in ("q5_coach_reunion", "q11_unit_mismatch", "q12_special_teams"):
+        res = run_query(driver, name, season, week)
+        assert res.error is None, (name, res.error)
+        assert res.seconds < 2.0, (name, res.seconds)
+        for r in res.rows:
+            assert r["game_id"].startswith(f"{season}_{week:02d}_"), r["game_id"]
+            assert 0.0 <= r["strength"] <= 1.0
+            assert CONVERTERS[name](r, season) is not None
+    tier, n = LIBRARY["q11_unit_mismatch"]["tier"], 32
+    for r in run_query(driver, "q11_unit_mismatch", season, week).rows:
+        good, bad = (
+            (r["off_rank"], r["def_rank"])
+            if r["edge"] == "offense"
+            else (
+                r["def_rank"],
+                r["off_rank"],
+            )
+        )
+        assert good <= tier and bad > n - tier, r
+        # the offense's expected EPA is off + def (def = EPA allowed), signed by the edge
+        assert (r["expected_epa"] > 0) == (r["edge"] == "offense"), r
+    p12 = LIBRARY["q12_special_teams"]
+    for r in run_query(driver, "q12_special_teams", season, week).rows:
+        assert min(r["team_games"], r["opponent_games"]) >= p12["min_games"]
+        assert r["shrunk_gap"] >= p12["min_gap"] and abs(r["gap"]) >= r["shrunk_gap"]
+    with driver.session() as s:
+        rec = s.run(
+            """
+            MATCH (g:Game {season: $season})<-[p:PLAYED_IN]-(:Team)
+            WITH g, count(p.st_epa) AS n, sum(p.st_epa) AS total
+            RETURN sum(CASE WHEN g.week >= $week AND n > 0 THEN 1 ELSE 0 END) AS future,
+                   sum(CASE WHEN g.week < $week AND g.completed AND n = 2 THEN 1 ELSE 0 END)
+                     AS both_sides,
+                   max(abs(total)) AS worst_net
+            """,
+            season=season,
+            week=week,
+        ).single()
+        pw = s.run(
+            "MATCH (tw:TeamWeek {season: $season, week: $week}) RETURN count(tw.prior_weight) AS n",
+            season=season,
+            week=week,
+        ).single()["n"]
+    assert rec["future"] == 0  # no special-teams EPA for week W
+    assert rec["both_sides"] > 0 and rec["worst_net"] < 1e-6
+    assert pw == 32

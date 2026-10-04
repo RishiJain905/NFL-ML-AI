@@ -48,7 +48,7 @@ MODEL_ALIASES = [
 ]
 _RANGE_PCT = re.compile(r"(\d+)\s?-\s?(\d+)%")
 # people whose story a graph item tells (insights.SUBJECT_ROLES): they own its headline
-GRAPH_SUBJECT_ROLES = ("out", "former player", "expected starter")
+GRAPH_SUBJECT_ROLES = ("out", "former player", "expected starter", "head coach")
 
 
 @dataclass
@@ -223,6 +223,17 @@ def build_fact_index(payload: Payload) -> FactIndex:
 
     for g in payload.graph_insights:
         _add_graph_insight(fx, g)
+    # code-written graph extras (after P05): the LLM doesn't write them, but anyone they name
+    # is a known entity if the prose mentions them, with the numbers they own
+    for g in payload.graph_more:
+        _add_graph_insight(fx, g, hedge=False)
+    for n in payload.qb_changes:
+        fx.name(n.qb).teams.add(n.team)
+        fx.name(n.regular).teams.add(n.team)
+        fx.team(n.team)
+    for o in payload.starters_out:
+        fx.name(o.player).teams.add(o.team)
+        fx.team(o.team)
     return fx.finalize()
 
 
@@ -236,8 +247,9 @@ def _names(text: str, e: Entity) -> bool:
     return False
 
 
-def _add_graph_insight(fx: FactIndex, g: GraphInsight) -> None:
-    """Register one knowledge-graph item (P05; see the module docstring for the owners)."""
+def _add_graph_insight(fx: FactIndex, g: GraphInsight, hedge: bool = True) -> None:
+    """Register one knowledge-graph item (P05; see the module docstring for the owners).
+    `hedge=False` for code-written items (no hedge is asked of the prose for them)."""
     teams = [fx.team(code) for code in g.teams]  # common opponents become known entities
     people: dict[str, Entity] = {}
     for person in g.people:
@@ -271,6 +283,6 @@ def _add_graph_insight(fx: FactIndex, g: GraphInsight) -> None:
     subjects = [people[p.player_id] for p in g.people if p.role in GRAPH_SUBJECT_ROLES]
     for e in [*teams[:2], *subjects]:
         e.add(g.headline, g.sample, g.note or None)
-    if g.confidence == "low":
+    if g.confidence == "low" and hedge:
         fx.low_confidence.extend(e.key for e in subjects)
         fx.hedge_sections.add(g.section)

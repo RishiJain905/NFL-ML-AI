@@ -6,13 +6,19 @@ carries the entities, numbers already computed (the LLM does no math), `insight_
 
 | query | insight_type | digest section |
 |---|---|---|
+| q0_starters_out | (none: rows) | the code-written "Starters out" list |
 | q1_revenge | revenge | non_obvious |
 | q2_injury_ripple | injury_ripple | matchup_risk |
 | q3_qb_change | qb_change | matchup_risk |
 | q4_common_opponents | common_opponents | non_obvious |
+| q5_coach_reunion | coach_reunion | non_obvious |
 | q8_trend_mismatch | trend_mismatch | matchup_risk / non_obvious |
+| q11_unit_mismatch | unit_mismatch | non_obvious |
+| q12_special_teams | special_teams | non_obvious |
 
-Q5-Q7, Q9 and the GDS jobs (Q10) come in P08.
+Q5 is the head-coach half of documentation/05's Q5 (coaching connections; coordinators need
+a seed that doesn't exist yet). Q11 / Q12 are unit-level stories (offense vs defense units,
+special teams). Q6, Q7, Q9 and the GDS jobs (Q10) come in P08.
 """
 
 from __future__ import annotations
@@ -31,11 +37,17 @@ DEFENSE_GROUPS = ["DL", "LB", "DB"]
 
 # query name -> extra parameters (besides $season / $week)
 LIBRARY: dict[str, dict[str, Any]] = {
+    "q0_starters_out": {},  # not an insight: the digest's "Starters out" list
     "q1_revenge": {"min_old_games": 4, "min_snap_pct": 0.5},
     "q2_injury_ripple": {"groups": OFFENSE_GROUPS + DEFENSE_GROUPS, "history_seasons": 2},
     "q3_qb_change": {"min_receiver_targets": 5},
     "q4_common_opponents": {},
+    "q5_coach_reunion": {},
     "q8_trend_mismatch": {},
+    # tier: both units must be in the top / bottom `tier` of the league that week
+    "q11_unit_mismatch": {"tier": 8},
+    # the per-game gap is shrunk by n / (n + shrink_games) before min_gap (ST EPA is noisy)
+    "q12_special_teams": {"min_games": 3, "min_gap": 2.0, "shrink_games": 4.0},
 }
 
 

@@ -44,7 +44,7 @@ Code puts them in this order (`render.SECTION_TITLES`). The budgets are in `conf
 | 2 | `game_outlook` | Game outlook | A blurb under the code table: 1 to 3 games where the model (without market data) differs most from consensus, plus the most lopsided and closest games with their `rank_note` | 80 | `games`, `game_highlights` | Always |
 | 3 | `team_trends` | Team trend shifts | 2 to 4 teams trending up or down: the first driver, the net rating now, supporting evidence. Descriptive, not predictive | 120 | `team_trends` | Always |
 | 4 | `under_the_hood` | Last week under the hood | 3 to 5 tracking / charting notes: who rose or fell against his own norm, with small samples flagged | 110 | `under_the_hood` | Always |
-| 5 | `players_to_watch` | Players to watch | 4 to 6 heuristic picks (recent usage change, opponent defense rank, baseline). Low confidence until the player model ships (P06) | 160 | `players_to_watch` | Always |
+| 5 | `players_to_watch` | Players to watch | The 4 to 6 most notable of the 8 heuristic picks that code lists in a table above the prose (recent usage change, opponent defense rank, baseline). Low confidence until the player model ships (P06) | 160 | `players_to_watch` | Always |
 | 6 | `matchup_risk` | Matchup / risk to watch | The knowledge-graph item for this section (usually one): an injury ripple, a QB change or a trend mismatch | 80 | `graph_insights` | Phase P05: only when the graph is available |
 | 7 | `non_obvious` | Non-obvious insights | One or two graph items: a player facing his former team, common opponents, a trend mismatch | 90 | `graph_insights` | Phase P05: only when the graph is available |
 
@@ -68,9 +68,14 @@ Code puts them in this order (`render.SECTION_TITLES`). The budgets are in `conf
 
 - the title and run line (run time, data freshness per source);
 - the report card's bullet lines (week, season, calibration);
-- the game outlook table with its notes (no market line, neutral site, games already kicked off);
-- the line "Heuristic picks until the player model ships (P06): low confidence." above the players section;
+- the game outlook table with its notes (no market line, neutral site, games already kicked off), its **QBs (away / home)** column and the **⚠ QB changes** notes (D63);
+- **Starters out this week** under the table (regular starters who won't play, up to 3 per team);
+- the line "Heuristic picks until the player model ships (P06): low confidence." and the **table of all 8 watch-list picks** above the players prose;
+- **More from the graph** after the Non-obvious prose (up to 6 strong graph stories that didn't fit, one line each);
+- **Latest news** (up to 4 ESPN headlines, live runs) before the footer;
 - any banner, and the footer.
+
+The LLM sees all of these in the payload (`qb_changes`, `starters_out`, `graph_more`, `news`) but prompt rule 21 tells it not to restate them: they're already on the page. Everyone they name is registered in the fact index, so a passing mention doesn't trip `unknown_entities`.
 
 ## 2. The current model and how it is called
 

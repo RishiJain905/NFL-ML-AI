@@ -277,6 +277,7 @@ The load points don't carry the table's name (a W&B curve can only hold numbers)
 | `words/<section>`, `words_total` | Words per section and in all | 716 in all |
 | `games`, `team_trends`, `under_the_hood_items`, `watchlist_items`, `news_items` | How many items each section got | 15, 4, 5, 5, 5 |
 | `graph_status`, `graph_items` | Whether the graph sections were in, and how many insights | `ok`, 3 |
+| `graph_more_items`, `qb_changes`, `starters_out` | The code-written lists (D63): "More from the graph" lines, QB changes flagged in the game table, starters-out entries | added after week 4's live digest; expect about 4–6, 0–7, 20–40 |
 | `market_data_used` | Whether any shown game used the market variant | `true` |
 | `report_card_status` | `first_week`, `no_saved_predictions` or `scored` | `no_saved_predictions` |
 | `rc/picks_correct`, `rc/picks_total`, `rc/brier_model`, `rc/brier_elo`, `rc/points_mae` | The report card's numbers, only when it was `scored` | (none in week 4) |

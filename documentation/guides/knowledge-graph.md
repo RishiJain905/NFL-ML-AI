@@ -71,7 +71,7 @@ A week-4 2026 build holds about **15.5k nodes and 588k relationships**, covering
 | `Player` | 7,079 | a player who appears in any relationship since 2018 | `player_id` (GSIS) | `name`, `position`, `position_group`, `college`, `rookie_season`, `draft_year`; QBs also `scramble_rate` and `dropbacks` (its sample) |
 | `Team` | 32 | a franchise (relocations follow the franchise: OAK → LV) | `team_id` | `name`, `nickname`, `conference`, `division` |
 | `Game` | 2,291 | a regular-season or playoff game, 2018 → this week | `game_id` | `season`, `week`, `game_type`, `kickoff`, `home_team`, `away_team`, scores (null for this week), `roof`, `surface`, `temp`, `wind`; this week's games also `home_qb_expected` / `away_qb_expected` and their `*_qb_source` |
-| `TeamWeek` | 5,664 | one team's ratings as of one week | `key` ("KC:2026:4") | `off_epa`, `def_epa`, `net`, pass / rush splits, `elo`, `trend_delta`, `trend_dir`, `perf_vs_expected` |
+| `TeamWeek` | 5,664 | one team's ratings as of one week | `key` ("KC:2026:4") | `off_epa`, `def_epa`, `net`, pass / rush splits, `elo`, `trend_delta`, `trend_dir`, `perf_vs_expected`, `prior_weight` (how much of the rating is still last season's prior: 1.0 in week 1, about 0.5 in week 4) |
 | `GamePrediction` | 32 | the game model's prediction for a game (both variants) | `key` | `home_win_prob`, `expected_margin`, predicted points, `is_primary`, `confidence` |
 | `Coach` | 86 | a head coach | `coach_id` (name slug) | `name` |
 | `Official` | 294 | a game official | `official_id` | `name` |
@@ -89,7 +89,7 @@ A week-4 2026 build holds about **15.5k nodes and 588k relationships**, covering
 | `(Player)-[:PLAYED_FOR]->(Team)` | 27,292 | he was on that team's roster during a season | `season`, `first_week`, `last_week`, `roster_weeks` (the actual weeks), `status_last` (RES = on IR / reserve), `games` |
 | `(Official)-[:OFFICIATED]->(Game)` | 16,154 | he worked that game | `role` (Referee, Umpire, ...) |
 | `(Player)-[:THREW_TO]->(Player)` | 7,803 | a passer targeted a receiver | `season`, `targets`, `completions`, `yards`, `tds`, `epa`, `games_together` |
-| `(Team)-[:PLAYED_IN]->(Game)` | 4,582 | the team played that game | `home`, `points`, `points_allowed`, `margin`, `result` (W/L/T), `epa_per_play`, `epa_allowed`, `epa_margin`, `success_rate`, `penalties` |
+| `(Team)-[:PLAYED_IN]->(Game)` | 4,582 | the team played that game | `home`, `points`, `points_allowed`, `margin`, `result` (W/L/T), `epa_per_play`, `epa_allowed`, `epa_margin`, `success_rate`, `penalties`, `st_epa` (net special-teams EPA, above an average team) and `st_plays` |
 | `(Coach)-[:COACHED_IN]->(Game)` | 4,582 | he was a head coach in that game | `team_id` |
 | `(Team)-[:HAS_WEEK]->(TeamWeek)` | 5,664 | the team's rating for that week | |
 | `(TeamWeek)-[:NEXT]->(TeamWeek)` | 5,632 | the same team's next week (a chain through time) | |
@@ -136,7 +136,7 @@ It keeps players with at least 4 games for the opponent in the last 2 seasons (o
 - **With / without:** the team's regular-season games over the last 2 seasons while he was on the roster, counted from his first start in that window (games before he was a starter would be a backup's games, not missed starts). The team's offense EPA per play (or the defense's EPA allowed, for a defender) in games he started vs games he missed.
 - **Who stepped in:** the teammate in the same position group with the biggest usage jump in those games (targets for WR/TE, carries + targets for RB, snap share otherwise). The depth chart's next man is added as information, because the chart format changed in 2025 and "rank + 1" isn't reliable at WR or CB.
 
-**Strength** grows with his snap share, how much the team changed without him (weighted by how many such games there are) and, for skill players, how big the teammate's jump was.
+**Strength** grows with his snap share, how much the team changed without him (weighted by how many such games there are) and, for skill players, how big the teammate's jump was. A team that did **better** without him counts at 40%: that's a curiosity, not a risk, so a "worse without him" story usually takes the Matchup / risk slot.
 
 **Real examples (2026 week 4 candidates):** "Nick Bosa (49ers DE) is listed out for this week (knee). In 18 games without Nick Bosa since the start of the 2024 season, the 49ers defense allowed +0.11 EPA per play, against -0.03 EPA per play in 16 games he started: worse without him." And "DeVonta Smith (Eagles WR) is listed out ... about the same either way. Johnny Wilson had 2.7 targets per game in 3 games without DeVonta Smith, against 0.5 targets per game in 13 games with him." The words "worse / better without him" are written by code from the numbers, so the LLM never has to interpret a sign (for a defense, more EPA allowed is worse).
 
@@ -155,6 +155,8 @@ It keeps players with at least 4 games for the opponent in the last 2 seasons (o
 The expected QB is the same one the game model used. A live run gets him from the schedule, the depth chart or the injury report; a Tuesday has only "who started the last game". So the item says how sure it is: **confirmed** ("Jalon Daniels is expected to start at QB for the Buccaneers this week; Baker Mayfield is listed out for this week (thumb).") or **not yet confirmed** ("Kirk Cousins could start at QB for the Falcons this week (he started their last game), but it isn't confirmed yet."; ranked lower). The second form exists because a fact-check of a 2025 backtest caught the first form being wrong after a one-game fill-in.
 
 **Facts:** the main starter's starts this season, the new QB's starts (this season and since 2018, or "never started an NFL game"), and the top receivers' targets from each QB ("Emeka Egbuka has 20 targets from Baker Mayfield this season; he has none from Jalon Daniels"). A low-confidence note says what is uncertain: the new QB's thin history with these receivers, not the start itself.
+
+**In the digest:** every QB change is flagged in the game table's QBs column (⚠ plus a one-line note under the table), so for the *Matchup / risk* prose slot a QB change counts at 80% of its strength and a strong non-QB story usually wins it (D63).
 
 ### Q4: Common opponents → *Non-obvious insights*
 
@@ -182,7 +184,41 @@ This uses the `NEXT` chain to walk back three weeks through each team's ratings.
 
 **Real example (2026 week 4):** "The Panthers are trending up and the Lions are trending down going into this game. The Panthers' net rating is up 0.04 EPA per play over the last 3 weeks; the Lions' net rating is down 0.05 EPA per play over the last 3 weeks. Descriptive: trends don't predict the next game on their own." (P02 showed trends add nothing beyond the rating, D47, so this is always framed as descriptive.)
 
-Q5 (coaching connections), Q6 (former teammates on opposite sides), Q7 (style matchups) and Q9 (officiating crews) are sketched in doc 05 and come in P08, with the Graph Data Science jobs (Q10).
+### Q5: Head coach vs a former team → *Non-obvious insights*
+
+**The question:** is this week's head coach facing a team he used to coach?
+
+**The walk:**
+```text
+(coach)-[:COACHED_IN]->(this week's game)<-[:PLAYED_IN]-(opponent)
+(coach)-[:HEAD_COACH_OF {earlier season}]->(opponent)
+(coach)-[:COACHED_IN {team_id: opponent}]->(old games)<-[:PLAYED_IN]-(opponent)   his record with them
+```
+It returns his seasons there and his regular-season and playoff record with them (from 2018, the graph's first season: a stint that started earlier says "from 2018 on"), and whether this is the first meeting since he left. Strength grows with recency and tenure. Rare (most weeks have none); found in past weeks: Sean Payton vs the Saints (2024 week 7), Mike Vrabel vs the Titans (2025 week 7), Doug Pederson vs the Eagles, Dan Quinn vs the Falcons.
+
+### Q11: Unit mismatch → *Non-obvious insights* (or *More from the graph*)
+
+**The question:** in which games does one team's offense unit meet a defense unit at the opposite end of the league?
+
+**The walk:** each week-4 `Game` → both teams' `TeamWeek` for this week → the four unit matchups (each team's pass offense against the other's pass defense, and the same for the run). A game qualifies when one unit is in the league's top 8 and the other in the bottom 8; the game's single most extreme matchup is kept, with both units' league ranks and ratings (relative to the league average; a defense's number is EPA allowed, so lower is better).
+
+**Real example (2026 week 4):** "The Chargers' run offense, 7th-worst in the league (-0.05 EPA per rush), meets the Seahawks' run defense, the league's strongest (-0.11 EPA per rush allowed)." Early in the season the ratings still lean on last season (`prior_weight` above 0.4), so the item is marked low confidence and stays in *More from the graph* rather than the prose. This is a team-unit story, not a player one: *Players to watch* covers individual players against weak defenses.
+
+### Q12: Special-teams edge → *Non-obvious insights* (or *More from the graph*)
+
+**The question:** which games pit a strong special-teams unit against a weak one?
+
+**How special-teams EPA is counted** (`PLAYED_IN.st_epa`): every kickoff, punt, field goal and extra point, from each team's side (nflverse gives the EPA to `posteam`, which is the *receiving* team on a kickoff and the kicking team otherwise), first centered on the league average for that season and play type (a kickoff is worth about +0.25 EPA to the receiver since the 2024 rule change, so raw numbers would punish teams that kick off a lot). So `st_epa` is "points of expected value above an average team", and the two sides of a game always sum to zero. It counts both sides: a team's number goes up when the opponent misses a field goal against it.
+
+**The walk:** both teams' `PLAYED_IN.st_epa` over their games this season before this week (at least 3 each); the gap, shrunk toward zero for small samples, must be at least 2 EPA per game.
+
+**Real example (2026 week 4):** "The Vikings have gained 3.5 EPA per game on special teams this season; the Dolphins have lost 3.5 EPA per game." Season totals look right: 2025's best were SEA, SF and HOU, the worst NO, ARI and LV. Low confidence under 6 games.
+
+Q6 (former teammates on opposite sides), Q7 (style matchups) and Q9 (officiating crews) are sketched in doc 05 and come in P08, with the Graph Data Science jobs (Q10).
+
+### Q0: Starters out (data, not an insight)
+
+The same "won't play" rules as Q2 (listed Out / Doubtful this week, on a reserve list, or missed the last game before the report is out), for every regular starter including QBs, with no history needed. It feeds the digest's code-written **Starters out this week** list (up to 3 per team, QBs first).
 
 ## 6. From query rows to the digest
 
@@ -200,9 +236,10 @@ flowchart LR
 ```
 
 1. **Candidates.** Every query row becomes a digest item whose words are written by code (`src/nflengine/graph/insights.py`): a headline without numbers, then facts that are complete, time-scoped sentences with their numbers, each tagged with the team or player that owns those numbers. A typical week has 40–70 candidates.
-2. **Picks.** Ranked by strength (+0.1 for a followed team), skipping games that have already kicked off (a live digest also skips games starting within 90 minutes, because the LLM can take a while), skipping anything published in the last 3 weeks, and using each player at most once. One item for *Matchup / risk to watch* (an injury ripple or QB change), one or two for *Non-obvious insights* (revenge, common opponents, trend mismatch), from different games.
-3. **Novelty survives the weekly wipe** because what was published is kept in `runs/published_insights.parquet` on D: and reloaded as `PublishedInsight` nodes on every build. Proof from the 2025 weeks 5–9 backtests: nothing repeated within 3 weeks, and the filter held back James Conner's injury ripple in week 6, the Barkley vs Giants rematch in week 8 and Joe Flacco's start in weeks 8–9.
-4. **The LLM** (GLM via OpenRouter) writes the two sections from the picked items only, copying the fact texts. The digest's automated checks verify every number came from the payload and is attached to its owner. An independent fact-check of the first GLM digests recomputed every graph number from the raw data: all correct.
+2. **Picks.** Ranked by strength (+0.1 for a followed team), skipping games that have already kicked off (a live digest also skips games starting within 90 minutes, because the LLM can take a while), skipping anything published in the last 3 weeks, and using each player at most once. One item for *Matchup / risk to watch* (an injury ripple, or a QB change at 80% weight), one or two for *Non-obvious insights* (revenge, common opponents, trend mismatch, coach vs former team, unit mismatch, special teams), from different games.
+3. **More from the graph.** The strong stories that didn't fit the prose (strength ≥ 0.7, no QB changes, at most 2 of a kind and 2 per game, 6 in all) are listed by code after the Non-obvious prose, one line each (each item's `brief`). Before this list, 6–14 strong stories a week were simply dropped.
+4. **Novelty survives the weekly wipe** because what was published is kept in `runs/published_insights.parquet` on D: and reloaded as `PublishedInsight` nodes on every build. Proof from the 2025 weeks 5–9 backtests: nothing repeated within 3 weeks, and the filter held back James Conner's injury ripple in week 6, the Barkley vs Giants rematch in week 8 and Joe Flacco's start in weeks 8–9.
+5. **The LLM** (GLM via OpenRouter) writes the two sections from the picked items only, copying the fact texts. The digest's automated checks verify every number came from the payload and is attached to its owner. An independent fact-check of the first GLM digests recomputed every graph number from the raw data: all correct.
 
 ## 7. What it looks like in the digest
 
@@ -215,6 +252,11 @@ The digest is a Markdown file (`D:/nfl-ml-data/reports/<season>/week<NN>-digest.
 > ## Non-obvious insights
 >
 > Kaden Elliss (Saints LB) faces the Falcons, his former team, in Falcons at Saints: Kaden Elliss played 34 games for the Falcons in 2024 and 2025, and this season Kaden Elliss has played 100% of the Saints' defensive snaps in the 3 games he played. In Lions at Panthers, the Panthers are trending up and the Lions are trending down going into this game: ...
+
+Since D63 the graph also feeds three code-written parts (no LLM involved):
+- the game table's **QBs (away / home)** column, with ⚠ and a note under the table for every QB change ("Jalon Daniels starts in place of Baker Mayfield (out: thumb)");
+- **Starters out this week** under the table (Q0);
+- **More from the graph** after the Non-obvious prose: up to 6 one-line stories, for example "**Browns at Patriots**: The Patriots' run offense, 2nd-worst in the league (-0.09 EPA per rush), meets the Browns' run defense, 3rd-strongest (-0.05 EPA per rush allowed)."
 
 The footer adds a line such as `Knowledge graph: rebuilt for this run (Neo4j); 3 insights used`. If Neo4j is down when the digest runs, the two sections are left out, a banner at the top says why ("Graph sections skipped this week: the knowledge graph couldn't be rebuilt (ServiceUnavailable: Neo4j unreachable)"), and the footer says `unavailable`. The rest of the digest is unaffected.
 
