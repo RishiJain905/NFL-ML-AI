@@ -24,9 +24,13 @@ sections:
       A short blurb under the table: one to three games with a model_vs_consensus gap
       (games whose text says "much" first), each described with its model_vs_consensus.text
       word for word and never called the biggest or largest gap, plus game_highlights (most
-      lopsided, closest), each written as a plain fact with its rank_note and the favorite's
-      win % ("<matchup> is the most lopsided game, with the <team> at <prob>"); give the win %
-      of every game you name; never mention "the highlights" themselves. Name games by
+      lopsided, closest), each written as a plain fact with its rank_note. Every game you
+      name gets exactly one win %, chosen by this rule: for a consensus game, the win % of
+      the team in model_vs_consensus.team (its home_win_prob or away_win_prob), so the
+      number is about the team the gap is about ("in <matchup> the model is <text>, giving
+      the <team> <their win %>"); for a highlight game, its prob, the favorite's ("<matchup>
+      is the most lopsided game, with the <team> at <prob>"). When a game is both, use the
+      consensus team's. Never mention "the highlights" themselves. Name games by
       their matchup string. Never quote lines. Don't repeat these instructions in the text.
   - id: team_trends
     title: Team trend shifts

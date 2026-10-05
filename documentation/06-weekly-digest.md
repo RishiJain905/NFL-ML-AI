@@ -21,7 +21,7 @@ class LLMClient(Protocol):
 | Provider (`llm.provider`) | What it is | When |
 |---|---|---|
 | `placeholder` | A deterministic template writer: fills simple sentence templates straight from the payload's display strings | From the start. Lets the full pipeline, checks and report card run end to end with no API key. The checks get tested on predictable text. Also the automatic fallback when a real provider fails (D56) |
-| `openrouter` (**default since P04**, D56) | Any model on OpenRouter (`OPENROUTER_API_KEY`); configured as `z-ai/glm-5.3-flash`, reasoning effort `max`, routed to the cheapest of `baseten/fp8`, `relace`, `novita/fp8`, `deepinfra/fp4` | Connected in P04 at Rishi's request |
+| `openrouter` (**default since P04**, D56) | Any model on OpenRouter (`OPENROUTER_API_KEY`); configured as `z-ai/glm-5.3-flash`, reasoning effort `max`, routed to `baseten/fp8` first, then `novita/fp8` and `relace` (`order`, D88; `deepinfra/fp4` dropped, D87) | Connected in P04 at Rishi's request |
 | `anthropic` | Claude via the Anthropic API | **Not built** (Rishi's call when P09 closed, D87): a Claude model runs through `openrouter` by changing `llm.model` |
 | `openai_compatible` | Any OpenAI-compatible endpoint (`LLM_BASE_URL`), which covers open-source models served by Ollama, vLLM or LM Studio | **Not built** (D87); same reason. `LLM_API_KEY` / `LLM_BASE_URL` stay reserved |
 
@@ -312,4 +312,5 @@ GLM 5.3 Flash through OpenRouter (D56) stays the writer; no `anthropic` / `opena
 - **Payload strings** (meaning stays in code, D53): drivers as plain clauses, plus "(not his own baseline)" when one pushes against the pick's gap; rate changes with up / down and what they mean; count items with their unit ("9 pressures", "1.5 pressures per game"); no "-0.00".
 - **Checks:** the sentence splitter also splits after a closing quote or bracket; the name heuristic reads initials and inner capitals. No check was loosened.
 - **Regeneration:** keep passing sentences; "no entity named" → add the name; a named owner who doesn't own the number → remove it.
-- **Routing:** `deepinfra/fp4` dropped (it skipped the reasoning on 3 of 5 calls); `max_tokens` 96,000.
+- **Routing:** `deepinfra/fp4` dropped (it skipped the reasoning on 3 of 5 calls); `max_tokens` 96,000; BaseTen first by an explicit `order` instead of `sort: price` (Rishi, D88: BaseTen wrote a digest in 3 minutes vs 12–25 on Novita, about a cent more; `sort: throughput` didn't help, as OpenRouter has no throughput stats for these endpoints).
+- **Whose win % the outlook quotes (D88):** a consensus game gets the win % of the team in `model_vs_consensus.team` (the team the gap is about), a highlight game its favorite's `prob`; a game that is both, the consensus team's. GLM had mixed the two (always correct, sometimes the underdog's).

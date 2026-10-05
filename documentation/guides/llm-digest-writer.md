@@ -86,12 +86,12 @@ llm:
   provider: openrouter
   model: z-ai/glm-5.3-flash
   reasoning_effort: max
-  max_tokens: 64000
+  max_tokens: 96000
   timeout_seconds: 600
   retries: 2
   openrouter:
-    only: [baseten/fp8, relace, novita/fp8, deepinfra/fp4]
-    sort: price
+    only: [baseten/fp8, relace, novita/fp8]
+    order: [baseten/fp8, novita/fp8, relace]
     allow_fallbacks: true
 ```
 
@@ -100,17 +100,17 @@ llm:
 | `provider` | `openrouter` | Which client the registry builds: `placeholder` or `openrouter`. `anthropic` and `openai_compatible` were left unbuilt when P09 closed (D87): OpenRouter serves Claude and open models by changing `model` |
 | `model` | `z-ai/glm-5.3-flash` | The OpenRouter model id |
 | `reasoning_effort` | `max` | Sent as `reasoning: {effort: max, exclude: true}`. The model thinks first. The thinking is **billed but not returned** (`exclude`). Leave it blank or `null` and no `reasoning` field is sent (for models that don't think) |
-| `max_tokens` | `64000` | A cap on the **whole completion, thinking included**. Every allowed endpoint accepts up to 131,072 |
+| `max_tokens` | `96000` | A cap on the **whole completion, thinking included** (64,000 until P09, when a first call used 51k). Every allowed endpoint accepts up to 131,072 |
 | `timeout_seconds` | `600` | Per request. The client gives up after 10 minutes without a reply |
 | `retries` | `2` | Extra attempts, so 3 in all (see below) |
 | `temperature` | not set | `llm.temperature` exists in the code but the file doesn't set it, so the provider default applies |
-| `openrouter.only` | 4 endpoint tags | Only these endpoints may serve the request |
-| `openrouter.sort` | `price` | OpenRouter tries the cheapest allowed endpoint first |
+| `openrouter.only` | 3 endpoint tags | Only these endpoints may serve the request (`deepinfra/fp4` left in P09: it skipped the reasoning on 3 of 5 calls, D87) |
+| `openrouter.order` | BaseTen, Novita, Relace | OpenRouter tries BaseTen first, then the others as fallbacks. BaseTen wrote a digest in about 3 minutes vs 12–25 on Novita, for about a cent more; Rishi chose speed at the end of P09 (D88). Until then the block had `sort: price` (cheapest first, which nearly always meant Novita). `sort: throughput` was tried and didn't help: OpenRouter publishes no throughput stats for these endpoints, and the test call still went to Novita. A second test with the explicit order also landed on Novita because **BaseTen was answering HTTP 429** (rate limited) at the time; OpenRouter then falls back down the list, as it should. Check `calls[].provider` in `raw_llm_output.json` to see who served a run |
 | `openrouter.allow_fallbacks` | `true` | If that endpoint fails, OpenRouter tries the next allowed one. `false` would fail instead |
 
 The whole `openrouter:` block is passed to OpenRouter as its `provider` routing object. Any other routing option OpenRouter supports can go there with no code change. `require_parameters` is **not** set, so an endpoint that lacks a feature (JSON mode) ignores it.
 
-### The four allowed endpoints (live listing, 2026-10-03)
+### The allowed endpoints (live listing, 2026-10-03; DeepInfra dropped in P09)
 
 Prices are dollars per million tokens. The thinking tokens count as output, so output price matters most.
 
@@ -118,7 +118,7 @@ Prices are dollars per million tokens. The thinking tokens count as output, so o
 |---|---|---|---|---|
 | `relace` | 0.032 | 0.50 | **no** | 131,072 |
 | `novita/fp8` | 0.084 | 0.28 | yes | 131,072 |
-| `deepinfra/fp4` | 0.075 | 0.25 | yes | 131,072 |
+| ~~`deepinfra/fp4`~~ (dropped, D87) | 0.075 | 0.25 | yes | 131,072 |
 | `baseten/fp8` | 0.15 | 0.50 | yes | 131,072 |
 
 OpenRouter picks the endpoint at request time. Every call in the saved run files was served by **Novita** (the first backtests used Novita or DeepInfra). `calls[].provider` shows the provider's name, such as `Novita`, not the tag. The cost of the 2026 week 4 live call checks out: 8,975 input tokens × $0.084/M + 17,010 output tokens × $0.28/M = **$0.0055**.
@@ -172,7 +172,7 @@ OpenRouter picks the endpoint at request time. Every call in the saved run files
 | P09 final code, 2025 week 9 (round 5) | 1 | **3 min** | 22,558 | 35,729 (34,618) | $0.021 | **BaseTen** |
 | P09 regenerations (rounds 1–3) | 2 | 9 to 37 min in all | ~24k on the second call | | $0.011 to $0.027 | Novita, BaseTen, DeepInfra (0 reasoning: dropped) |
 
-- **BaseTen reasoned as much as Novita in a fifth of the time** (week 9: 3 minutes vs 12–23) for about a cent more per digest. `sort: price` usually picks Novita. `sort: throughput` in `llm.openrouter` (or BaseTen first in an `order` list) would make the weekly digest step about 3 minutes; it is Rishi's call (P09 kept the routing on price).
+- **BaseTen reasoned as much as Novita in a fifth of the time** (week 9: 3 minutes vs 12–23) for about a cent more per digest. `sort: price` usually picks Novita. **Rishi chose speed** after P09's runs (D88): the routing now names BaseTen first (`order`), so the weekly digest step should take a few minutes; Novita and Relace stay as fallbacks. Expect about 3 minutes when BaseTen has capacity and 10–25 when it is rate limited (it answered HTTP 429 during the check, D88). (`sort: throughput` was tried first and still landed on Novita: OpenRouter has no throughput stats for these endpoints.)
 
 - **Thinking is almost the whole bill:** 94% of the week 4 live completion tokens (15,963 of 17,010) were thinking. The visible JSON is about 1,000 tokens.
 - **Latency swings 10x** (2.5 to 21 minutes, and up to 30 if a call retries) for the same prompt size. It tracks how long the model thinks and how busy the endpoint is.
@@ -356,7 +356,7 @@ The **word budgets** are not in this file. They are in `config/settings.yaml` �
 
 ### The prompt hash
 
-- **What it is:** the first 12 hex characters of `sha256(system.md + "\n---\n" + sections.yaml)`. The 2026 week 4 live digest used `8e0cd7b1a080`; P08 ended at `325b85a78f4e`; **P09 ended at `0ee03e0cd26e`** (the version that goes live with week 5). The regeneration message (`openrouter.fix_message`) is code, not prompt, so it doesn't change the hash.
+- **What it is:** the first 12 hex characters of `sha256(system.md + "\n---\n" + sections.yaml)`. The 2026 week 4 live digest used `8e0cd7b1a080`; P08 ended at `325b85a78f4e`; P09 ended at `0ee03e0cd26e`; with the outlook's win-% rule added after the close (D88) **the live version is `7a529f64c5a6`** (from week 5). The regeneration message (`openrouter.fix_message`) is code, not prompt, so it doesn't change the hash.
 - **Where it shows:** the digest footer ("prompt `8e0cd7b1a080`"), W&B config `prompt_hash`, and the W&B artifact metadata.
 - **What it does not cover:** the **word budgets** (logged separately as W&B config `word_budgets`), and the **model and provider** (W&B config `llm_model`, `llm_provider`; the footer's `Writer:` line). A change to any of those leaves the hash alone. When comparing runs, compare hash, model and budgets together.
 
@@ -453,12 +453,12 @@ llm:
   provider: openrouter
   model: <vendor>/<model>
   reasoning_effort: max      # or high / medium / low; blank or null for a model that doesn't think
-  max_tokens: 64000          # at most the endpoints' max_completion_tokens
+  max_tokens: 96000          # at most the endpoints' max_completion_tokens
   timeout_seconds: 600
   retries: 2
   openrouter:
     only: [<tag-1>, <tag-2>]  # tags from step 1, or delete this line to allow every endpoint
-    sort: price
+    order: [<fastest tag>, <tag-2>]  # tried in this order; or `sort: price` for cheapest first
     allow_fallbacks: true
 ```
 
@@ -542,7 +542,7 @@ Today it prints `week04 z-ai/glm-5.3-flash True 321 0.0053` and `week09 z-ai/glm
 
 ### Rolling back
 
-- **Back to GLM:** restore the old `llm` block (`provider: openrouter`, `model: z-ai/glm-5.3-flash`, `reasoning_effort: max`, `max_tokens: 64000`, the four-tag `only` list). `git diff config/settings.yaml` shows what changed. `git restore config/settings.yaml` discards an uncommitted edit.
+- **Back to GLM:** restore the old `llm` block (`provider: openrouter`, `model: z-ai/glm-5.3-flash`, `reasoning_effort: max`, `max_tokens: 96000`, the three-tag `only` list, the BaseTen-first `order`). `git diff config/settings.yaml` shows what changed. `git restore config/settings.yaml` discards an uncommitted edit.
 - **Out of the LLM entirely:** set `llm.provider: placeholder`, or for one run use `uv run nfl digest --season <S> --week <W> --llm placeholder` or `uv run nfl weekly run --season <S> --week <W> --llm placeholder`.
 - **The placeholder always stays** as the fallback writer, whatever the configured provider is.
 
@@ -590,7 +590,7 @@ P09 was written before OpenRouter was connected. By the time it ran, GLM had bee
 
 The fact-check scores (would I read this / did I learn something / nothing wrong or invented) went from **3 / 3 / 4** in round 1 to **4–5 / 4 / 5** for the prose in round 5; the only page-level deduction left is the backtest-only injury wording (D66). Every round had no fallback; no regeneration ran on an endpoint that skipped the reasoning after DeepInfra left the list. Round 4 (weeks 4 and 8 on `37d179c4b93a`) was folded into round 5.
 
-**What is still open:** the backtest-only injury wording (a backtest uses the week's final Friday report, D66, but the note says "this week's injury report" on a Tuesday-dated page), two graph-ranking habits the writer can't fix (a "better without him" ripple chosen as the week's risk; a trend mismatch that repeats the team-trend numbers), the outlook sometimes quoting the underdog's win % (correct but inconsistent), `check_hedging` letting one unnamed hedge sentence cover a whole section, and the routing choice above (price vs throughput).
+**What is still open:** the backtest-only injury wording (a backtest uses the week's final Friday report, D66, but the note says "this week's injury report" on a Tuesday-dated page), two graph-ranking habits the writer can't fix (a "better without him" ripple chosen as the week's risk; a trend mismatch that repeats the team-trend numbers), and `check_hedging` letting one unnamed hedge sentence cover a whole section. (The outlook's win % and the routing were settled after P09 closed, D88.)
 
 **The Sol review** (Codex `gpt-6.1-sol`) found 6 issues in the P09 code, all fixed and verified: the closing-quote split breaking quoted abbreviations, runs of closing marks, a quoted "Jr." before a new sentence, invented initialed names slipping past the name heuristic, `nfl doctor` matching service-tier endpoints by provider slug (OpenRouter never does) and accepting null endpoint entries; a missing model is now a FAIL.
 

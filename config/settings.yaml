@@ -16,10 +16,13 @@ llm:                      # digest prose writer (documentation/06; D56)
   max_tokens: 96000       # whole completion, reasoning included (P09: a call used 51k of 64k)
   timeout_seconds: 600
   retries: 2              # extra attempts on timeouts, 429 and 5xx
-  openrouter:             # provider routing: only these endpoints, cheapest first
+  openrouter:             # provider routing: only these endpoints, fastest first
     # deepinfra/fp4 dropped in P09 (D87): 3 of its 5 saved calls skipped the reasoning
     only: [baseten/fp8, relace, novita/fp8]
-    sort: price
+    # Rishi (D88): speed over a cent. BaseTen wrote a digest in 3 min vs Novita 12-25 min.
+    # An explicit order, not `sort: throughput`: OpenRouter publishes no throughput stats
+    # for these endpoints, and a throughput-sorted test call still went to Novita.
+    order: [baseten/fp8, novita/fp8, relace]
     allow_fallbacks: true
 
 # Optional data sources (documentation/03 -> Additional free sources). All fail soft.
