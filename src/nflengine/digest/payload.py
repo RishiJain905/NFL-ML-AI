@@ -279,8 +279,8 @@ class WatchItem(Model):
     injury_note: str | None = None  # "listed questionable on this week's injury report"
     confidence: Literal["low", "medium", "high"] = "low"
     source: Literal["heuristic", "model"] = "heuristic"
-    # code-made: "<phrase> (puts the projection 9 receiving yards above a typical player in
-    # his group)"; only drivers >= 20% of the gap to baseline, same direction first
+    # code-made: "<phrase> puts the projection 9 receiving yards above a typical player in
+    # his group"; only drivers >= 20% of the gap to baseline, same direction first
     drivers: list[str] = Field(default_factory=list)
     driver_note: str | None = None  # "no single factor stands out" when no driver qualifies
     # P08, only when a shipped target projects the pick: his chance of a touchdown (RB / WR /

@@ -219,18 +219,27 @@ def _evidence(r: dict) -> tuple[list[str], list[str]]:
     if out:
         ev.append("recently without " + ", ".join(_who(n, pos) for n, pos in out))
         people += [n for n, _ in out]
+    # every rate change says which way it moved and, for pressure, what that means: a bare
+    # "+7.0 points" of pressure allowed read as good next to an "up" trend (P09 fact-check)
     dp = r.get("def_pressure_rate_delta")
     if dp is not None and abs(dp) >= 0.05:
-        ev.append(f"pass rush's pressure rate {F.pct_points(100 * dp).display} vs {before}")
+        more = "more" if dp > 0 else "less"
+        ev.append(
+            f"pass rush's pressure rate {F.pct_points_change(100 * dp).display} vs {before} "
+            f"({more} pressure on opposing QBs)"
+        )
     op = r.get("off_pressure_rate_delta")
     if op is not None and abs(op) >= 0.05:
+        more = "more" if op > 0 else "less"
         ev.append(
-            f"pressure rate allowed by the offense {F.pct_points(100 * op).display} vs {before}"
+            f"pressure rate allowed by the offense {F.pct_points_change(100 * op).display} "
+            f"vs {before} (its QB under {more} pressure)"
         )
     cp = r.get("off_cpoe_delta")
     if cp is not None and abs(cp) >= 4:
         ev.append(
-            f"passing offense's completion % over expected {F.pct_points(cp).display} vs {before}"
+            "passing offense's completion % over expected "
+            f"{F.pct_points_change(cp).display} vs {before}"
         )
     return ev[:2], list(dict.fromkeys(p for p in people if p))
 
@@ -316,9 +325,19 @@ def build_under_hood(sel: pl.DataFrame) -> list[UnderHoodItem]:
                 metric=r["metric"],
                 label=r["label"],
                 kind=r["kind"],
-                last_week=F.metric(r["last_week"], unit),
+                # counts carry their unit ("9 pressures", "1.5 pressures per game"): bare
+                # "9" vs "1.5" made GLM add "in 1 game" of its own (P09 fact-check)
+                last_week=(
+                    F.count_stat(r["last_week"], r["label"])
+                    if unit == "count"
+                    else F.metric(r["last_week"], unit)
+                ),
                 season_avg=(
-                    F.metric(r["norm"], "count_avg" if unit == "count" else unit)
+                    (
+                        F.per_game(r["norm"], r["label"])
+                        if unit == "count"
+                        else F.metric(r["norm"], unit)
+                    )
                     if has_norm
                     else None
                 ),

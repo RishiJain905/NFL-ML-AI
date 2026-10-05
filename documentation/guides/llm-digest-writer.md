@@ -1,16 +1,16 @@
-# Guide: the LLM that writes the digest prose (P04, D56; P09 plans the rest)
+# Guide: the LLM that writes the digest prose (P04, D56; re-checked and closed in P09, D87)
 
-**Writer:** `openrouter` · `z-ai/glm-5.3-flash` · reasoning effort `max` · **Chosen:** 2026-10-03 (D56, at Rishi's request in P04) · **Fallback writer:** `placeholder` (template text) · **Key:** `OPENROUTER_API_KEY` · **Code:** `digest/llm/` (`base.py`, `openrouter.py`, `placeholder.py`, registry in `__init__.py`), `digest/prompt/` (`system.md`, `sections.yaml`, `__init__.py`), `digest/synthesize.py`, `digest/checks.py`, `digest/facts.py`, `digest/render.py`, `digest/run.py`, `digest/graph_sections.py` · **Config:** `config/settings.yaml` → `llm`, `digest.word_budgets` · **Decisions:** D53, D56, D60, D61 · **Plan:** [P09](../plans/P09-llm-connection.md) · **Spec:** [06](../06-weekly-digest.md)
+**Writer:** `openrouter` · `z-ai/glm-5.3-flash` · reasoning effort `max` · **Chosen:** 2026-10-03 (D56, at Rishi's request in P04) · **Fallback writer:** `placeholder` (template text) · **Key:** `OPENROUTER_API_KEY` · **Code:** `digest/llm/` (`base.py`, `openrouter.py`, `placeholder.py`, registry in `__init__.py`), `digest/prompt/` (`system.md`, `sections.yaml`, `__init__.py`), `digest/synthesize.py`, `digest/checks.py`, `digest/facts.py`, `digest/render.py`, `digest/run.py`, `digest/graph_sections.py` · **Config:** `config/settings.yaml` → `llm`, `digest.word_budgets` · **Decisions:** D53, D56, D60, D61, D87 · **Plan:** [P09](../plans/P09-llm-connection.md) (closed 2026-10-05) · **Spec:** [06](../06-weekly-digest.md)
 
 Paths below that start with `runs/` or `reports/` are under the data root (`D:\nfl-ml-data`).
 
 ## The short version
 
 - The LLM is a **copy editor, not an analyst.** Code makes every number, every ranking and every "who is home" fact. The LLM turns that into readable sentences.
-- It writes **up to seven short sections** (530 words, or 700 with the knowledge-graph sections). Code writes the header, tables, report card numbers and footer.
+- It writes **up to seven short sections** (570 words, or 740 with the knowledge-graph sections). Code writes the header, tables, report card numbers and footer.
 - Every sentence it writes is **checked by code** (11 checks). A fail-level problem triggers **one** rewrite with the exact offending tokens. If it still fails, the digest ships with a **warning banner**.
 - If the provider is down, rejects the request or returns garbage, the **placeholder writes the prose instead** and the footer says so. The weekly run doesn't stop because the provider failed. (A config error that stops the client being built, such as `llm.provider: anthropic`, does stop it.)
-- A call costs about half a cent to 1.6 cents. It takes from 2.5 minutes to over 20, because the model "thinks" for most of that time.
+- A call costs about half a cent to 1.7 cents (a digest 1 to 2.7 cents in the P09 backtests). It takes from 2.5 minutes to over 20 (9 to 35 minutes per digest in P09, with a ~22,000-token prompt), because the model "thinks" for most of that time.
 - Switching models is a **config-only change** in `config/settings.yaml`, plus a smoke test on backtest weeks. Section 6 is the step-by-step.
 
 ## 1. What the LLM does, and what it doesn't
@@ -44,13 +44,13 @@ Code puts them in this order (`render.SECTION_TITLES`). The budgets are in `conf
 | 2 | `game_outlook` | Game outlook | A blurb under the code table: 1 to 3 games where the model (without market data) differs most from consensus, plus the most lopsided and closest games with their `rank_note` | 80 | `games`, `game_highlights` | Always |
 | 3 | `team_trends` | Team trend shifts | 2 to 4 teams trending up or down: the first driver, the net rating now, supporting evidence. Descriptive, not predictive | 120 | `team_trends` | Always |
 | 4 | `under_the_hood` | Last week under the hood | 3 to 5 tracking / charting notes: who rose or fell against his own norm, with small samples flagged | 110 | `under_the_hood` | Always |
-| 5 | `players_to_watch` | Players to watch | The 4 to 6 most notable of the 8 heuristic picks that code lists in a table above the prose (recent usage change, opponent defense rank, baseline). Low confidence until the player model ships (P06) | 160 | `players_to_watch` | Always |
+| 5 | `players_to_watch` | Players to watch | The 2 to 3 most notable picks per side, offense first, of the 10 offense + 10 defense model picks that code lists in two tables above the prose (D70): projection, vs-baseline, likely range, one or two drivers copied whole. Without projections (a failed refit), the 4 to 6 most notable of 8 low-confidence heuristic picks | 200 | `players_to_watch` | Always |
 | 6 | `matchup_risk` | Matchup / risk to watch | The knowledge-graph item for this section (usually one): an injury ripple, a QB change or a trend mismatch | 80 | `graph_insights` | Phase P05: only when the graph is available |
 | 7 | `non_obvious` | Non-obvious insights | One or two graph items: a player facing his former team, common opponents, a trend mismatch | 90 | `graph_insights` | Phase P05: only when the graph is available |
 
-- **Totals:** 530 words for sections 1 to 5, **700** with the graph sections.
-- **Whole-digest cap:** 105% of the active budgets, so 735 words with the graph sections (556 without them).
-- **A real digest** (2026 week 4, live): 23 + 66 + 147 + 127 + 145 + 99 + 109 = **716 words**. Team trends came to 147 against a limit of 150.
+- **Totals:** 570 words for sections 1 to 5, **740** with the graph sections (the players budget went from 160 to 200 with D70).
+- **Whole-digest cap:** 105% of the active LLM budgets, so 777 words with the graph sections (598 without them). Code-written sections are left out of the cap.
+- **A real digest** (2026 week 4, live, P05, before D70): 23 + 66 + 147 + 127 + 145 + 99 + 109 = **716 words**. Team trends came to 147 against a limit of 150.
 - **`payload` keys in `sections.yaml`** only tell the model where to look. The model is sent the **whole** payload (7,700 to 9,000 prompt tokens in the runs so far), not just those parts.
 
 ### Which sections code writes instead
@@ -70,7 +70,7 @@ Code puts them in this order (`render.SECTION_TITLES`). The budgets are in `conf
 - the report card's bullet lines (week, season, calibration);
 - the game outlook table with its notes (no market line, neutral site, games already kicked off), its **QBs (away / home)** column and the **⚠ QB changes** notes (D63);
 - **Starters out this week** under the table (regular starters who won't play, up to 3 per team);
-- the line "Heuristic picks until the player model ships (P06): low confidence." and the **table of all 8 watch-list picks** above the players prose;
+- the **Offense** and **Defense** watch tables above the players prose (all 20 picks; the "TD chance" / "Sack chance" columns since P08, which never reach the LLM), and the **Tough spots** (P06, D70). With heuristic picks instead: one table of 8 and a "low confidence" line;
 - **More from the graph** after the Non-obvious prose (up to 6 strong graph stories that didn't fit, one line each);
 - **Latest news** (up to 4 ESPN headlines, live runs) before the footer;
 - any banner, and the footer.
@@ -97,7 +97,7 @@ llm:
 
 | Setting | Now | What it does |
 |---|---|---|
-| `provider` | `openrouter` | Which client the registry builds. `placeholder` and `openrouter` work today. `anthropic` and `openai_compatible` are planned (P09) and not built |
+| `provider` | `openrouter` | Which client the registry builds: `placeholder` or `openrouter`. `anthropic` and `openai_compatible` were left unbuilt when P09 closed (D87): OpenRouter serves Claude and open models by changing `model` |
 | `model` | `z-ai/glm-5.3-flash` | The OpenRouter model id |
 | `reasoning_effort` | `max` | Sent as `reasoning: {effort: max, exclude: true}`. The model thinks first. The thinking is **billed but not returned** (`exclude`). Leave it blank or `null` and no `reasoning` field is sent (for models that don't think) |
 | `max_tokens` | `64000` | A cap on the **whole completion, thinking included**. Every allowed endpoint accepts up to 131,072 |
@@ -168,6 +168,11 @@ OpenRouter picks the endpoint at request time. Every call in the saved run files
 | 2025 week 9 backtest | 1 | **1,260 s (21 min)** | 8,803 | **43,864** (42,771) | $0.0130 | Novita |
 | First live attempts (PROGRESS, D56) | 1 to 2 | 19 to 21 min | | | $0.013 to $0.016 | |
 | First backtests (D56) | 1 | 4.5 to 15 min | | 10k to 26k | $0.003 to $0.008 | Novita, DeepInfra |
+| P09 final code, 2025 weeks 4 / 8 / 14 (round 5) | 1 each | 16, 19, 21 min | 22,098 to 23,829 | 37,481 to 46,538 (36k to 45k) | $0.012 to $0.015 | Novita |
+| P09 final code, 2025 week 9 (round 5) | 1 | **3 min** | 22,558 | 35,729 (34,618) | $0.021 | **BaseTen** |
+| P09 regenerations (rounds 1–3) | 2 | 9 to 37 min in all | ~24k on the second call | | $0.011 to $0.027 | Novita, BaseTen, DeepInfra (0 reasoning: dropped) |
+
+- **BaseTen reasoned as much as Novita in a fifth of the time** (week 9: 3 minutes vs 12–23) for about a cent more per digest. `sort: price` usually picks Novita. `sort: throughput` in `llm.openrouter` (or BaseTen first in an `order` list) would make the weekly digest step about 3 minutes; it is Rishi's call (P09 kept the routing on price).
 
 - **Thinking is almost the whole bill:** 94% of the week 4 live completion tokens (15,963 of 17,010) were thinking. The visible JSON is about 1,000 tokens.
 - **Latency swings 10x** (2.5 to 21 minutes, and up to 30 if a call retries) for the same prompt size. It tracks how long the model thinks and how busy the endpoint is.
@@ -226,7 +231,7 @@ render -> digest.md, report copy, payload.json, raw_llm_output.json, checks.json
 | First draft fails a fail-level check | Regenerate once | `regenerated: true` in `checks.json` |
 | The **regeneration call** fails | The placeholder's text **replaces** the first draft (it passes the checks) | `writers: ["openrouter", "placeholder"]` |
 | Second draft still fails | Published with the warning banner | banner, `passed: false`, exit code 2 |
-| `llm.provider` is `anthropic`, `openai_compatible` or a typo | The run **stops** while building the client: "LLM provider 'anthropic' isn't connected yet (P09). Set llm.provider: placeholder in config/settings.yaml for now." The fallback only covers failures after the client exists | terminal |
+| `llm.provider` is `anthropic`, `openai_compatible` or a typo | The run **stops** while building the client: "LLM provider 'anthropic' isn't built (D87). Use llm.provider: openrouter with that model's OpenRouter name, or placeholder." (a typo: "unknown LLM provider"). The fallback only covers failures after the client exists. `nfl doctor` shows the same as a FAIL | terminal, `nfl doctor` |
 
 **The placeholder** (`llm/placeholder.py`) fills fixed sentence templates straight from the payload's display strings. It ignores the system prompt and any feedback. Every sentence with a number also names the number's owner, and it fits each section to its budget, so it passes all the checks. That is why it is a safe fallback and a good baseline for side-by-side backtests.
 
@@ -319,7 +324,7 @@ Two files, both in `src/nflengine/digest/prompt/`. A change to either changes th
 
 ### `system.md`: the rules
 
-The file opens with the voice ("a smart friend who watches more film than he does, texting him what actually matters. Direct, specific, a bit of personality, no hype") and the job ("You do no prediction, no arithmetic and no lookups"). Then 20 numbered hard rules and a few format rules.
+The file opens with the voice ("a smart friend who watches more film than he does, texting him what actually matters. Direct, specific, a bit of personality, no hype") and the job ("You do no prediction, no arithmetic and no lookups"). Then 22 numbered hard rules and a few format rules.
 
 | Group | Rules | What they are for |
 |---|---|---|
@@ -327,9 +332,11 @@ The file opens with the voice ("a smart friend who watches more film than he doe
 | **No betting or fantasy** | 3, 4, 5, 10 | No spreads, totals, odds, "locks", "value", "fades", covering. Describe the consensus gap in words only. No fantasy points, rankings, start/sit. Rule 10 lists the exact words the checks reject (even in everyday use: "cover", "line", "spread", "value") so the model avoids them |
 | **Honesty** | 6, 7, 8, 9, 16 | Say "low confidence" or "small sample" in the same sentence. Attribute news ("per ESPN"). Don't add teams, players or facts, and name the player or team that owns each number in the same sentence (8). Trends are descriptive, not predictive. Evidence is time-scoped ("started their latest game" is not "has taken over") |
 | **Meaning stays in code** | 12, 13, 14, 15, 17, 18, 19, 20 | Never rank or compare yourself: superlatives only from `game_highlights` / `rank_note` (12). Use the `matchup` string exactly (13). Use `model_vs_consensus.text` word for word (14). A trend delta is a change, the level is `net_rating` (15). Copy evidence and driver strings whole, with their unit words (17). How to write a team trend: first driver by its unit, then "net rating now ..." (18). Describe a matchup only with `opp_def_rank` (19). Copy graph fact texts whole, and never turn a with / without comparison into a forecast (20) |
+| **Code-written neighbours** | 21 | The game table's QB column and QB-change notes, "Starters out", "More from the graph", "Tough spots", the watch-list look-back, the projection highlights and "Latest news" are already on the page: don't restate them |
+| **Player projections** | 22 | A projection is the middle outcome and the interval its likely range; copy projection, range, baseline and vs-baseline with their units; a driver compares him with a typical player in his group, never his own form; never "will reach" a number |
 | **Format** | (list after the rules) | Markdown prose only, no headers (code adds them), no tables. Return JSON `{section_id: markdown}` for exactly the ids in the output spec. Stay within each section's budget (plus or minus 25%) and the whole digest within the total |
 
-Where the later rules came from: 12 to 16 match the P04 fact-check (superlatives, home / road swap, consensus tiers, trend as level, QB evidence), 11 matches the calibration-bucket slip, 17 to 19 came from the second fact-check (dropped qualifiers, "a tough matchup"), and 20 came with the graph sections (P05).
+Where the later rules came from: 12 to 16 match the P04 fact-check (superlatives, home / road swap, consensus tiers, trend as level, QB evidence), 11 matches the calibration-bucket slip, 17 to 19 came from the second fact-check (dropped qualifiers, "a tough matchup"), 20 came with the graph sections (P05), 21 with the code-written graph extras (D63) and 22 with the player model (P06, its wording fixed after the week-4 fact-check, D69).
 
 The prompt rules and the checks say the same things twice on purpose. The prompt tells the model what to do. The checks prove it did.
 
@@ -349,7 +356,7 @@ The **word budgets** are not in this file. They are in `config/settings.yaml` �
 
 ### The prompt hash
 
-- **What it is:** the first 12 hex characters of `sha256(system.md + "\n---\n" + sections.yaml)`. The 2026 week 4 live digest used `8e0cd7b1a080` (still the current hash when this guide was written).
+- **What it is:** the first 12 hex characters of `sha256(system.md + "\n---\n" + sections.yaml)`. The 2026 week 4 live digest used `8e0cd7b1a080`; P08 ended at `325b85a78f4e`; **P09 ended at `0ee03e0cd26e`** (the version that goes live with week 5). The regeneration message (`openrouter.fix_message`) is code, not prompt, so it doesn't change the hash.
 - **Where it shows:** the digest footer ("prompt `8e0cd7b1a080`"), W&B config `prompt_hash`, and the W&B artifact metadata.
 - **What it does not cover:** the **word budgets** (logged separately as W&B config `word_budgets`), and the **model and provider** (W&B config `llm_model`, `llm_provider`; the footer's `Writer:` line). A change to any of those leaves the hash alone. When comparing runs, compare hash, model and budgets together.
 
@@ -397,10 +404,10 @@ Variable names only. Rishi edits the env file himself; agents never open it.
 |---|---|---|
 | `placeholder` | Nothing | Works today |
 | `openrouter` | `OPENROUTER_API_KEY` | Works today |
-| `anthropic` | `LLM_API_KEY` (planned) | **Not built.** Raises "LLM provider 'anthropic' isn't connected yet (P09)" |
-| `openai_compatible` | `LLM_API_KEY`, `LLM_BASE_URL` (planned): any OpenAI-compatible server, such as Ollama, vLLM or LM Studio | **Not built.** Same message |
+| `anthropic` | `LLM_API_KEY` (reserved) | **Not built (D87).** Raises "LLM provider 'anthropic' isn't built (D87) ..." and `nfl doctor` shows FAIL. For a Claude model, keep `openrouter` and set `model` to its OpenRouter name |
+| `openai_compatible` | `LLM_API_KEY`, `LLM_BASE_URL` (reserved): any OpenAI-compatible server, such as Ollama, vLLM or LM Studio | **Not built (D87).** Same message |
 
-`.env.example` lists the names. The settings module already has the `LLM_API_KEY` and `LLM_BASE_URL` fields (as `SecretStr` and a plain string), but no code reads them yet. Adding either provider means one new module in `digest/llm/` plus a line in the registry (`PROVIDERS` in `llm/__init__.py`). Nothing else changes. A test enforces that nothing outside `digest/llm/` imports a provider.
+`.env.example` lists the names. The settings module keeps the `LLM_API_KEY` and `LLM_BASE_URL` fields (as `SecretStr` and a plain string) for a later adapter, but no code reads them. Rishi decided in P09 that OpenRouter is enough (D87). Adding a provider later means one new module in `digest/llm/` plus a line in the registry (`PROVIDERS` in `llm/__init__.py`); see "Adding another provider type" below. A test enforces that nothing outside `digest/llm/` imports a provider.
 
 ### The steps (switching to another OpenRouter model)
 
@@ -455,7 +462,7 @@ llm:
     allow_fallbacks: true
 ```
 
-- **Change `only` together with `model`.** The four tags are GLM's. For another model OpenRouter finds no endpoint it is allowed to use and answers with an HTTP error (not retried), and the placeholder writes the digest. Delete the line rather than leave it as an empty list.
+- **Change `only` together with `model`.** The four tags are GLM's. For another model OpenRouter finds no endpoint it is allowed to use and answers with an HTTP error (not retried), and the placeholder writes the digest. `nfl doctor` flags this (step 4). Delete the line rather than leave it as an empty list.
 - **`only` is also who gets to see the payload.** Each endpoint provider has its own data policy.
 - A thinking model needs a large `max_tokens` (the thinking counts). A model that doesn't think can use a much smaller one.
 
@@ -465,7 +472,7 @@ llm:
 uv run nfl doctor
 ```
 
-The `llm` row should read `openrouter key accepted; <model> has N endpoints` (today: `z-ai/glm-5.3-flash has 35 endpoints`). Doctor reports set / not set and never shows the value. It checks that the key is accepted (a status-only call) and that the model exists. **It does not check your `only` list, the effort value or whether the model follows the output format.** The smoke test does.
+The `llm` row should read `openrouter key accepted; <model> has N endpoints, K of M allowed ones listed` (2026-10-05: `z-ai/glm-5.3-flash has 34 endpoints, 4 of 4 allowed ones listed`). Doctor reports set / not set and never shows the value. It checks that the key is accepted (a status-only call), that the model exists, and (since P09) that **at least one entry of `llm.openrouter.only` serves that model** (an entry matches an endpoint tag such as `novita/fp8` or a provider slug such as `novita`). A model switch that keeps GLM's four tags now shows `FAIL: none of the 4 llm.openrouter.only endpoints serves <model>` instead of quietly falling back to the placeholder on Tuesday. **It does not check the effort value or whether the model follows the output format.** The smoke test does.
 
 **Step 5. Smoke test one backtest week, without W&B.**
 
@@ -539,29 +546,53 @@ Today it prints `week04 z-ai/glm-5.3-flash True 321 0.0053` and `week09 z-ai/glm
 - **Out of the LLM entirely:** set `llm.provider: placeholder`, or for one run use `uv run nfl digest --season <S> --week <W> --llm placeholder` or `uv run nfl weekly run --season <S> --week <W> --llm placeholder`.
 - **The placeholder always stays** as the fallback writer, whatever the configured provider is.
 
-### Switching to a P09 provider later (not built)
+### Adding another provider type (not built, D87)
+
+**Usually you don't need one.** OpenRouter serves Claude (`anthropic/...`), GPT, Gemini and the open models, so a model switch stays a config change (the steps above). A native adapter only makes sense to use a key from another vendor directly, or a model running on this PC (Ollama, LM Studio, vLLM).
 
 `anthropic` and `openai_compatible` need a new client class implementing `generate(system_prompt, payload, output_spec) -> {section_id: markdown}`, a line in `PROVIDERS`, and the env variables above. The checks, the regenerate-once flow, the fallback and the files all work unchanged. The regeneration contract matters: when `output_spec["previous"]` is set, send the first draft and `output_spec["feedback"]` back to the model (OpenRouter's `fix_message` is the template). Smaller open-source models may struggle with strict JSON, so use the server's JSON or grammar mode where it has one. The lenient parser stays as the safety net.
 
-### What P09 still plans (status on 2026-10-03)
+### P09: the re-check on today's digest (2026-10-05, D87)
 
-P09 was written before OpenRouter was connected. Its note at the top says it is partly done. Its task boxes are still unticked.
+P09 was written before OpenRouter was connected. By the time it ran, GLM had been writing the digest since P04, but the digest had grown a lot: the graph sections (P05), the player model with 10 offense + 10 defense picks (P06, D70), the P08 columns and GDS items. The prompt went from ~8,000 to ~22,000 tokens. So P09 became a **re-check of GLM on the full digest**, with fixes.
 
-| P09 item | Status |
+**Rishi's choices at the kickoff:** P04's review and live run count for the 🧑 / ✋ steps and agents re-verify; **no native `anthropic` / `openai_compatible` adapters** (OpenRouter serves those models by config); **no lower-effort trial** (`reasoning_effort` stays `max`).
+
+**How it was checked.** The 2025 weeks 4, 8, 9 and 14 as backtests, each with the placeholder first (it rebuilds the week's graph) and then GLM (`--graph read`, the same graph). Every GLM digest was read against its `payload.json` by an independent opus-high fact-checker: every number's field, owner, unit and time scope, the meaning checklist above, and a 1–5 score on P04's rubric (would I read this / did I learn something / nothing wrong or invented).
+
+**What round 1 found** (prompt `325b85a78f4e`, the P08 code):
+
+- **0 of 4 passed first time**; all 4 passed after one regeneration, no fallback, and the fact-check found **no material meaning error**.
+- Every first-attempt failure was a real slip, not a false positive: **orphan sentences** that name nobody, so `entity_binding` can't find an owner ("Driver: 'his recent form ... 1.4 tackles above ...'", "Context: pressure rate allowed by the offense +7.0 points ...", "It's a bigger role this week ... 58% ...", "Low confidence, small sample (5 targets).", "Small sample - 5 games without him."), plus "Three moves worth tracking" (a number word).
+- Meaning slips the checks can't see: a self-made verdict ("Good week"), "the model's biggest disagreements" inside one consensus tier, "season average" for a norm that blends two seasons, the prompt's own words in the prose ("a fact, not a motive"), a passing-offense stat tied to a pass-defense trend ("That tracks with ...").
+- The players section read like a table row turned back into text; reader scores 3 / 3 / 4, and GLM added little over the placeholder.
+- **Two endpoint and check problems:** DeepInfra served 2 of the 4 regenerations with **0 reasoning tokens** (3 of its 5 saved calls ever), and the sentence splitter didn't split after `.'`, so a quoted driver sentence merged with the next player's and the binding reason named the wrong player (a merge could also hide a slip). "J.J. McCarthy" tripped the name heuristic as "J Mc".
+
+**What changed** (D87; each fix aimed at the slip, never at loosening a check):
+
+| Area | Change |
 |---|---|
-| Rishi picks the provider and model, adds `LLM_API_KEY` / `LLM_BASE_URL` | Overtaken: he chose OpenRouter and GLM in P04 (D56, `OPENROUTER_API_KEY`). The two `LLM_*` variables only matter for the providers that aren't built |
-| `anthropic.py` and / or `openai_compatible.py` | **Not built** |
-| Timeouts, retries, token / latency logging to W&B | Done for OpenRouter (`calls`, `llm/*`) |
-| Regenerate once with a structured "fix these" message | Done |
-| `nfl doctor` checks the provider is reachable | Done for `openrouter` (key accepted, model listed). Other providers show a warning, "not implemented until P09" |
-| Backtest digests, placeholder and real LLM side by side | Done: 2025 weeks 4, 8, 9, 14 |
-| Rishi's review of the real-LLM backtests | Done in P04: "really really good outside of the players to watch section" |
-| Prompt iterations, each hashed in W&B | The hash mechanism is done. Iteration is ongoing |
-| Exit: checks pass first time on at least 80% of backtest digests | GLM passed first time on 4 of 4 in the final round of 2025 backtests, and on the live run of 2026 week 4 |
-| Exit: a live digest with the real LLM | Done (2026 week 4) |
-| Exit: swapping provider is config only | True for OpenRouter models. A new provider type needs one new module |
+| Prompt rules (`system.md`) | Rule 2: no counts of its own ("in 1 game"). Rule 12: no grading ("good week") and no "biggest" outside an item's `rank_note`. Rule 22: a driver pointing the other way from `vs_baseline` is a comparison with a typical player; low confidence, a baseline note and a driver are separate facts. Format rules: natural sentences with no label-and-colon openers, the owner named in every sentence with a number (no "he / his / it" carrying a number), a hedge never tied with "so" / "since", trim whole sentences, never copy the instructions, aim for each budget because the whole digest only gets 5% |
+| Section instructions (`sections.yaml`) | Players: one or two natural sentences each, projection + vs-baseline + baseline, the range only for low confidence, one driver framed against a typical player, a placeholder-only example sentence. Report card: lean (pick record, Brier vs Elo "(lower is better)", the biggest miss), because the code bullets already list the rest. Game outlook: "much" gaps first, never "biggest", every game named with its favorite's win %. Trends: evidence in its own sentence naming the team. Under the hood: "his norm", not "season average". Every example uses placeholders, never real names |
+| Payload strings | Drivers are plain clauses ("his share of the team's carries lately puts the projection 9 rushing yards above a typical player in his group"), and one pushing against the gap adds "(not his own baseline)". Rate changes say which way and what it means ("pressure rate allowed by the offense up 7.0 points vs earlier this season (its QB under more pressure)"). Count items carry their unit ("9 pressures", "1.5 pressures per game"). A rounded zero prints "0.00", never "-0.00" |
+| Regeneration (`openrouter.fix_message`) | Change only what the issues need and keep the rest; "no entity named" means add the name, a named owner who doesn't own the number means remove it; trim whole sentences, never words inside a copied string |
+| Checks | The splitter also splits after a closing quote or bracket; the name heuristic reads initials and inner capitals. Nothing was loosened |
+| Routing and doctor | `deepinfra/fp4` left `llm.openrouter.only`; `max_tokens` 96,000 (a first call used 51k of 64k); `nfl doctor` FAILs when no `only` entry serves the model |
 
-What is really left: the two adapters (if ever wanted), a lower-effort or faster-model trial for the latency, and Rishi's tone and prompt feedback.
+**The rounds** (GLM; W&B group `digest-dev`; each run's config holds its `prompt_hash`):
+
+| Round | Prompt (code) | 2025 w4 | w8 | w9 | w14 | First time |
+|---|---|---|---|---|---|---|
+| 1 | `325b85a78f4e` (P08) | regenerated, passed (`9zgdsr8u`, 18 min) | regenerated, passed (`2pcrkemo`, 9 min) | regenerated, passed (`in9l3civ`, 35 min) | regenerated, passed (`rvoz28rs`, 19 min) | **0 of 4** |
+| 2 | `8e36d33c11d3` (w4, w8), `78d676ccaceb` (w9), `1c27f929b4d0` (w14) | first time (`rt845e9p`, 13 min) | **banner** after the regeneration: GLM's own "in 1 game" (`0m8xytqj`, 26 min) | length, then passed (`nyroja5e`, 20 min) | report-card length, then passed (`ibyeovtp`, 14 min) | 1 of 4 |
+| 3 | `0eb81af95a6c` (w4, w8), `37d179c4b93a` (w9) | first time (`tyaammhp`, 14 min) | first time (`zoh82b5v`, 12 min) | one "his" orphan, then passed (`ffql6n5p`, 37 min) | stopped (superseded) | 2 of 3 |
+| **5 (final code)** | `37d179c4b93a` (w4, w8), **`0ee03e0cd26e`** (w9, w14); notes that name their player | **first time** (`vl9a23xc`, 16 min, $0.012) | **first time** (`lt0ucwnb`, 19 min, $0.015) | **first time** (`navpqgvu`, 3 min on BaseTen, $0.021) | **first time** (`eta3qyx8`, 21 min, $0.012) | **4 of 4** |
+
+The fact-check scores (would I read this / did I learn something / nothing wrong or invented) went from **3 / 3 / 4** in round 1 to **4–5 / 4 / 5** for the prose in round 5; the only page-level deduction left is the backtest-only injury wording (D66). Every round had no fallback; no regeneration ran on an endpoint that skipped the reasoning after DeepInfra left the list. Round 4 (weeks 4 and 8 on `37d179c4b93a`) was folded into round 5.
+
+**What is still open:** the backtest-only injury wording (a backtest uses the week's final Friday report, D66, but the note says "this week's injury report" on a Tuesday-dated page), two graph-ranking habits the writer can't fix (a "better without him" ripple chosen as the week's risk; a trend mismatch that repeats the team-trend numbers), the outlook sometimes quoting the underdog's win % (correct but inconsistent), `check_hedging` letting one unnamed hedge sentence cover a whole section, and the routing choice above (price vs throughput).
+
+**The Sol review** (Codex `gpt-6.1-sol`) found 6 issues in the P09 code, all fixed and verified: the closing-quote split breaking quoted abbreviations, runs of closing marks, a quoted "Jr." before a new sentence, invented initialed names slipping past the name heuristic, `nfl doctor` matching service-tier endpoints by provider slug (OpenRouter never does) and accepting null endpoint entries; a missing model is now a FAIL.
 
 ## 7. What to look at after a run
 
@@ -622,9 +653,9 @@ The `check_issues` table and `check/*` keys describe the **final** attempt. The 
 1. **The checks prove origin, not meaning.** Every number must come from the payload and sit next to its owner. Nothing proves the sentence says the right thing. In P04, all four GLM digests had every number correct and **all four still had a meaning error** (made-up superlatives, a Colts / Titans home swap, flattened consensus tiers, trends read as levels, "has taken over from" last season's QB, a bare "1st" defense rank read as "toughest"). The fixes were in code, not in the checks (section 4, "Meaning stays in code"). After a prompt, payload or model change, **read the prose against `payload.json`.**
 2. **A defense rank needs its direction in the string.** The bare "1st" (meaning weakest) was written as "the 1st-ranked pass defense", and GLM called a 17th-of-32 defense "a tougher matchup". The display is now "league's weakest", "3rd-weakest", "4th-strongest", and "about league-average (...)" for the middle of the league (`build.defense_rank_note`). The same goes for any sign or unit.
 3. **Small numbers are owned by coincidence.** A number counts as "owned" if any display string of a named entity contains it, with no check of *which* stat it came from. Tested on the 2026 week 4 payload: the Raiders own a "3" (from "over the last 3 weeks"), so "The Raiders had 3 sacks last week" passes both provenance and binding, while "7 sacks" fails. Two stats of the same owner can also be swapped (the driver's 0.09 placed where the trend's 0.12 belongs) and pass. The defenses are code-made whole phrases and prompt rules 17 and 18 ("copy evidence strings and driver changes whole, with their unit"). They reduce the risk but don't remove it. The only full fix would be per-field binding, which no check does today.
-4. **Latency at `reasoning_effort: max` is large and unpredictable.** 2.5 to 21 minutes, up to about 30 with retries, 94% of it hidden thinking. The graph picks skip games kicking off within 90 minutes for this reason. A lower effort (`high`, `medium`) is untested: if you try it, run the comparison in section 6 before going live.
-5. **Token headroom is thinner than it looks.** The week 9 backtest used 43,864 of 64,000 tokens. A truncated reply is retried once, and a second truncation falls back to the placeholder. Watch `finish_reason` in `calls`, and raise `max_tokens` before the margin runs out.
-6. **The sentence splitter mostly, not always, splits after "Jr." and "Sr.".** The checks work sentence by sentence. A name ending in "Jr." or "Sr." does not end a sentence unless the next word is a common opener (The, A, In, His, Their, It, But, With, Last, Week ...). Followed by a team or player name, the two sentences stay merged ("Michael Penix Jr. Packers had 14"). That only loosens binding for those two sentences and can trip the warn-only name heuristic.
+4. **Latency at `reasoning_effort: max` is large and unpredictable.** 2.5 to 21 minutes in P04, and 9 to 35 minutes per digest in the P09 backtests (one call of 13–23 minutes, a regeneration adds 1–12 more), almost all of it hidden thinking. The graph picks skip games kicking off within 90 minutes for this reason. A lower effort (`high`, `medium`) is untested (Rishi kept `max` in P09): if you try it, run the comparison in section 6 before going live.
+5. **Token headroom.** The P09 week 9 backtest's first call used 51,293 completion tokens, so `max_tokens` went from 64,000 to **96,000** (every allowed endpoint takes 131,072). A truncated reply is retried once, and a second truncation falls back to the placeholder. Watch `finish_reason` in `calls`. **Also watch `reasoning_tokens`:** a 0 with `reasoning_effort: max` means the endpoint skipped the thinking (DeepInfra did on 3 of 5 calls, so it left the list in P09).
+6. **The sentence splitter mostly, not always, splits after "Jr." and "Sr.".** (Since P09 it also splits after a closing quote or bracket, `.'` or `.)`, where GLM ended quoted driver sentences.) The checks work sentence by sentence. A name ending in "Jr." or "Sr." does not end a sentence unless the next word is a common opener (The, A, In, His, Their, It, But, With, Last, Week ...). Followed by a team or player name, the two sentences stay merged ("Michael Penix Jr. Packers had 14"). That only loosens binding for those two sentences and can trip the warn-only name heuristic.
 7. **Fixed in P05: warnings that were always on.** `length_short` used to fire whenever a section was code-written (a "nothing to grade" report card is 23 words against a budget of 60). Code-written sections are now left out of the length checks and the whole-digest cap; their words are still counted in `words/*`. The live week-4 digest (run before the fix) still shows that warning.
 8. **Backtest files are shared between writers.** `payload.json`, `raw_llm_output.json` and `checks.json` in a run folder belong to whichever writer ran last for that week. Reports are split by provider name, not model. Save what you want to compare (section 6, step 2).
 9. **News isn't wired in.** The live payload carries ESPN `news`, and prompt rule 7 says to attribute it, but no section asks for news and the fact index doesn't register it. Any number in a news sentence would fail provenance.
@@ -633,7 +664,7 @@ The `check_issues` table and `check/*` keys describe the **final** attempt. The 
 ## Related
 
 - Spec and layout: [06 → Role of the LLM, LLM provider interface, Prompt structure, Automated checks, As built in P04 / P05](../06-weekly-digest.md)
-- Decisions: [D53 check rules, D56 OpenRouter and GLM, D60 graph text and picks, D61 the weekly `graph` step](../10-decisions-log.md)
-- What's planned: [P09](../plans/P09-llm-connection.md)
+- Decisions: [D53 check rules, D56 OpenRouter and GLM, D60 graph text and picks, D61 the weekly `graph` step, D87 the P09 re-check](../10-decisions-log.md)
+- P09 (closed 2026-10-05, D87): [P09](../plans/P09-llm-connection.md), the re-check in section 6
 - How-to for the digest code (checks, owners, debugging): the `digest-checks` skill at `.claude/skills/digest-checks/SKILL.md`
 - Run history and the fact-check findings: [PROGRESS](../plans/PROGRESS.md)

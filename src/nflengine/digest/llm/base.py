@@ -27,7 +27,7 @@ class LLMClient(Protocol):
 
 
 class ProviderNotConnected(RuntimeError):
-    """The configured provider has no client yet (real providers arrive in P09)."""
+    """The configured provider has no client (`anthropic` / `openai_compatible`, D87)."""
 
 
 class LLMError(RuntimeError):

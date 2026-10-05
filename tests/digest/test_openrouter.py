@@ -85,6 +85,10 @@ def test_regeneration_sends_draft_and_feedback() -> None:
     msgs = json.loads(seen[0].content)["messages"]
     assert [m["role"] for m in msgs] == ["system", "user", "assistant", "user"]
     assert "'88%'" in msgs[-1]["content"] and "feedback" not in msgs[1]["content"]
+    # P09 fact-check: a regeneration rewrote sections that hadn't failed and cut words out
+    # of a copied fact text while trimming ("... compared with an average team" lost)
+    assert "Change only what these issues require" in msgs[-1]["content"]
+    assert "never words inside a copied" in msgs[-1]["content"]
 
 
 @pytest.mark.parametrize(

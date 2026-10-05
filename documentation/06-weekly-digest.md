@@ -8,7 +8,7 @@ The LLM turns a validated, structured payload into readable prose. **It does no 
 - Every claim must be tied to an entity in the payload.
 - Automated checks enforce both before anything is published.
 - **Tables are rendered by code, not the LLM.** That covers the game outlook table, the report card numbers and the footer, which keeps the LLM's room for error small.
-- **The LLM is a placeholder until Rishi connects a real one.** See "LLM provider interface" below.
+- **A real LLM writes the prose** (GLM 5.3 Flash through OpenRouter since P04, D56; re-checked and closed in P09, D87). The placeholder template writer is the fallback. See "LLM provider interface" below.
 
 ## LLM provider interface
 
@@ -22,10 +22,10 @@ class LLMClient(Protocol):
 |---|---|---|
 | `placeholder` | A deterministic template writer: fills simple sentence templates straight from the payload's display strings | From the start. Lets the full pipeline, checks and report card run end to end with no API key. The checks get tested on predictable text. Also the automatic fallback when a real provider fails (D56) |
 | `openrouter` (**default since P04**, D56) | Any model on OpenRouter (`OPENROUTER_API_KEY`); configured as `z-ai/glm-5.3-flash`, reasoning effort `max`, routed to the cheapest of `baseten/fp8`, `relace`, `novita/fp8`, `deepinfra/fp4` | Connected in P04 at Rishi's request |
-| `anthropic` | Claude via the Anthropic SDK | When Rishi connects it ([P09](plans/P09-llm-connection.md)) |
-| `openai_compatible` | Any OpenAI-compatible endpoint (`LLM_BASE_URL`), which covers open-source models served by Ollama, vLLM or LM Studio | Same |
+| `anthropic` | Claude via the Anthropic API | **Not built** (Rishi's call when P09 closed, D87): a Claude model runs through `openrouter` by changing `llm.model` |
+| `openai_compatible` | Any OpenAI-compatible endpoint (`LLM_BASE_URL`), which covers open-source models served by Ollama, vLLM or LM Studio | **Not built** (D87); same reason. `LLM_API_KEY` / `LLM_BASE_URL` stay reserved |
 
-- Only `settings.yaml` (`llm.*`) and `.env` (`OPENROUTER_API_KEY`, or `LLM_API_KEY` / `LLM_BASE_URL` for the P09 providers) change when switching.
+- Only `settings.yaml` (`llm.*`) and, for a new key, `.env` (`OPENROUTER_API_KEY`) change when switching models.
 - **All checks below apply to every provider.** They matter most with smaller open-source models.
 - Writing the prose is a simple task. The intelligence is in the payload, so a modest model is fine.
 
@@ -245,7 +245,7 @@ For the *Matchup / risk to watch* prose slot, QB changes count at 80% of their s
 The defense cap is a variety rule. Without it, 5–6 of the 8 picks were defenders every week and a receiver made the list about once a month. It was checked on the 2019–2020 backtests (hit rate 70.2% vs 68.8%) and confirmed on 2021–2025 (67.9% vs 66.9%) before it was kept.
 
 **The payload.** A `WatchItem` with `source: "model"` carries `projection` (the median for yards, the average for counts), `interval` (P10–P90), `baseline`, `vs_baseline` (the gap in words), `matchup`, `group`, `confidence`, `drivers` and three optional notes. Every direction is in words, never a bare sign (D53).
-- `drivers`: up to 3 SHAP drivers as "phrase (puts the projection N unit above / below a typical player in his group)": SHAP measures from the model's average prediction, never from his own baseline or form (the live week-4 fact-check found "his recent form raises the projection" read as "he's in form" for a pass rusher below his own baseline). A driver is kept only if it is at least 20% of the gap to baseline (a 3-yard driver can't stand for a 29-yard gap), same direction first; a driver that rounds to 0, or a phrase with a banned word, is dropped. With none left, `driver_note` = "no single factor stands out".
+- `drivers`: up to 3 SHAP drivers as "phrase (puts the projection N unit above / below a typical player in his group)" (since P09 a plain clause without the brackets, D87): SHAP measures from the model's average prediction, never from his own baseline or form (the live week-4 fact-check found "his recent form raises the projection" read as "he's in form" for a pass rusher below his own baseline). A driver is kept only if it is at least 20% of the gap to baseline (a 3-yard driver can't stand for a 29-yard gap), same direction first; a driver that rounds to 0, or a phrase with a banned word, is dropped. With none left, `driver_note` = "no single factor stands out".
 - `baseline_note`: where a thin baseline comes from ("his baseline comes from 2 games this season", "... mostly from last season (1 game this season)", "his baseline is the average for players in his role (little history of his own)"); a pressures baseline adds "(pressures data arrives a week late)", because a player who has played 3 games has only 2 counted. Drivers explain the projection against the model's average player, not against his own baseline, so a backup QB can sit 61 yards above a thin baseline while all three drivers lower his projection. The note gives that context without implying a cause.
 - `role_note` (a role change, with the vacated share) and `injury_note` ("listed questionable on this week's injury report").
 
@@ -302,3 +302,14 @@ Rishi asked for more players: *Players to watch* now holds **10 offense** (QB, R
 - **Report card:** the scorecard's `player_mae_vs_baseline` stays on the 11 P06 targets, so the season series is comparable before and after week 5; the P08 targets (and the team stat totals, `position_group = "TEAM"`, which the player highlights ignore) have their own scoreboard rows. Highlights skip probability targets (no MAE).
 - **Graph sections:** the P08 query types (former teammates, style matchups, officiating crews, coaching trees, the GDS passing-network hub and usage comparisons) compete for *Matchup / risk*, *Non-obvious* and "More from the graph" with the P05 ones (doc 05 "As built in P08").
 - **Placeholder writer:** a last name is used only when it's unique among **all** players in the payload (the entity check's view), not only the writer's own picks.
+
+## As built in P09: the real LLM re-checked and tuned (D87)
+
+GLM 5.3 Flash through OpenRouter (D56) stays the writer; no `anthropic` / `openai_compatible` adapter was built (Rishi's choice: OpenRouter serves those models by changing `llm.model`, and `nfl doctor` now FAILs if `llm.openrouter.only` has no endpoint for the configured model). The full story, with every round, is in the [LLM writer guide](guides/llm-digest-writer.md) section 6, "P09: the re-check on today's digest".
+
+- **Measured on 2025 weeks 4 / 8 / 9 / 14 with the full P05–P08 payload** (~22k prompt tokens), each GLM digest fact-checked against its payload. The P08 prompt passed first time in 0 of 4 weeks (all after one regeneration, no material error): GLM wrote sentences that named nobody, labels ("Context:", "Driver:"), its own verdicts and counts, and a players section that read like a stat sheet.
+- **Prompt** (`system.md`, `sections.yaml`; `325b85a78f4e` → `0ee03e0cd26e`): natural sentences with no label openers, the owner named in every sentence with a number, no grading or counts of its own, no "biggest" outside a `rank_note`, hedges as separate facts, whole-sentence trims, aim for each budget (the total allows 5%); a lean report card that doesn't restate the code bullets; players in one or two sentences with one driver framed against a typical player; win % on every game in the outlook; placeholder-only examples.
+- **Payload strings** (meaning stays in code, D53): drivers as plain clauses, plus "(not his own baseline)" when one pushes against the pick's gap; rate changes with up / down and what they mean; count items with their unit ("9 pressures", "1.5 pressures per game"); no "-0.00".
+- **Checks:** the sentence splitter also splits after a closing quote or bracket; the name heuristic reads initials and inner capitals. No check was loosened.
+- **Regeneration:** keep passing sentences; "no entity named" → add the name; a named owner who doesn't own the number → remove it.
+- **Routing:** `deepinfra/fp4` dropped (it skipped the reasoning on 3 of 5 calls); `max_tokens` 96,000.

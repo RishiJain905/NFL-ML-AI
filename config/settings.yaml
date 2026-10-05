@@ -10,14 +10,15 @@ wandb:
   project: nfl-analytics-engine
 
 llm:                      # digest prose writer (documentation/06; D56)
-  provider: openrouter    # placeholder | openrouter (anthropic / openai_compatible: P09)
+  provider: openrouter    # placeholder | openrouter (any model, Claude too; P09 closed, D87)
   model: z-ai/glm-5.3-flash
   reasoning_effort: max   # OpenRouter reasoning.effort
-  max_tokens: 64000       # whole completion, reasoning included
+  max_tokens: 96000       # whole completion, reasoning included (P09: a call used 51k of 64k)
   timeout_seconds: 600
   retries: 2              # extra attempts on timeouts, 429 and 5xx
   openrouter:             # provider routing: only these endpoints, cheapest first
-    only: [baseten/fp8, relace, novita/fp8, deepinfra/fp4]
+    # deepinfra/fp4 dropped in P09 (D87): 3 of its 5 saved calls skipped the reasoning
+    only: [baseten/fp8, relace, novita/fp8]
     sort: price
     allow_fallbacks: true
 

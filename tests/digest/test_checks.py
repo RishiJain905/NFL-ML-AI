@@ -130,6 +130,24 @@ def test_made_up_name_is_a_warning(facts) -> None:
     assert "name_heuristic" in r.warnings
 
 
+def test_name_heuristic_reads_initials_and_inner_capitals() -> None:
+    """P09: "J.J. McCarthy" (in the payload) was read as "J Mc" and flagged."""
+    from types import SimpleNamespace
+
+    from nflengine.digest.checks import check_name_heuristic
+
+    fx = SimpleNamespace(entity_names=lambda: {"j.j. mccarthy", "sam laporta", "azeez al-shaair"})
+    ok = "J.J. McCarthy threw to Sam LaPorta. Azeez Al-Shaair faces the Titans, a WR Corps."
+    assert check_name_heuristic({"players_to_watch": ok}, fx).passed
+    bad = check_name_heuristic({"players_to_watch": "Zed McFakerson ran far."}, fx)
+    assert not bad.passed and bad.issues[0].token == "Zed McFakerson"
+    # Sol review: an invented name with initials must still warn; a known one must not
+    fake = check_name_heuristic({"players_to_watch": "A.J. Fakerson looked sharp."}, fx)
+    assert not fake.passed and "Fakerson" in fake.issues[0].token
+    jj = check_name_heuristic({"players_to_watch": "JJ McCarthy threw."}, fx)
+    assert jj.passed
+
+
 def test_sentence_with_number_and_no_owner_fails(facts) -> None:
     r = check(facts, "Someone was 73% sure.")
     assert not r.result("entity_binding").passed
@@ -164,6 +182,61 @@ def test_week_and_season_numbers_need_no_owner(facts) -> None:
 def test_sentence_split_keeps_initials_and_decimals() -> None:
     s = sentences("C.J. Stroud had 4.1 yards. Michael Penix Jr. threw for 2.91 seconds!")
     assert s == ["C.J. Stroud had 4.1 yards.", "Michael Penix Jr. threw for 2.91 seconds!"]
+
+
+def test_sentence_split_after_a_closing_quote_or_bracket() -> None:
+    """P09 fact-check: GLM ended driver sentences with `.'`; the splitter merged each with
+    the next player's sentence, so binding blamed the wrong player (and could hide a slip)."""
+    text = "Driver: 'his form (recent games).' Jalen Hurts threw. (A note.) Next one!\" Done?) Yes."
+    assert sentences(text) == [
+        "Driver: 'his form (recent games).'",
+        "Jalen Hurts threw.",
+        "(A note.)",
+        'Next one!"',
+        "Done?)",
+        "Yes.",
+    ]
+    assert sentences("The 2.5 yards (vs 1.5) held. C.J. Stroud ran.") == [
+        "The 2.5 yards (vs 1.5) held.",
+        "C.J. Stroud ran.",
+    ]
+
+
+def test_closing_quote_split_respects_abbreviations_and_lowercase_text() -> None:
+    """Sol review: a quoted abbreviation or initial must not end the sentence."""
+    for text in (
+        '"Michael Penix Jr." has a projection of 231 passing yards.',
+        'He was "C.J." to everyone and threw for 210 yards.',
+        'He called it "the best." and then left for 3 weeks.',
+        "The rookie (drafted by the Rams, then the Bills.) ran for 4 yards.",
+    ):
+        assert sentences(text) == [text], text
+
+
+def test_a_quoted_suffix_before_a_sentence_opener_ends_the_sentence() -> None:
+    """Sol follow-up: '... Penix Jr." The Chiefs ...' is two sentences, '... Jr." has' one."""
+    text = '"The Broncos are 59% to win with Michael Penix Jr." The Chiefs looked sharp.'
+    assert sentences(text) == [
+        '"The Broncos are 59% to win with Michael Penix Jr."',
+        "The Chiefs looked sharp.",
+    ]
+    assert len(sentences('"Michael Penix Jr." has 231 passing yards.')) == 1
+
+
+def test_a_run_of_closing_marks_still_ends_the_sentence(facts) -> None:
+    """Sol review: '.")' (two closing marks) used to keep the next sentence attached."""
+    text = '("The Broncos are 59% to win.") The Chiefs looked sharp.'
+    assert sentences(text) == ['("The Broncos are 59% to win.")', "The Chiefs looked sharp."]
+    res = check(facts, text).result("entity_binding")
+    assert not res.passed and res.issues[0].token == "59%"
+
+
+def test_a_quoted_sentence_cannot_borrow_the_next_sentences_owner(facts) -> None:
+    # 59% is the Chiefs' number: merged with the next sentence it used to pass
+    text = "Driver: 'the Broncos are 59% to win.' The Chiefs looked sharp."
+    res = check(facts, text).result("entity_binding")
+    assert not res.passed and res.issues[0].token == "59%"
+    assert check(facts, "Driver: 'the Chiefs are 59% to win.' The Broncos looked sharp.").passed
 
 
 # ---- length and hedging -----------------------------------------------------------------------
@@ -336,3 +409,13 @@ def test_blank_section_fails_completeness(facts) -> None:
 def test_possessive_known_name_is_not_flagged(facts) -> None:
     r = check(facts, "Ja'Marr Chase's separation was 4.1 yards of average separation.", "uth")
     assert "name_heuristic" not in r.warnings
+
+
+def test_confidence_is_low_counts_as_a_hedge() -> None:
+    """P09 false positive: GLM hedged a low-confidence graph item with "Confidence is low
+    here — ...", which the hedge matcher missed (warn level)."""
+    from nflengine.digest.checks import HEDGES, _phrase_re
+
+    hedge = _phrase_re(HEDGES)
+    assert hedge.search("Confidence is low here, special-teams EPA swings on a few plays.")
+    assert not hedge.search("The Seahawks have had clearly better special teams.")

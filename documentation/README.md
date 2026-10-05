@@ -19,7 +19,7 @@ Last updated: 2026-10-04 (P07: weekly operations, runbook).
 | 03 | [Data sources](03-data-sources.md) | nflverse + ESPN + extra free sources, what each is for, when it's available, gaps and what replaces them, storage and quality checks |
 | 04 | [Track 1 models](04-track1-models.md) | Team ratings and trend, game model, player model, leakage rules, weekly retraining with current-season weighting |
 | 05 | [Knowledge graph](05-knowledge-graph.md) | Neo4j in Docker (files on D:), full schema, how it's built, the query library, GDS |
-| 06 | [Weekly digest](06-weekly-digest.md) | Digest sections, JSON payload, LLM provider interface (placeholder first), checks, report card, delivery |
+| 06 | [Weekly digest](06-weekly-digest.md) | Digest sections, JSON payload, LLM provider interface (GLM via OpenRouter, placeholder fallback), checks, report card, delivery |
 | 07 | [Track 2: Big Data Bowl](07-track2-big-data-bowl.md) | The movement-prediction task, model ladder, evaluation, and how it connects to Track 1 |
 | 08 | [Experiment tracking](08-experiment-tracking.md) | W&B project layout, live curves, season scorecard, accuracy scoreboard, drift signals |
 | 09 | [Build roadmap](09-build-roadmap.md) | One-screen overview of the phases, rough targets, risks |
@@ -35,7 +35,7 @@ One guide per major technology or component, written for a reader who's new to i
 | [Knowledge graph (Neo4j)](guides/knowledge-graph.md) | Neo4j in two minutes, what our graph holds, a Neo4j Browser walkthrough, each Cypher query in the library, how graph findings reach the digest (P05; P08 queries Q5-Q7, Q9) |
 | [Graph Data Science](guides/graph-data-science.md) | GDS primer (projections, PageRank, degree, KNN vs node similarity, stream / write / mutate), the two weekly GDS jobs, and a Neo4j Browser walkthrough with real results (P08) |
 | [Weights & Biases](guides/weights-and-biases.md) | Every W&B run, chart, table and artifact, step by step through the weekly run and the research runs, what to check each week, and the **2026 Season Dashboard** chart by chart (what each shows, whether higher or lower is better, normal ranges) |
-| [The LLM digest writer](guides/llm-digest-writer.md) | What the LLM does and doesn't do, the prompt, the checks it must pass, cost and latency, and how to switch the model or provider safely |
+| [The LLM digest writer](guides/llm-digest-writer.md) | What the LLM does and doesn't do, the prompt, the checks it must pass, cost and latency, how to switch the model or provider safely, and the P09 re-check on today's digest |
 | [Player projections](guides/player-projections.md) | The player model (P06): LightGBM, quantile ranges, count distributions, SHAP drivers in a few minutes; how projections become the watch list, tough spots, the look-back and the accuracy scoreboard; files, W&B runs, commands, how to change it safely; P08: chances of a TD / sack / interception (calibrated), QB TDs and interceptions, CB/S coverage |
 | [Weekly operations](guides/weekly-operations.md) | How the weekly run is operated (P07, manual-first): the calendar (which week, the deadline, special weeks), `nfl weekly run --auto` and its exit codes, the lock, Neo4j start-up, the run records and W&B pipeline run, alerts, drift checks and their 2019–2025 replay, the season dashboard, the Saturday injury update, time-travel simulations |
 

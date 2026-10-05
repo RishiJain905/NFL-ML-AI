@@ -136,6 +136,7 @@ BANNED_ALLOW = [
 HEDGES = [
     "low confidence",
     "low-confidence",
+    "confidence is low",  # P09: GLM wrote "Confidence is low here", a real hedge
     "heuristic",
     "small sample",
     "small-sample",
@@ -244,18 +245,45 @@ _SENT_SPLIT = re.compile(
     r"(?<!\bJr\.)(?<!\bSr\.)(?<!\bvs\.)(?<!\bSt\.)(?<!\s[A-Z]\.)(?<!\.[A-Z]\.)(?<!^[A-Z]\.)"
     r"(?<=[.!?])\s+"
 )
+# A sentence can also end in a run of closing quotes / brackets ("... his group).'", '...
+# to win.")'). P09: GLM ended driver sentences with `.'`, which merged each with the next
+# player's sentence, so a number could borrow that sentence's owner. Split there only when
+# the next text starts a sentence and the period doesn't end an abbreviation or an initial
+# ('"Michael Penix Jr." has ...' stays whole; Sol review).
+_CLOSED_END = re.compile(r"[.!?][\"'’”)\]]+\s+")
+_ABBREV_END = re.compile(r"(?:\b(?:Jr|Sr|vs|St)|(?:^|[\s.])[A-Z])\.$")
+_SUFFIX_END = re.compile(r"\b[JS]r\.$")
+_STARTS_SENTENCE = re.compile(r"[A-Z0-9\"'“‘(\[]")
+# After "Jr." / "Sr." the splitter normally keeps going ("Michael Penix Jr. threw"), but a
+# common sentence opener means a new sentence ("... Deebo Samuel Sr. The Vikings ..."),
+# with or without a closing quote in between ('... Penix Jr." The Chiefs ...'; Sol review).
+_OPENERS = (
+    r"(?:The|A|An|In|On|At|His|Their|That|This|It|But|And|With|For|"
+    r"Meanwhile|Elsewhere|Season|Last|Next|Week)\b"
+)
+_OPENER = re.compile(_OPENERS)
+_SUFFIX_SPLIT = re.compile(rf"(?<=\b[JS]r\.)\s+(?={_OPENERS})")
+
+
+def _split_closed(s: str) -> list[str]:
+    out: list[str] = []
+    start = 0
+    for m in _CLOSED_END.finditer(s):
+        head = s[start : m.start() + 1]
+        if not _STARTS_SENTENCE.match(s, m.end()):
+            continue
+        if _ABBREV_END.search(head) and not (
+            _SUFFIX_END.search(head) and _OPENER.match(s, m.end())
+        ):
+            continue
+        out.append(s[start : m.end()].rstrip())
+        start = m.end()
+    out.append(s[start:])
+    return out
 
 
 def plain(text: str) -> str:
     return normalize_text(_MD.sub("", text))
-
-
-# After "Jr." / "Sr." the splitter normally keeps going ("Michael Penix Jr. threw"), but a
-# common sentence opener means a new sentence ("... Deebo Samuel Sr. The Vikings ...").
-_SUFFIX_SPLIT = re.compile(
-    r"(?<=\b[JS]r\.)\s+(?=(?:The|A|An|In|On|At|His|Their|That|This|It|But|And|With|For|"
-    r"Meanwhile|Elsewhere|Season|Last|Next|Week)\b)"
-)
 
 
 def sentences(text: str) -> list[str]:
@@ -264,7 +292,8 @@ def sentences(text: str) -> list[str]:
         line = line.strip().lstrip("-•").strip()
         if line:
             for s in _SENT_SPLIT.split(line):
-                out += [x.strip() for x in _SUFFIX_SPLIT.split(s) if x.strip()]
+                for t in _split_closed(s):
+                    out += [x.strip() for x in _SUFFIX_SPLIT.split(t) if x.strip()]
     return out
 
 
@@ -414,8 +443,13 @@ def check_unknown_entities(
 
 def check_name_heuristic(sections: dict[str, str], fx: FactIndex) -> CheckResult:
     """Two or more capitalized words in a row that match no known alias (warn only)."""
-    known = fx.entity_names()
-    cap_seq = re.compile(r"\b[A-Z][a-z'.]+(?:\s+[A-Z][a-z'.]+)+")
+    # names compare without periods, so "J.J. McCarthy" and "JJ McCarthy" are one name
+    known = {k.replace(".", "") for k in fx.entity_names()}
+    # a word is initials ("J.J.", "A.") or a capitalized word with a lowercase letter
+    # somewhere ("McCarthy", "LaPorta", "Al-Shaair"); codes such as "WR" are neither (P09:
+    # "J.J. McCarthy" was read as "J Mc"; the Sol review: "A.J. Fakerson" must still warn)
+    word = r"(?:[A-Z]\.){1,3}|[A-Z](?=[A-Za-z'.\-]*[a-z])[A-Za-z'.\-]+"
+    cap_seq = re.compile(rf"\b(?:{word})(?:\s+(?:{word}))+")
     issues: list[Issue] = []
     for sec, text in sections.items():
         for s in sentences(text):
@@ -426,7 +460,7 @@ def check_name_heuristic(sections: dict[str, str], fx: FactIndex) -> CheckResult
                 if len(words) < 2:
                     continue
                 phrase = " ".join(words)
-                low = phrase.lower()
+                low = phrase.lower().replace(".", "")
                 if low in known or any(low in k or k in low for k in known if " " in k):
                     continue
                 issues.append(Issue(sec, phrase, "capitalized name matches nothing known", s))

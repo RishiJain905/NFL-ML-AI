@@ -72,7 +72,7 @@ They are **connected but not intertwined**. Frame-level tracking for the current
 | Compute | Laptop for Track 1 and Track 2 baselines. Rishi's local GPU machine (or Colab) for Track 2 deep models. |
 | Graph DB | Neo4j **running locally in Docker** (no cloud tier). |
 | Storage | Code on F: (SSD); **all data on D:** (HDD, ~500 GB free) under one data root. See [02](02-system-architecture.md#storage-data-lives-on-d). |
-| LLM | A **placeholder** writer until Rishi connects a real model (Claude or open-source) in [P09](plans/P09-llm-connection.md). |
+| LLM | A real model since P04: `z-ai/glm-5.3-flash` through OpenRouter (D56), re-checked on the full P08 digest and closed in [P09](plans/P09-llm-connection.md) (D87). Any OpenRouter model, Claude included, is a config change; the **placeholder** template writer stays as the fallback. |
 | Working style | **Rishi in the loop:** agents build; Rishi launches the first training runs, tuning and backtests and watches them live in W&B. See [plans/README](plans/README.md#working-model-rishi-in-the-loop). |
 | Timing | The 2026 season is underway (Week 4 starts 2026-10-01). The first real digest should ship within about two weeks. |
 

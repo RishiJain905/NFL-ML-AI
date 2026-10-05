@@ -11,6 +11,7 @@ import shutil
 import uuid
 from dataclasses import dataclass
 from importlib import metadata
+from typing import Any
 
 from nflengine.paths import DataRootError, configure_tool_env, ensure_data_root
 from nflengine.settings import (
@@ -129,11 +130,17 @@ def check_llm() -> Check:
         return Check("llm", OK, "placeholder provider (no API needed)")
     if provider == "openrouter":
         return check_openrouter(cfg.model)
-    return Check("llm", WARN, f"provider '{provider}' not implemented until P09")
+    # anything else makes `get_llm` raise, so the digest step would fail: say so plainly
+    from nflengine.digest.llm import NOT_BUILT
+
+    why = "isn't built (D87)" if provider in NOT_BUILT else "is unknown"
+    return Check("llm", FAIL, f"provider '{provider}' {why}; use openrouter or placeholder")
 
 
 def check_openrouter(model: str | None) -> Check:
-    """Key set + accepted (GET /key, status only: the reply is never shown) + model listed."""
+    """Key set + accepted (GET /key, status only: the reply is never shown) + model listed +
+    at least one `llm.openrouter.only` endpoint serves it (P09: after a model switch, the old
+    model's tags match nothing and every request would fail over to the placeholder)."""
     env = get_env()
     if not env.is_set("OPENROUTER_API_KEY"):
         return Check("llm", FAIL, "provider openrouter but OPENROUTER_API_KEY is NOT SET")
@@ -145,14 +152,66 @@ def check_openrouter(model: str | None) -> Check:
         if key.status_code != 200:
             return Check("llm", FAIL, f"openrouter rejected the key (HTTP {key.status_code})")
         listed = httpx.get(f"https://openrouter.ai/api/v1/models/{model}/endpoints", timeout=20)
+        if listed.status_code == 404:  # every digest call would fail over to the placeholder
+            return Check("llm", FAIL, f"key OK; model {model} not found on OpenRouter (HTTP 404)")
         if listed.status_code != 200:
             return Check(
-                "llm", WARN, f"key OK; model {model} not found (HTTP {listed.status_code})"
+                "llm",
+                WARN,
+                f"key OK; couldn't list {model}'s endpoints (HTTP {listed.status_code})",
             )
-        n = len((listed.json().get("data") or {}).get("endpoints") or [])
-        return Check("llm", OK, f"openrouter key accepted; {model} has {n} endpoints")
+        endpoints = _endpoint_list(listed)
+        if endpoints is None:
+            return Check("llm", WARN, f"key OK; {model}'s endpoint list was unreadable")
+        detail = f"openrouter key accepted; {model} has {len(endpoints)} endpoints"
+        only = [str(t) for t in (get_config().llm.openrouter or {}).get("only") or []]
+        if not only:
+            return Check("llm", OK, detail)
+        tags = {str(e.get("tag") or "") for e in endpoints if isinstance(e, dict)}
+        live = [t for t in only if _only_serves(t, tags)]
+        if not live:
+            return Check(
+                "llm",
+                FAIL,
+                f"key OK; none of the {len(only)} llm.openrouter.only endpoints serves {model}",
+            )
+        return Check("llm", OK, f"{detail}, {len(live)} of {len(only)} allowed ones listed")
     except Exception as exc:
         return Check("llm", FAIL, f"openrouter unreachable: {type(exc).__name__}")
+
+
+# OpenRouter service tiers: a base slug ("openai") never matches their endpoints
+# ("openai/fast"); they need the tier-suffixed slug, and fast / priority are one tier
+_TIERS = {"fast", "priority", "flex", "ultrafast"}
+_TIER_ALIAS = {"fast": "priority", "priority": "fast"}
+
+
+def _only_serves(entry: str, tags: set[str]) -> bool:
+    """Whether a `llm.openrouter.only` entry matches a listed endpoint: an exact tag
+    ("novita/fp8"), or a provider slug ("novita") matching its non-tier endpoints
+    (OpenRouter's base-slug rule; Sol review: a slug alone never selects "openai/fast")."""
+    if entry in tags:
+        return True
+    base, _, suffix = entry.partition("/")
+    if suffix:
+        return suffix in _TIER_ALIAS and f"{base}/{_TIER_ALIAS[suffix]}" in tags
+    return any(t.partition("/")[0] == base and t.partition("/")[2] not in _TIERS for t in tags)
+
+
+def _endpoint_list(resp: Any) -> list | None:
+    """The `data.endpoints` list of a model listing, or None when the body isn't one."""
+    try:
+        data = resp.json()
+    except ValueError:
+        return None
+    inner = data.get("data") if isinstance(data, dict) else None
+    endpoints = inner.get("endpoints") if isinstance(inner, dict) else None
+    if not isinstance(endpoints, list):
+        return None
+    # every entry must be an object with a string tag, or no conclusion follows (Sol review)
+    if not all(isinstance(e, dict) and isinstance(e.get("tag"), str) for e in endpoints):
+        return None
+    return endpoints
 
 
 def run_checks(init_data_root: bool = False) -> list[Check]:

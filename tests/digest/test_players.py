@@ -114,17 +114,25 @@ def test_player_stat_formats_say_their_unit_and_direction():
 def test_drivers_pushing_the_picks_way_come_first():
     drivers = [drv("recent form", -11.0), drv("snap share", 6.0), drv("opponent", 3.0)]
     up = driver_texts(drivers, "passing yards", "yards", direction=15.0)
-    assert [t.split(" (")[0] for t in up] == ["snap share", "opponent", "recent form"]
+    assert [t.split(" puts the projection")[0] for t in up] == [
+        "snap share",
+        "opponent",
+        "recent form",
+    ]
     down = driver_texts(drivers, "passing yards", "yards", direction=-20.0)
-    assert down[0].startswith("recent form (puts the projection 11 passing yards below")
+    assert down[0].startswith("recent form puts the projection 11 passing yards below")
     assert driver_texts(drivers, "passing yards", "yards")[0].startswith("recent form")
+    # P09: a driver pushing against the gap says what it compares; a same-way one doesn't
+    assert up[-1].endswith("a typical player in his group (not his own baseline)")
+    assert not any("own baseline" in t for t in up[:2] + down[:1])
 
 
 def test_a_driver_smaller_than_a_fifth_of_the_gap_is_not_shown():
     """Fact-check: Kirk Cousins was +29 yards vs baseline with a 3-yard 'main driver'."""
     drivers = [drv("his yards per carry lately", 3.0), drv("recent form", -7.0)]
     assert driver_texts(drivers, "passing yards", "yards", direction=29.0) == [
-        "recent form (puts the projection 7 passing yards below a typical player in his group)"
+        "recent form puts the projection 7 passing yards below a typical player in his group"
+        " (not his own baseline)"
     ]
     assert driver_texts(drivers, "passing yards", "yards", direction=40.0) == []
     rows = frame([proj("q1", "Kirk Cousins", "LV", "KC", 1.0, drivers=drivers, games_season=2)])
@@ -136,9 +144,14 @@ def test_a_driver_smaller_than_a_fifth_of_the_gap_is_not_shown():
     assert w.drivers == [] and w.driver_note == "no single factor stands out"
     p = make_payload(players_to_watch=[w])
     cell = R.watch_table(p).splitlines()[-1]
-    assert "no single factor stands out; his baseline comes from 2 games this season" in cell
+    assert (
+        "no single factor stands out; Kirk Cousins's baseline comes from 2 games this season"
+        in cell
+    )
     text = run_placeholder(p).sections["players_to_watch"]
     assert "For Cousins, no single factor stands out." in text
+    assert "Kirk Cousins's baseline comes from 2 games this season." in text
+    assert "For Cousins, Kirk" not in text
 
 
 def test_driver_texts_drop_silent_and_banned_phrases():
@@ -150,10 +163,9 @@ def test_driver_texts_drop_silent_and_banned_phrases():
         {"feature": "x", "phrase": "no contribution", "value": 1.0, "contribution": None},
     ]
     assert driver_texts(drivers, "receiving yards", "yards") == [
-        "target share up (puts the projection 9 receiving yards above a typical player in his "
-        "group)",
-        "opponent allows many yards (puts the projection 4 receiving yards below a typical "
-        "player in his group)",
+        "target share up puts the projection 9 receiving yards above a typical player in his group",
+        "opponent allows many yards puts the projection 4 receiving yards below a typical "
+        "player in his group",
     ]
 
 
@@ -187,14 +199,15 @@ def test_model_items_carry_projection_range_baseline_and_notes():
     assert w1.matchup == "Rams at 49ers"  # away at home
     assert w1.injury_note == "listed questionable on this week's injury report"
     assert w1.drivers[0].endswith(
-        "(puts the projection 15 receiving yards above a typical player in his group)"
+        " puts the projection 15 receiving yards above a typical player in his group"
     )
     assert w1.opp_def_rank is None and w1.usage_metric is None
     assert w2.role_note == (
-        "a bigger role this week: regular teammates who missed his team's last game or are "
-        "ruled out this week had 21% of his position group's usage"
+        "a bigger role this week for Jalen Coker: regular teammates who missed his team's "
+        "last game or are ruled out this week had 21% of his position group's usage"
     )
-    assert w2.baseline_note.startswith("his baseline is the average for players in his role")
+    # P09: a note carrying his numbers names him, so a sentence quoting it names the owner
+    assert w2.baseline_note.startswith("Jalen Coker's baseline is the average for players")
     assert w2.confidence == "low"  # unknown labels are treated as low
 
 
@@ -221,7 +234,7 @@ def test_baseline_note_only_when_the_baseline_rests_on_little():
     )
     (w,) = build_model_watch(frame([proj("p1", "Puka Nacua", "LA", "SF", 1.0, games_season=2)]))
     p = make_payload(players_to_watch=[w])
-    assert "his baseline comes from 2 games this season" in R.watch_table(p)
+    assert "Puka Nacua's baseline comes from 2 games this season" in R.watch_table(p)
     assert "2" in build_fact_index(p).entities["player:p1"].atoms
 
 

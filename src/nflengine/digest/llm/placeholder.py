@@ -242,11 +242,8 @@ class PlaceholderLLM:
             last, label = u["last_week"]["display"], u["label"]
             count = u.get("unit") == "count"
             phrase = u.get("unit") in ("count", "yards_per_carry", "yards_per_catch")
-            stat = (
-                f"{last} {label} last week"
-                if count
-                else (f"{last} last week" if phrase else f"{label} of {last} last week")
-            )
+            # a count's display carries its unit since P09 ("9 pressures")
+            stat = f"{last} last week" if phrase else f"{label} of {last} last week"
             if not count:
                 stat += f" on {u['volume']['display']} {u['volume_label']}"
             if u["kind"] == "standout" or not u.get("season_avg"):
@@ -254,7 +251,7 @@ class PlaceholderLLM:
                 note = ""
             else:
                 verb = "up" if u["kind"] == "riser" else "down"
-                avg = u["season_avg"]["display"] + (" per game" if count else "")
+                avg = u["season_avg"]["display"]  # a count's says "per game" itself
                 s = f"{who}: {stat}, {verb} from {avg} ({u['norm_note']})."
                 note = f"For {short[u['player_id']]}, that was the {u['rank_note']}."
             if u.get("confidence") == "low":
@@ -338,8 +335,9 @@ def _model_sentences(
         note = [f"The main driver for {name}: {drivers[0]}."] if drivers else []
         if not drivers and w.get("driver_note"):
             note.append(f"For {name}, {w['driver_note']}.")
-        if w.get("baseline_note"):
-            note.append(f"For {name}, {w['baseline_note']}.")
+        if w.get("baseline_note"):  # it names him itself since P09 ("X's baseline ...")
+            bn = w["baseline_note"]
+            note.append(f"{bn[0].upper()}{bn[1:]}.")
         notes.append(" ".join(note))
     limit = None if budget is None else budget * TRIM
     keep: list[int] = []

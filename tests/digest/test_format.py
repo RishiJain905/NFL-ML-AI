@@ -23,6 +23,12 @@ from nflengine.digest.facts import text_atoms
         (F.points_error(7.46), "7.5 points"),
         (F.epa(0.07), "+0.07 EPA per play"),
         (F.epa(-0.049), "-0.05 EPA per play"),
+        (F.epa(-0.003), "0.00 EPA per play"),  # P09: never "-0.00"
+        (F.epa(0.004), "0.00 EPA per play"),
+        (F.pct_points(-0.04), "0.0 points"),
+        (F.pct_points_change(7.04), "up 7.0 points"),  # P09: direction, never a bare sign
+        (F.pct_points_change(-12.25), "down 12.3 points"),
+        (F.stat(-0.004, "EPA per dropback", "epa"), "0.00 EPA per dropback"),
         (F.driver_change("pass defense", 0.058), "0.06 more EPA per dropback allowed"),
         (F.driver_change("pass defense", -0.03), "0.03 fewer EPA per dropback allowed"),
         (F.driver_change("run offense", 0.035), "0.04 more EPA per rush on offense"),

@@ -18,7 +18,7 @@ This folder turns the design docs (`documentation/01`–`11`) into an ordered, *
 | [P06](P06-player-model.md) | Player model v1 + accuracy scoreboard | P05 | Offense and defense main-stat projections, watch list, accuracy scoreboard |
 | [P07](P07-automation.md) | Automation and weekly operations | P06 | Manual-first (D71): `nfl weekly run --auto` (calendar, lock, not-ready exit), run records, alerts, drift checks, season dashboard, Saturday injury update, runbook; scheduling deferred |
 | [P08](P08-models-v2.md) | Models v2 + advanced graph | P07 | LightGBM game model v1 evaluated, **v0 kept** (D79); 12 new player targets (TD / sack / INT chances, QB TDs, CB/S coverage) and 4 team stat totals shipped; consistency layer; Q5b–Q10 incl. GDS PageRank + KNN, a Wikipedia-built coaching seed |
-| [P09](P09-llm-connection.md) | Connect a real LLM | P04 (any time after) | Real provider wired into `LLMClient`; Rishi picks the model |
+| [P09](P09-llm-connection.md) | Connect a real LLM | P04 (any time after) | GLM 5.3 Flash via OpenRouter (wired in P04, D56) re-checked on today's digest: fact-checked backtests, prompt v2 + check fixes, reasoning-safe routing, `nfl doctor` routing check; no native adapters (D87) |
 | [P10](P10-season-operations.md) | Season operations and offseason | P07 | In-season runbook, playoffs, end-of-season review, 2027 pre-season retune |
 | [T00](T00-bdb-data-and-baselines.md) | BDB data + baselines | P00 (recommended after P04) | BDB 2026 on D:, splits, constant-velocity and physics baselines |
 | [T01](T01-bdb-gbt.md) | BDB gradient-boosted model | T00 | LightGBM displacement model |

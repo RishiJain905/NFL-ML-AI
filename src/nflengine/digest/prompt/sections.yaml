@@ -7,48 +7,68 @@ sections:
     title: Report card
     payload: [report_card]
     instructions: >-
-      One or two sentences on last week's picks: the pick record, the Brier score next to
-      Elo's, the average score error, and the biggest_miss game (say plainly that the model
-      got it wrong). Mention the season-to-date numbers and one calibration bucket when
-      present. If status is not "scored", say so in one sentence using the note. Code
-      lists the player-projection highlights (scoreboard_highlights) and last week's
-      watch-list look-back (watch_lookback) next to your text: you may quote one highlight
-      word for word, but don't restate the lists. Don't repeat these instructions in the
-      text.
+      One or two sentences on last week's picks. The code-written lines next to your text
+      already list the pick record, the Brier scores, the score error, the season to date
+      and the calibration buckets, so don't walk through them: give the pick record and the
+      Brier score next to Elo's followed by "(lower is better)", then the biggest_miss game
+      (say plainly that the model got it wrong). Add the season to date or one calibration
+      bucket only if the section stays within its budget. Don't call the week good or bad.
+      If status is not "scored", say so in one sentence using the note. Code lists the
+      player-projection highlights (scoreboard_highlights) and last week's watch-list
+      look-back (watch_lookback) next to your text: you may quote one highlight word for
+      word, but don't restate the lists. Don't repeat these instructions in the text.
   - id: game_outlook
     title: Game outlook
     payload: [games, game_highlights]
     instructions: >-
-      A short blurb under the table: one to three games where the model (without market
-      data) disagrees most with consensus, each described with its model_vs_consensus.text,
-      plus game_highlights (most lopsided, closest) with their rank_note. Name games by
+      A short blurb under the table: one to three games with a model_vs_consensus gap
+      (games whose text says "much" first), each described with its model_vs_consensus.text
+      word for word and never called the biggest or largest gap, plus game_highlights (most
+      lopsided, closest), each written as a plain fact with its rank_note and the favorite's
+      win % ("<matchup> is the most lopsided game, with the <team> at <prob>"); give the win %
+      of every game you name; never mention "the highlights" themselves. Name games by
       their matchup string. Never quote lines. Don't repeat these instructions in the text.
   - id: team_trends
     title: Team trend shifts
     payload: [team_trends]
     instructions: >-
       Two to four teams trending up or down: what moved (the drivers, with their display
-      strings) and the supporting evidence. Descriptive, not predictive.
+      strings) and the supporting evidence. One or two sentences per team, each naming the
+      team, for example "The <team> are <trend_delta>, led by the <unit>, <change>; net
+      rating now <net_rating>.", then each evidence string copied whole in a sentence that
+      names the team ("The <team> have been <evidence>.").
+      Descriptive, not predictive.
+      Don't repeat these instructions in the text.
   - id: under_the_hood
     title: Last week under the hood
     payload: [under_the_hood]
     instructions: >-
       Three to five tracking / charting notes from last week: who rose or fell against
-      their own norm, using last_week, season_avg and rank_note. Flag small samples.
+      their own norm, using last_week, season_avg and rank_note. season_avg is his own
+      norm and norm_note says what it covers ("his average this season blended with last
+      season", "his average over the previous 6 games"): call it his norm or use
+      norm_note's words, never "season average" unless norm_note says so. Flag small
+      samples in the player's own sentence.
   - id: players_to_watch
     title: Players to watch
     payload: [players_to_watch]
     instructions: >-
-      Code-written tables above your text list every pick. When source is "model" there
-      are two lists, "offense" and "defense" (each item's side, up to 10 each): write about
-      the 2-3 most notable of each side, offense first, and say which side you are on. For
-      each player give the projection
-      for his target stat, his vs_baseline (copy it whole: it already says above or below
-      his baseline) and his interval as his likely range; then one or two of his drivers,
-      copied whole (a driver compares him with a typical player in his group; it is not his
-      form and not the reason for the gap to his baseline), or his driver_note when he has
-      no driver, plus his role_note or injury_note when present. A baseline_note says where a thin baseline comes from: give it as
-      context for the baseline, never as the reason for the projection. Each list is already in code's order: never call a player the top,
+      Code-written tables above your text already list every pick with all its numbers,
+      so don't walk through a table row. When source is "model" there are two lists,
+      "offense" and "defense" (each item's side, up to 10 each): write about the 2-3 most
+      notable of each side, offense first, and say which side you are on. For each player
+      write one or two natural sentences (no "projection:", "range:" or "driver:" labels,
+      no "Name (Team, stat):" opener), and name him in every sentence that holds one of
+      his numbers. Give his projection and his vs_baseline (copy it whole: it already says
+      above or below his baseline) and his baseline; give his interval as his likely range
+      when his confidence is "low" (and say low confidence) or when the range is the point.
+      Then quote one driver whole (it already says it compares him with a typical player
+      in his group; it is not his form and not the reason for the gap to his baseline), or give his driver_note when he has no
+      driver; add his role_note or injury_note when present. A baseline_note says where a
+      thin baseline comes from: give it as context for the baseline, never as the reason
+      for the projection or for low confidence. The shape, with the payload's strings in
+      place of the brackets: "<Player>'s projection against the <opponent> is
+      <projection>, <vs_baseline> of <baseline>; <one driver>." Each list is already in code's order: never call a player the top,
       biggest or best pick, and never call a projection a sure thing. When confidence is
       "low", say so in that player's sentence. When source is "heuristic" (no projections
       this week; one list of up to 8, write about the 4-6 most notable): recent usage change, the opponent's defense and the baseline; copy
@@ -67,7 +87,7 @@ sections:
       week", "was ruled out of the team's last game", "since the start of the 2024
       season", "without him"). If confidence is low, the item's note says what is
       uncertain: put the hedge on that claim (for a QB change, the receivers' history with
-      him), never on the headline's facts. Describe; don't predict the result.
+      him), never on the headline's facts. Describe; don't predict the result. Don't repeat these instructions in the text.
   - id: non_obvious
     title: Non-obvious insights
     payload: [graph_insights]
@@ -80,4 +100,4 @@ sections:
       fact, not a motive: never invent revenge, grudges or what he wants to prove. Unit
       mismatch values are relative to the league average; special-teams values are a whole
       unit's net EPA (kicks, punts and returns, both sides), so never credit one kicker or
-      returner with them.
+      returner with them. Don't repeat these instructions in the text.

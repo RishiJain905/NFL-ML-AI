@@ -89,12 +89,13 @@ def _num_ok(x: Any) -> bool:
 def driver_texts(
     drivers: list[dict] | None, label: str, unit: str, direction: float = 0.0
 ) -> list[str]:
-    """SHAP drivers as code-made phrases: "<phrase> (puts the projection 9 receiving yards
-    above a typical player in his group)". Dropped: a driver that rounds to 0, a phrase
-    with a banned word (it would fail the banned-language check), and, with a `direction`
-    (the pick's gap to baseline), a driver smaller than `MIN_DRIVER_SHARE` of that gap (a
-    3-yard driver can't stand for a 29-yard gap: P06 fact-check). Drivers pushing the same
-    way as the gap come first."""
+    """SHAP drivers as code-made clauses: "<phrase> puts the projection 9 receiving yards
+    above a typical player in his group" (no brackets since P09, so the LLM can quote one
+    whole inside a natural sentence; the bracketed form read like a stat sheet). Dropped: a
+    driver that rounds to 0, a phrase with a banned word (it would fail the banned-language
+    check), and, with a `direction` (the pick's gap to baseline), a driver smaller than
+    `MIN_DRIVER_SHARE` of that gap (a 3-yard driver can't stand for a 29-yard gap: P06
+    fact-check). Drivers pushing the same way as the gap come first."""
     out: list[str] = []
     ordered = sorted(
         drivers or [],
@@ -108,7 +109,12 @@ def driver_texts(
             continue
         effect = F.driver_effect(float(c), label, unit)
         if effect is not None:
-            out.append(f"{phrase} ({effect.display})")
+            # a driver pushing against the pick's gap says what it compares, in code: the
+            # prompt rule alone was followed only sometimes ("32 above his baseline" next to
+            # "8 below a typical player" read as a contradiction, P09 fact-check)
+            against = direction * float(c) < 0
+            note = " (not his own baseline)" if against else ""
+            out.append(f"{phrase} {effect.display}{note}")
     return out[:DRIVERS_MAX]
 
 
@@ -141,6 +147,23 @@ def baseline_note(r: dict) -> str | None:
     if games and int(n) < THIN_SEASON_GAMES:
         return f"his baseline comes from {games}{late}"
     return None
+
+
+def own_note(note: str | None, player: str) -> str | None:
+    """Name the player in a code-made note that carries his numbers: "his baseline comes
+    from 2 games this season" -> "J.J. McCarthy's baseline comes from 2 games this season",
+    "a bigger role this week: ..." -> "a bigger role this week for Jalen Coker: ...". A
+    sentence quoting the note then names the number's owner (P09: GLM's commonest
+    first-attempt slip was such a note in a "his ..." sentence of its own, which binds to
+    nobody, so the digest needed a regeneration)."""
+    if not note:
+        return note
+    if note.startswith("his "):
+        return f"{player}'s {note[4:]}"
+    role = "a bigger role this week"
+    if note.startswith(role):
+        return f"{role} for {player}{note[len(role) :]}"
+    return note
 
 
 def _role_note(r: dict) -> str | None:
@@ -204,8 +227,8 @@ def build_model_watch(
                 projection=F.stat(mid, label, unit),
                 interval=F.stat_range(float(r["p10"]), float(r["p90"]), label, unit),
                 vs_baseline=F.vs_baseline(float(diff), label, unit),
-                baseline_note=baseline_note(r),
-                role_note=_role_note(r),
+                baseline_note=own_note(baseline_note(r), r["player"]),
+                role_note=own_note(_role_note(r), r["player"]),
                 injury_note=(
                     f"listed {status.lower()} on this week's injury report" if status else None
                 ),

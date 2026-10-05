@@ -33,7 +33,8 @@ def _ok(x: float | int | None) -> bool:
 
 def _round_half_up(x: float, ndigits: int = 0) -> float:
     q = 10**ndigits
-    return math.floor(abs(x) * q + 0.5) / q * (1 if x >= 0 else -1)
+    # `+ 0.0` turns -0.0 into 0.0: a value that rounds to zero must never print "-0.00"
+    return math.floor(abs(x) * q + 0.5) / q * (1 if x >= 0 else -1) + 0.0
 
 
 def _int(x: float) -> int:
@@ -50,6 +51,13 @@ def ordinal_str(n: int) -> str:
 
 def count(n: int | float) -> Num:
     return Num(value=int(n), display=str(int(n)))
+
+
+def count_stat(n: int | float, label: str) -> Num:
+    """A count with its unit: 9, "pressures" -> "9 pressures"; 1 -> "1 pressure"."""
+    k = int(n)
+    word = label[:-1] if k == 1 and label.endswith("s") else label
+    return Num(value=k, display=f"{k} {word}")
 
 
 def ordinal(n: int) -> Num:
@@ -105,7 +113,13 @@ def points_error(x: float) -> Num:
 
 
 def epa(x: float, unit: str = "EPA per play") -> Num:
-    return Num(value=round(float(x), 4), display=f"{_round_half_up(x, 2):+.2f} {unit}")
+    r = _round_half_up(x, 2)
+    return Num(value=round(float(x), 4), display=f"{_signed(r, 2)} {unit}")
+
+
+def _signed(r: float, decimals: int) -> str:
+    """ "+0.12" / "-0.12"; a rounded zero has no sign ("0.00", P09: "-0.00 EPA per play")."""
+    return f"{r:+.{decimals}f}" if r else f"{0:.{decimals}f}"
 
 
 def epa_change(delta: float, n_weeks: int) -> Num:
@@ -147,7 +161,15 @@ def seconds(x: float) -> Num:
 
 
 def pct_points(x: float) -> Num:
-    return Num(value=round(float(x), 3), display=f"{_round_half_up(x, 1):+.1f} points")
+    return Num(value=round(float(x), 3), display=f"{_signed(_round_half_up(x, 1), 1)} points")
+
+
+def pct_points_change(x: float) -> Num:
+    """A rate's change worded with its direction, never a bare sign (P09 fact-check: "+7.0
+    points" of pressure allowed read as good): 7.04 -> "up 7.0 points"."""
+    r = _round_half_up(x, 1)
+    text = f"{'up' if r > 0 else 'down'} {abs(r):.1f} points" if r else "0.0 points (no change)"
+    return Num(value=round(float(x), 3), display=text)
 
 
 METRIC_UNITS = ("yards", "seconds", "rate", "pct_points", "yards_per_carry", "yards_per_catch")
@@ -182,7 +204,7 @@ def _stat_text(x: float, unit: str, *, signed: bool = True) -> str:
     EPA with 2 decimals (and a sign unless `signed=False`)."""
     if unit == "epa":
         r = _round_half_up(x, 2)
-        return f"{r:+.2f}" if signed else f"{abs(r):.2f}"
+        return _signed(r, 2) if signed else f"{abs(r):.2f}"
     if unit == "count":
         r = _round_half_up(x, 1)
         return str(int(r)) if r == int(r) else f"{r:.1f}"

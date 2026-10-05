@@ -72,6 +72,15 @@ def fix_message(feedback: list[str]) -> str:
         "copied exactly from a display string, each number's owner is named in the same "
         "sentence, no banned word appears, and every section stays within the word limits "
         "listed below (fixing one issue must not make a section longer than its limit). "
+        # P09 fact-check: a regeneration rewrote sections that hadn't failed and cut the
+        # tail off a copied fact text ("..., compared with an average team") to save words
+        "Change only what these issues require and keep every other sentence as it was. "
+        "An issue that says 'no entity named' means the sentence names nobody: add the "
+        "player or team name to it rather than deleting it. An issue that names someone "
+        "means that number isn't one of theirs (often a count you added yourself, such as "
+        "'in 1 game'): remove it or use their own display string. If a section must get "
+        "shorter, drop a whole sentence or item, never words inside a copied display string "
+        "or fact text. "
         "Return the full corrected JSON object.\n- " + "\n- ".join(feedback)
     )
 

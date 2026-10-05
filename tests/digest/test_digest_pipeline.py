@@ -28,8 +28,9 @@ BUDGETS = {"report_card": 60, "game_outlook": 80, "team_trends": 120}
 def test_registry_returns_placeholder_and_refuses_unconnected() -> None:
     llm = get_llm("placeholder")
     assert isinstance(llm, PlaceholderLLM) and llm.name == "placeholder"
-    with pytest.raises(ProviderNotConnected):
-        get_llm("anthropic")
+    for name in ("anthropic", "openai_compatible"):  # not built (D87): say what to use
+        with pytest.raises(ProviderNotConnected, match="openrouter"):
+            get_llm(name)
     with pytest.raises(ValueError):
         get_llm("gpt-nonsense")
 
@@ -340,3 +341,45 @@ def test_evidence_person_names_their_team() -> None:
 
     s = "Context: recently without guard Aaron Banks; pass rush's pressure rate +8.8 points."
     assert run_checks({"team_trends": s}, fx).result("entity_binding").passed
+
+
+def test_trend_evidence_says_which_way_a_rate_moved() -> None:
+    """P09 fact-check: "pressure rate allowed by the offense +7.0 points" read as good next
+    to an "up" trend. Every rate change says up / down and, for pressure, what it means."""
+    from nflengine.digest.build import _evidence
+    from nflengine.digest.format import number_atoms
+
+    ev, _ = _evidence({"def_pressure_rate_delta": -0.122, "off_pressure_rate_delta": 0.07})
+    assert ev == [
+        "pass rush's pressure rate down 12.2 points vs earlier this season "
+        "(less pressure on opposing QBs)",
+        "pressure rate allowed by the offense up 7.0 points vs earlier this season "
+        "(its QB under more pressure)",
+    ]
+    assert [number_atoms(e) for e in ev] == [["12.2"], ["7.0"]]
+    ev, _ = _evidence({"off_cpoe_delta": -5.04, "before_source": "last_season"})
+    assert ev == ["passing offense's completion % over expected down 5.0 points vs last season"]
+
+
+def test_count_items_carry_their_unit_and_the_placeholder_says_it_once() -> None:
+    """P09 fact-check: bare "9" vs "1.5" pressures made GLM add "in 1 game" of its own."""
+    from nflengine.digest import format as F
+    from nflengine.digest.payload import UnderHoodItem
+
+    assert F.count_stat(9, "pressures").display == "9 pressures"
+    assert F.count_stat(1, "pressures").display == "1 pressure"
+    assert F.per_game(1.46, "pressures").display == "1.5 pressures per game"
+    item = UnderHoodItem(
+        player="DeForest Buckner", player_id="00-0032378", team="IND", team_name="Colts",
+        position="DT", metric="pressures", label="pressures", unit="count", kind="riser",
+        last_week=F.count_stat(9, "pressures"), season_avg=F.per_game(1.5, "pressures"),
+        norm_note="his average over the previous 6 games", volume=F.count(9),
+        volume_label="pressures", source="PFR",
+        rank_note="biggest jump over his own average among pass rushers with 3+ pressures",
+    )  # fmt: skip
+    payload = make_payload(under_the_hood=[item])
+    text = synthesize(
+        payload, build_fact_index(payload), PlaceholderLLM(), load_prompt(), BUDGETS
+    ).sections["under_the_hood"]
+    assert "9 pressures last week, up from 1.5 pressures per game" in text
+    assert "pressures pressures" not in text and "per game per game" not in text
