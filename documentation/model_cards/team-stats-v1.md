@@ -1,6 +1,6 @@
 # Model card: team stat totals v1 and the consistency layer (P08)
 
-Five team-level projections for the weekly digest and the accuracy scoreboard (passing yards, rushing yards, sacks made, sacks taken, takeaways), and the **consistency layer** that checks the player and team projections against each other. The player models they sit beside: [player model v1](player-model-v1.md). The design: [documentation/11](../11-prediction-targets.md) (team targets and the consistency rule). **Status:** built and backtested; **not wired into the weekly run**. Which targets ship is the lead's ✋ decision, made from the pre-registered rule and numbers below.
+Five team-level projections for the weekly digest and the accuracy scoreboard (passing yards, rushing yards, sacks made, sacks taken, takeaways), and the **consistency layer** that checks the player and team projections against each other. The player models they sit beside: [player model v1](player-model-v1.md). The design: [documentation/11](../11-prediction-targets.md) (team targets and the consistency rule). **Status:** shipped (D80, D81): **passing yards, rushing yards, sacks made and sacks taken** are refit and projected every week inside the weekly `player` step from 2026 week 5 (`team_model.live_targets`); **takeaways** failed the pre-registered rule and don't ship. The consistency layer runs every week too: the receptions clamp on, the receiving-yards adjustment off (log only).
 
 ## What it is
 
@@ -231,18 +231,21 @@ So `apply_consistency(..., rec_yds_anchor=None)` (the default) **only logs the t
 
 `inconsistency_summary` gives, per gap (`gap_recv_qb`, `gap_qb_team`, `gap_recv_team`, each also `_p50`, and `gap_act_*` for the identity on actual results): `inconsistency/<gap>_median_abs`, `_bias`, `_share_gt10`; and `inconsistency/rec_gt_tgt_share_<p10|p50|p90|mean>`, `_median_excess_<level>`, `_pairs`, `_adjusted_rows`; `inconsistency/team_games`; after the default adjustment, the same gap keys under `inconsistency/after/`. The evaluation run (`run_eval`, W&B group `track1-player`, job `eval`, tags `p08`, `consistency`) also logs `cons/<gap>` by season (step `cons/season`), the tables `by_season`, `adjustment_effects`, `adjustment_by_season`, `receptions_by_season`, histograms `hist/gap_*` and the bar `adjustment_mae_change`, and `decision/*` in the summary.
 
-## Wiring (for the lead; nothing here is wired)
+## Wiring (as built, D80 / D81)
 
-- **Backtests:** `team_runs.run_backtest(target, data, report_seasons, launched_by, log, save, use_wandb, tags, num_threads, no_market, root)` (the same first arguments as the player's); suggested `nfl backtest team --target <name|all> [--no-market] [--seasons 2019-2025] [--smoke]`. Tuning: `team_runs.run_tune(target, ...)` (`nfl tune team`).
-- **Weekly:** `team_runs.run_train(season, week, launched_by, promote, log, run_date, targets, use_wandb, run_dir, model_dir, backtest_root, data)` writes `predictions_teams.parquet` into `run_dir` (default the live `runs/<season>/week<NN>/`), the boosters and meta into `models/team-model/<season>-w<NN>/`, the earlier weeks' walk-forward rows and scoreboard rows next to the week folder, and the `team-model` artifact. It projects `team_model.live_team_targets()` (settings `team_model.live_targets`, **empty until the ship decision**), or `targets=`. `team_runs.score_weeks(season, weeks, ...)` scores the saved pre-kickoff projections and upserts live scoreboard rows (`position_group = "TEAM"`).
-- **Consistency:** `consistency.apply_consistency(players, teams=None, receptions=True, rec_yds_anchor=None, strength=0.5)`; `consistency.run_eval()` (suggested `nfl consistency`).
-- **Settings:** `AppConfig` needs a `team_model: dict[str, Any]` field for the block to be read; the defaults are in code (`team_model.TEAM_PARAMS`):
+- **CLI:** `nfl backtest team --target <name|all> [--no-market] [--seasons 2019-2025] [--smoke]` (`team_runs.run_backtest`), `nfl tune team --target <name|all>` (`run_tune`, scored on 2017–2018), `nfl train team --season S --week N [--promote]` (`run_train`), `nfl consistency` (`consistency.run_eval`: measures the layer on the backtests, changes nothing).
+- **Weekly run:** inside the `player` step (`weekly._team_fit`, fail-soft: any error is a note in the step's detail, never `degraded`): first `team_runs.score_weeks(season, 1..N-1)` (the saved pre-kickoff team projections, upserted as `mode = live` rows, W&B `scoreboard-team-<season>-w<NN>`), then `run_train(season, N, promote=…)` for the shipped targets → `runs/<season>/week<NN>/predictions_teams.parquet`, `team_walkforward.parquet` and `mode = backtest` scoreboard rows next to the week folder, boosters + `meta.json` (with each target's fitted shift / dispersion / tail / calibration under `fitted`) in `models/team-model/<season>-w<NN>/`, and the `team-model` artifact (`production` with `--auto`, D72). Then `weekly._consistency` runs `apply_consistency(players, teams, receptions=True, rec_yds_anchor=None)` on the week's unstarted player rows (D81): the receptions clamp is applied and the file rewritten atomically only if a row changed; the `inconsistency/*` numbers go to `consistency.json`, `run_summary.json` and the pipeline W&B run (`consistency/*`).
+- **Settings** (`config/settings.yaml`; `AppConfig.team_model` / `consistency`):
   ```yaml
-  team_model:               # team stat model v1 (P08; documentation/11)
-    live_targets: [pass_yds-team, rush_yds-team]   # the ship decision; empty = nothing projected weekly
-    # per_target: {pass_yds-team: {num_leaves: 4, min_data_in_leaf: 100, n_estimators: 200}}
+  team_model:
+    live_targets: [pass_yds-team, rush_yds-team, sacks_made-team, sacks_taken-team]
+  consistency:
+    receptions: true
+    rec_yds_anchor: null   # log only (D81); team | qb to scale WR/TE receiving yards
+    strength: 0.5
   ```
-- **Shared scoreboard:** team rows share `accuracy_scoreboard.parquet` with the players' (`position_group = "TEAM"`, `GROUP_SLUG["TEAM"] = "team"`): anything that iterates the scoreboard by group (drift checks, the season dashboard) should filter by `GROUPS`.
+  Tree settings stay in code (`team_model.TEAM_PARAMS`); `team_model.per_target.<key>` overrides them.
+- **Shared scoreboard:** team rows share `runs/<season>/accuracy_scoreboard.parquet` with the players' (`position_group = "TEAM"`). The digest's player report card and scorecard drop them (`digest.players._mode_rows`); the season dashboard gives them their own `player/*_team` series and keeps them out of `player/*_all`; drift treats TEAM as one more group (`player_vs_baseline`, and `player_prob_vs_baseline` for the sacks' P(≥ 1)). Every upsert runs under an OS lock and is written atomically (D85).
 
 ## Verification
 
@@ -254,4 +257,4 @@ So `apply_consistency(..., rec_yds_anchor=None)` (the default) **only logs the t
 
 - Artifact `team-model` (type `model`), alias `<season>-w<NN>` per weekly fit; `production` only with `promote=True` (never set by a backtest or a smoke run).
 - Model version string in every projection: `team-model-v1:<season>-w<NN>` (backtests: `team-model-v1:backtest`).
-- Settings: `config/settings.yaml` → `team_model` (to add); the feature hash is in each run's config.
+- Settings: `config/settings.yaml` → `team_model` (`live_targets`: the 4 shipped targets) and `consistency`; the feature hash is in each run's config.

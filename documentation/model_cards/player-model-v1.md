@@ -359,7 +359,7 @@ One row per player × game × target (`models/player_schema.py` `PRED_SCHEMA`): 
 - **Range calibration is pooled per model:** WR/TE ranges run a little wide for tight ends (84%) and a little narrow for wide receivers' counts (78%); pressures ranges hold 85% because whole-number counts with P10 = 0 can't hit 80% exactly.
 - **Injury designations:** the model captures about half of a player's own questionable / limited-practice effect, and misses the drop in pressures right after a missed game (sonnet-xhigh's sense check, family cards).
 - **A proxy driver:** "carries the opponent allows to running backs" is a top-3 driver in 6% of 2025 passing-yards rows and always pushes up, but the real gap doesn't rise with it (rank correlation −0.001): a candidate to prune in v2.
-- **Consistency across targets** (receptions ≤ targets, receivers' yards ≈ the QB's) isn't enforced yet (P08).
+- **Consistency across targets** (P08, D81): WR/TE receptions are capped at targets every week (it touches a handful of rows a season); the receivers' yards vs the QB's and the team's are measured and logged (`consistency.json`), not adjusted: adjusting cut receiving-yards MAE 0.47% but made the WR/TE watch picks 2 points worse ([team stats card → Consistency layer](team-stats-v1.md#consistency-layer-modelsconsistencypy)).
 
 ## Code review and verification
 

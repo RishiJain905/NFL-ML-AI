@@ -36,9 +36,9 @@ One model per target × position group (`models/player_schema.py` → `TARGETS`)
 
 A linebacker can be in two pools (pressures and tackles): he gets both projections. Only games a player actually played count as targets ("scored only when he plays", documentation/11).
 
-## 2b. The P08 targets (backtested, live only once shipped)
+## 2b. The P08 targets (all 12 shipped, live from 2026 week 5; D82)
 
-Twelve more targets use the same machinery (`phase="p08"` in `TARGETS`). **A P08 target is refit and projected by the weekly run only when it is listed in `config/settings.yaml` → `player_model.live_targets`** (default: the 11 P06 targets), which is how a target ships: it must first clear the pre-registered rule in §7.
+Twelve more targets use the same machinery (`phase="p08"` in `TARGETS`). **A P08 target is refit and projected by the weekly run only when it is listed in `config/settings.yaml` → `player_model.live_targets`**, which is how a target ships: it must first clear the pre-registered rule in §7. All 12 did (every one in 7 of 7 seasons), so the list now holds 23 targets. Next to them, the weekly `player` step also refits the **team stat totals** (passing / rushing yards, sacks made / taken; [team stats card](../model_cards/team-stats-v1.md)) and runs the **consistency layer** (WR/TE receptions capped at targets; the receivers-vs-QB-vs-team passing-yards gaps logged).
 
 | Group | Target (key) | Kind | What it answers |
 |---|---|---|---|
@@ -273,4 +273,4 @@ A 🧑 run passes `--launched-by rishi` (agents: `--launched-by agent`).
 - **Deep offensive picks can be small yardage.** The defensive list has a volume floor (§5); the offensive list doesn't, because low-yardage picks hit as often as the others. A pick like 13 projected receiving yards (a 3-yard baseline) can appear late in the Offense table.
 - Backtest rows only include games the player played, so a pick who sits out never appears there; live hit rates will run a little lower.
 - Pressures depend on PFR, which publishes about a week late: last week's pressures may not be scorable on Tuesday.
-- Backtested in P08 ([card](../model_cards/player-p08.md)), live only once shipped: touchdown, sack and interception chances, coverage stats for corners and safeties, passing TDs and interceptions, QB rushing yards, QB hits. Still open: a consistency layer (receptions ≤ targets, receivers' yards ≈ QB yards), goal-line usage as a touchdown feature, a clean CB / safety split.
+- Shipped in P08 ([card](../model_cards/player-p08.md)): touchdown, sack and interception chances, coverage stats for corners and safeties, passing TDs and interceptions, QB rushing yards, QB hits; plus the team stat totals and the consistency layer (receptions ≤ targets on; receivers' yards vs the QB's and the team's logged, not adjusted, D81). Still open: tying passing TDs to the receivers' TD chances, goal-line usage as a touchdown feature, a clean CB / safety split.

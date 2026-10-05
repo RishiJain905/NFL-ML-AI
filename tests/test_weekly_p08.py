@@ -4,6 +4,7 @@ consistency section."""
 
 import datetime as dt
 import json
+from pathlib import Path
 
 import polars as pl
 import pytest
@@ -282,3 +283,59 @@ def test_consistency_record_failure_keeps_the_committed_table(tmp_path, cfg, mon
     assert fut["p50"].item() == 6.0  # the clamp committed to disk is what the step returns
     assert pl.read_parquet(path).equals(out)
     assert notes == ["consistency: 1 rows adjusted (record not written: PermissionError)"]
+
+
+def test_fitted_params_record_everything_outside_the_boosters():
+    from types import SimpleNamespace
+
+    from nflengine.models.player_model import Calibrator
+    from nflengine.models.player_runs import fitted_params
+
+    fit = SimpleNamespace(
+        shift=1.5, dispersion=8.7, tail=0.125, calibrator=Calibrator("platt", 0.44, -0.1, n=4000)
+    )
+    got = fitted_params(fit)
+    assert got == {
+        "shift": 1.5,
+        "dispersion": 8.7,
+        "tail": 0.125,
+        "calibrator": {"kind": "platt", "slope": 0.44, "intercept": -0.1, "n": 4000},
+    }
+    assert fitted_params(SimpleNamespace(shift=0, dispersion=1, tail=0.1))["calibrator"] is None
+
+
+def test_dashboard_player_all_excludes_team_rows():
+    from nflengine.ops import dashboard, drift
+
+    rows = []
+    for w in (1, 2):
+        rows.append(
+            {
+                "season": 2026,
+                "week": w,
+                "target": "rec_yds",
+                "position_group": "WR/TE",
+                "n_scored": 100,
+                "mae_model": 9.0,
+                "mae_baseline": 10.0,
+                "mode": "backtest",
+            }
+        )
+        rows.append(
+            {
+                "season": 2026,
+                "week": w,
+                "target": "pass_yds",
+                "position_group": "TEAM",
+                "n_scored": 100,
+                "mae_model": 50.0,
+                "mae_baseline": 100.0,
+                "mode": "backtest",
+            }
+        )
+    sb = pl.DataFrame(rows)
+    data = dashboard.build_dashboard_data(
+        2026, 3, run_root=Path("."), scorecard=pl.DataFrame(), scoreboard=sb,
+        history=pl.DataFrame(), cfg=drift.DEFAULTS,
+    )  # fmt: skip
+    assert data.summary["player_cum_improvement_all"] == pytest.approx(10.0)  # players only

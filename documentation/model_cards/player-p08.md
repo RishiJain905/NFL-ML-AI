@@ -1,6 +1,6 @@
 # Model card: player model, the P08 targets (touchdown, sack and interception chances; QB TDs; coverage for defensive backs)
 
-**Status:** backtested 2019–2025 (P08); a target is **live in the weekly run only once it is listed in `config/settings.yaml` → `player_model.live_targets`** (the default is the 11 P06 targets). All 12 clear the pre-registered ship rule in the walk-forward backtests ([Results](#results-walk-forward-20192025-every-regular-season-week-refit-weekly)); the ship decision is the lead's (P08 phase file). This card is how the models work and how to read them.
+**Status:** **all 12 shipped** (D82): listed in `config/settings.yaml` → `player_model.live_targets` (23 targets with the P06 ones), refit and projected by every weekly run from 2026 week 5. All 12 cleared the pre-registered ship rule in every one of the 7 seasons ([Results](#results-walk-forward-20192025-every-regular-season-week-refit-weekly)). This card is how the models work and how to read them.
 
 Companion docs: the P06 models and the shared machinery are in [player-model-v1](player-model-v1.md) (read its "The math, step by step" first: the baseline, sample weights, quantile and Poisson models, the walk-forward); a plain-language walkthrough is the [player projections guide](../guides/player-projections.md) (§2b); the spec is [documentation/11](../11-prediction-targets.md).
 
@@ -223,7 +223,7 @@ A 12-point grid per target scored by a walk-forward over every other week of 201
 | `int-cbs` | 4 | 300 | 100 | `eweebi9l` | 3,799 | 2.1% |
 | `pd-cbs` | 4 | 300 | 100 | `9figg6pe` | 3,799 | 1.7% |
 
-They live in `player_runs.TARGET_DEFAULTS` (`config/settings.yaml` → `player_model.per_target` wins when set). Last tuned 2026-10-04; fixed for the season. The three PFR targets were tuned on only the last ~7 weeks of 2018 (671 player-games: no earlier training year) and the QB targets on 540 rows, so their picks are barely better than a guess; a first untuned round (global settings, run before tuning) scored `cov_tgt` +5.1%, `cov_cmp` +5.0%, `cov_yds` +9.4%: the tuned `cov_cmp` setting is 0.6 points worse than the untuned one on the reported seasons, which is not a reason to change it (never tune on reported weeks).
+They are written in `config/settings.yaml` → `player_model.per_target` (with their sweep ids, like the P06 ones) and mirrored in `player_runs.TARGET_DEFAULTS` (the settings win when both exist). Last tuned 2026-10-04; fixed for the season. The three PFR targets were tuned on only the last ~7 weeks of 2018 (671 player-games: no earlier training year) and the QB targets on 540 rows, so their picks are barely better than a guess; a first untuned round (global settings, run before tuning) scored `cov_tgt` +5.1%, `cov_cmp` +5.0%, `cov_yds` +9.4%: the tuned `cov_cmp` setting is 0.6 points worse than the untuned one on the reported seasons, which is not a reason to change it (never tune on reported weeks).
 
 ## How the 12 models were built (rounds)
 
@@ -297,10 +297,10 @@ In the digest, only three numbers reach the tables, as extra columns that appear
 - **CB and safety share one model** with a safety flag; slot corners, nickel packages and shadow coverage aren't visible, only snaps, team context and his own history.
 - **Calibration of rare events** is only as good as the history behind it: a probability target fits its Platt layer on the last 3 seasons (RB about 4,500 rows, WR/TE 12,900, CB/S 11,700, EDGE 19,800), a QB event count on about 1,600 rows.
 - **SHAP drivers** explain the projection against the average player in the pool, not his own baseline, and for probability targets are a first-order probability-point conversion.
-- **No consistency layer yet:** passing TDs aren't tied to receivers' TD chances, and a team's TD chances don't sum to its scoring.
+- **The consistency layer doesn't cover TDs:** it checks receptions ≤ targets and the passing-yards sums (D81), but passing TDs aren't tied to receivers' TD chances, and a team's TD chances don't sum to its scoring.
 
 ## Versioning
 
-- Artifact and version strings are the P06 ones (`player-model` artifact, `player-model-v1:<season>-w<NN>`): a P08 target joins the weekly fit by being listed in `player_model.live_targets`, and its boosters are saved next to the others.
+- Artifact and version strings are the P06 ones (`player-model` artifact, `player-model-v1:<season>-w<NN>`): a P08 target joins the weekly fit by being listed in `player_model.live_targets`, and its boosters are saved next to the others. `meta.json` (in the artifact) records, per target under `fitted`, everything outside the booster files that the projections depend on: the conformal `shift`, the negative binomial's `dispersion` and range `tail`, and the calibration layer (`kind`, Platt `slope` / `intercept`, rows `n`).
 - Per-target tree settings: `player_runs.TARGET_DEFAULTS` (tuned on 2017–2018); `config/settings.yaml` → `player_model.per_target` wins when set. Calibration: `player_model.calibration` (`platt`), `calibration_seasons` (3).
 - Code: `models/player_schema.py`, `models/player_model.py`, `models/player_runs.py`, `features/player_coverage.py`, `features/player_data.py`.

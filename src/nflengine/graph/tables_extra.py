@@ -64,7 +64,8 @@ def read_coaching_seed(
             pl.col("team").str.strip_chars().str.to_uppercase(),
             pl.col("season").str.strip_chars().cast(pl.Int32),
             pl.col("role").str.strip_chars().str.to_uppercase(),
-            pl.col("head_coach").str.strip_chars(),
+            # blank ("" or a quoted "") means "from the schedules", never a coach named ""
+            pl.col("head_coach").str.strip_chars().replace("", None),
         )
         return df.filter(
             pl.col("coach").is_not_null()

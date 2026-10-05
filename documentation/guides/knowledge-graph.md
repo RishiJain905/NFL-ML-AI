@@ -102,8 +102,8 @@ A week-4 2026 build holds about **15.5k nodes and 588k relationships**, covering
 | `(Coach)-[:HEAD_COACH_OF]->(Team)` | 302 | head coach of the team that season | `season`, `games` |
 | `(Game)-[:HAS_PREDICTION]->(GamePrediction)` | 32 | this week's predictions | |
 | `(Player)-[:HAS_PROFILE]->(UsageProfile)` (P08) | ~1,850 | his usage in that season | |
-| `(Coach)-[:COORDINATOR_OF]->(Team)` (P08) | 0 until a seed exists | coordinator that season (optional hand-made seed) | `season`, `role` (OC / DC / ST) |
-| `(Coach)-[:WORKED_UNDER]->(Coach)` (P08) | 0 until a seed exists | an assistant and his head coach (optional seed) | `seasons`, `teams`, `roles` |
+| `(Coach)-[:COORDINATOR_OF]->(Team)` (P08) | 1,684 | coordinator that season (coaching seed from Wikipedia, D86) | `season`, `role` (OC / DC / ST) |
+| `(Coach)-[:WORKED_UNDER]->(Coach)` (P08) | 771 | a coordinator and his head coach (coaching seed) | `seasons`, `teams`, `roles` |
 | `(Player)-[:PASS_CENTRALITY]->(Team)` (P08, GDS) | ~500 (this season) | his place in the team's passing network this season | `pagerank`, `degree` (targets), `share`, `rank`, `role` (passer / receiver), `hub_id`, `out_this_week`, `share_this_week`, `rank_this_week` |
 | `(Player)-[:SIMILAR_TO]->(Player)` (P08, GDS) | ~900 | his usage this season is close to the other player's in `other_season` | `season`, `other_season`, `other_team`, `group`, `score`, `rank` (1-3), `basis` |
 | `(Player)-[:HAS_PROJECTION]->(PlayerProjection)` | one per projection | the player model projected him this week (P06) | |
@@ -262,11 +262,45 @@ Three styles, two queries:
 
 **Why it's quiet:** nflverse publishes a game's crew after the game, weeks late (on 2026-10-04 the officials table had 2026 week 1 only). A Tuesday run never knows this week's referee, so the query returns nothing until a week's crews are in the data (a live run would use them; a backtest never does, by rule). The integration test checks it by adding a real crew (Alex Kemp for Falcons at Vikings, 2024 week 14) the way a run that had it would see it.
 
-### Q5b: Coaching tree → *Non-obvious insights* (P08; needs the optional seed)
+### Q5b: Coaching tree → *Non-obvious insights* (P08; coaching seed from Wikipedia, D86)
 
-Head-coach reunions (above) come from the schedules. Coordinators and coaching trees need a hand-made file nobody has curated yet (decisions-log open question Q06): `config/coaching_seed.csv`, one row per coach, team, season and role (`coach,team,season,role,head_coach`; the template is `config/coaching_seed.example.csv`, header only). OC / DC / ST rows become `COORDINATOR_OF`; every row becomes `WORKED_UNDER` the team's head coach that season (from the schedules, or the `head_coach` column for seasons before 2018). With no file, nothing is loaded and the query returns nothing.
+Head-coach reunions (above) come from the schedules. Coordinators and coaching trees come from **`config/coaching_seed.csv`**, one row per coach, team, season and role (`coach,team,season,role,head_coach`; the template with comments is `config/coaching_seed.example.csv`). OC / DC / ST rows become `COORDINATOR_OF`; every row becomes `WORKED_UNDER` the team's head coach that season (from the schedules, or the `head_coach` column for seasons before 2018). With no file, nothing is loaded and the query returns nothing.
 
-**Two patterns:** a coordinator this season facing the head coach he used to work under, and two head coaches 1-2 `WORKED_UNDER` hops apart (`shortestPath((h1)-[:WORKED_UNDER*1..2]-(h2))`: one worked under the other, or both under the same mentor). Tested with a seed made for the test: for Falcons at Vikings (2024 week 14), Kevin O'Connell and Raheem Morris both worked under Sean McVay with the Rams.
+**Where the file comes from (D86).** `uv run nfl graph coaching-seed` builds it from English Wikipedia:
+
+- seasons up to last season: each team-season article ("2021 Los Angeles Rams season") and its `{{NFL final staff}}` template, one line per job ("* Offensive coordinator – [[Name]]"); older articles without one fall back to the infobox (`coach`, `off_coach`, `def_coach`);
+- the current season: the team's staff template ("Template:Kansas City Chiefs staff"), since a season article gets its final staff only after the season.
+
+It reads pages through the MediaWiki API with a descriptive user agent, about one request a second, and caches them under `D:/nfl-ml-data/cache/http/wikipedia_staff/` (704 pages for 32 teams × 2006–2026; about 12 minutes the first time, seconds from the cache). `--refresh` re-fetches only the current season's staff pages, so run `uv run nfl graph coaching-seed --refresh` each preseason and after a mid-season coordinator change. Options: `--first` (default 2006), `--last` (default `seasons.current`), `--out`.
+
+What it keeps: **offensive, defensive and special teams coordinators** (co-coordinators count; assistant coordinators and position coaches don't: each row is also a `WORKED_UNDER` edge to that season's head coach, and with every assistant in the file almost any two head coaches would share a mentor). Notes in a staff line are dropped ("Ken Dorsey; fired after Week 10" → Ken Dorsey). The command prints a **name check**: a seed name that looks like an nflverse head coach's but slugs differently would split one coach into two nodes. Known fixes live in `NAME_FIXES` in `graph/coaching_seed.py` (Richard → Rich Bisaccia); "Jim Johnson" (the Eagles' DC) vs "Jimmy Johnson" is a real difference and stays. The current file: **1,684 rows, 411 coaches, 615 team-seasons** (550 staff templates, 65 infoboxes, 57 pages with no coordinators, mostly 2006–2010 articles), spot-checked against 20 well-known staffs (Spagnuolo KC 2019, Saleh SF 2019, Morris LA 2021, ...). Fix a wrong row by editing the CSV; a rebuild overwrites hand edits, so put lasting fixes in `NAME_FIXES` or the parser.
+
+**Two patterns:** a coordinator this season facing the head coach he used to work under, and two head coaches 1-2 `WORKED_UNDER` hops apart (`shortestPath((h1)-[:WORKED_UNDER*1..2]-(h2))`: one worked under the other, both worked under the same mentor, or one coach worked under both). Tested with a seed made for the test: for Falcons at Vikings (2024 week 14), Kevin O'Connell and Raheem Morris both worked under Sean McVay with the Rams.
+
+**What it finds with the real seed** (live week-4 graph, 2026-10-04): 1,684 `COORDINATOR_OF` and 771 `WORKED_UNDER` edges; about 3–9 linked games a week in 2024–2025 (93 and 76 rows over the two seasons, about a quarter of them coordinator vs old boss; slightly high, since that graph also holds later seasons' edges) and 12 rows in 2026 weeks 1–4. Real rows:
+
+| Week | Kind | Row |
+|---|---|---|
+| 2026 w4 | head_coach_tree | Ben Johnson (Bears) and Aaron Glenn (Jets): both coordinators under Dan Campbell in Detroit (2022–2024, 2021–2024); strength 0.70 |
+| 2026 w1 | coordinator_vs_boss | Raheem Morris, the 49ers' DC, faces Sean McVay, whom he worked under with the Rams (2021–2023); 0.736 |
+| 2026 w1 | head_coach_tree | Kevin O'Connell (Vikings) and Matt LaFleur (Packers): both OCs under McVay (2020–2021, 2017); 0.597 |
+| 2026 w1 | head_coach_tree | John Harbaugh (Giants) and Brian Schottenheimer (Cowboys) through Rex Ryan (Harbaugh's DC in 2008, Schottenheimer's boss with the Jets 2009–2010); 0.515 |
+
+The week-4 row became a candidate (83 instead of 82) and wasn't picked over the stronger items; the published week-4 digest didn't change.
+
+**A bug found while building it:** the first build loaded only 406 `WORKED_UNDER` edges. A blank `head_coach` written as `""` was read as a coach named "", which beat the schedules' head coach, so every 2018+ row lost its boss. The reader now treats blanks as null (`graph/tables_extra.py`), the writer leaves them empty, and a test seed row uses `""`.
+
+Try it in Neo4j Browser:
+
+```cypher
+// who worked under Andy Reid, and when
+MATCH (c:Coach)-[w:WORKED_UNDER]->(:Coach {coach_id: 'andy-reid'})
+RETURN c.name, w.seasons, w.teams, w.roles ORDER BY w.seasons[0];
+
+// this season's coordinators of one team
+MATCH (c:Coach)-[r:COORDINATOR_OF {season: 2026}]->(:Team {team_id: 'DET'})
+RETURN c.name, r.role;
+```
 
 ### Q10: Graph Data Science stories → *Non-obvious insights* (P08)
 
@@ -422,7 +456,7 @@ Tip: in the Graph view, click the `Player` chip in the frame's legend and set it
 | What was published | `D:/nfl-ml-data/runs/published_insights.parquet` (backtests keep their own) |
 | Tests | `uv run pytest tests/graph` (no Neo4j); `uv run pytest -m integration tests/graph/test_graph_integration.py` (~15 min, rebuilds the graph for four past "golden" weeks: Saquon Barkley vs the Giants 2024 w7, Justin Jefferson on IR 2023 w7 (also the GDS hub and Puka Nacua's usage comparison), Jake Browning for Joe Burrow 2023 w13, Kirk Cousins vs Justin Jefferson 2024 w14 (also Q7, Q9, the coaching tree and GDS fail-soft)) |
 | Code | `src/nflengine/graph/` (`tables.py`, `tables_extra.py`, `load.py`, `schema.cypher`, `queries/`, `insights.py`, `insights_extra.py`, `insights_advanced.py`, `gds.py`, `published.py`, `build.py`, `projections.py`), `src/nflengine/digest/graph_sections.py` |
-| Optional coaching seed | `config/coaching_seed.csv` (template `config/coaching_seed.example.csv`) |
+| Coaching seed | `config/coaching_seed.csv` (built by `uv run nfl graph coaching-seed [--refresh]` from Wikipedia, D86; template `config/coaching_seed.example.csv`; page cache `D:/nfl-ml-data/cache/http/wikipedia_staff/`); tests `uv run pytest tests/graph/test_coaching_seed.py` |
 | Player projections | written by the weekly `player` step after the build (`nfl weekly run`); tests `uv run pytest tests/graph/test_projections.py` |
 
 ## 10. Limits and what comes next
@@ -432,4 +466,5 @@ Tip: in the Graph view, click the `Player` chip in the frame's legend and set it
 - **"As of Tuesday" is conservative.** A Tuesday backtest can't see this week's injury report, so its QB changes are always "not confirmed yet". The Saturday injury update (P07) is where these sections get sharper.
 - **Q1 looks back 2 seasons**, so "played 17 games for the Seahawks in 2023" is exact but isn't his whole career with them.
 - **P06** recomputes Q2 and Q3 in Polars as player-model features (vacated targets, history with the new QB), so every past week has them, and fills `PlayerProjection` nodes every week. **P08** added Graph Data Science (passing-network centrality, player similarity) and queries Q5 (coaching tree), Q6, Q7 and Q9.
-- **Q9 waits for data:** referee crews arrive weeks after their games, so no Tuesday digest can use them; the coaching tree waits for a hand-made seed. Community detection on the coaching / movement graph (doc 05) is still for later.
+- **Q9 waits for data:** referee crews arrive weeks after their games, so no Tuesday digest can use them. Community detection on the coaching / movement graph (doc 05) is still for later.
+- **The coaching seed is only as good as Wikipedia** and covers coordinators only: a mid-season change lists both coaches for that season, 57 older team-season pages have no coordinators, and the current season needs a `--refresh` when a staff changes.

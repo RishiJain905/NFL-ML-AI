@@ -1137,6 +1137,45 @@ def graph_query(
         console.print_json(json.dumps(row, default=str))
 
 
+@graph_app.command("coaching-seed")
+def graph_coaching_seed(
+    first: int = typer.Option(2006, help="First season."),
+    last: int | None = typer.Option(None, help="Last season (default: seasons.current)."),
+    refresh: bool = typer.Option(
+        False, "--refresh", help="Re-fetch the current season's staff pages (else cached)."
+    ),
+    out: str | None = typer.Option(None, help="Output CSV (default: config/coaching_seed.csv)."),
+) -> None:
+    """Build the coaching seed (coordinators per team-season) from Wikipedia (P08, D86)."""
+    import datetime as dt
+    from pathlib import Path
+
+    import polars as pl
+
+    from nflengine.graph import coaching_seed as CS
+    from nflengine.graph.tables_extra import seed_path
+    from nflengine.paths import ensure_data_root
+    from nflengine.settings import get_config
+
+    paths = ensure_data_root()
+    current = int(get_config().seasons.current)
+    last = last or current
+    seed, stats = CS.build_seed(
+        range(first, last + 1),
+        current,
+        paths.cache_http / "wikipedia_staff",
+        refresh=refresh,
+        log=console.print,
+    )
+    games = pl.read_parquet(paths.curated / "games.parquet", columns=["home_coach", "away_coach"])
+    coaches = set(games["home_coach"].drop_nulls()) | set(games["away_coach"].drop_nulls())
+    for name, known in CS.check_names(seed, coaches):
+        console.print(f"[yellow]name check: '{name}' looks like nflverse's '{known}'[/]")
+    target = Path(out) if out else seed_path()
+    path = CS.write_seed(seed, target, built=dt.date.today().isoformat(), stats=stats)
+    console.print(f"[green]coaching seed: {seed.height:,} rows -> {path} ({stats})[/]")
+
+
 PLACEHOLDERS: dict[str, tuple[str, str]] = {}
 
 

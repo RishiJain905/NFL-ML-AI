@@ -84,8 +84,8 @@ These answer the brief's open questions.
 | `(Game)-[:AT]->(Venue)` | | schedules |
 | `(Coach)-[:HEAD_COACH_OF]->(Team)` | `season` | schedules (`home_coach` / `away_coach`) |
 | `(Coach)-[:COACHED_IN]->(Game)` | `team_id` | schedules |
-| `(Coach)-[:COORDINATOR_OF]->(Team)` | `season`, `role` (OC/DC) | *optional hand-made seed CSV* |
-| `(Coach)-[:WORKED_UNDER]->(Coach)` | `seasons` | *optional seed*, for coaching trees |
+| `(Coach)-[:COORDINATOR_OF]->(Team)` | `season`, `role` (OC/DC/ST) | coaching seed CSV (built from Wikipedia, D86) |
+| `(Coach)-[:WORKED_UNDER]->(Coach)` | `seasons`, `teams`, `roles` | coaching seed, for coaching trees |
 | `(Official)-[:OFFICIATED]->(Game)` | `role` | officials |
 | `(Player)-[:THREW_TO]->(Player)` | `season`, `games_together`, `targets`, `completions`, `yards`, `tds`, `epa` | play-by-play (passer → receiver), season totals |
 | `(Player)-[:ON_INJURY_REPORT]->(Game)` | `status`, `practice_status`, `body_part`, `report_date` | injuries |
@@ -164,7 +164,7 @@ RETURN a.team_id, b.team_id, c.team_id, ga.week, ra.epa_per_play, gb.week, rb.ep
 (Margins are computed in a follow-up step or with `PLAYED_IN` properties on both sides.)
 
 ### Q5: Coaching connections
-A head coach facing a former team, coordinators facing a former boss, and matchups within one coaching tree. Uses `HEAD_COACH_OF` history (from nflverse) and, if the optional seed exists, `COORDINATOR_OF` and `WORKED_UNDER` paths (variable-length: `(c1)-[:WORKED_UNDER*1..2]-(c2)`).
+A head coach facing a former team, coordinators facing a former boss, and matchups within one coaching tree. Uses `HEAD_COACH_OF` history (from nflverse) and the coaching seed's `COORDINATOR_OF` and `WORKED_UNDER` paths (variable-length: `(c1)-[:WORKED_UNDER*1..2]-(c2)`).
 
 ### Q6: Former teammates on opposite sides
 A QB facing a receiver they used to throw to, or a pass rusher facing a former team's offensive line. Hops: `(qb)-[:THREW_TO {season: s}]->(wr)` where they're now on teams playing each other this week. Includes their combined history numbers.
@@ -216,7 +216,7 @@ The how-to and debugging guide is the `neo4j-graph` skill; decisions D58–D62.
 - `APPEARED_IN` adds `off_snaps`, `def_snaps`, `st_snaps`, `rec_tds`, `rush_tds`, `pass_att`, `completions`, `pass_tds`, `ints`, `target_share`, `qb_hits`, `tackles`, `def_ints`, `passes_defended`, `dropbacks`, `qb_started`, and NGS `ngs_separation`, `ngs_time_to_throw`, `ngs_ryoe`.
 - `PLAYED_IN` adds `opponent`, `points_allowed`, `margin`, `epa_allowed`, `success_allowed`, `epa_margin`, `plays`, `penalty_yards`, and (after P05) `st_epa` / `st_plays`: net special-teams EPA, centered per season and play type. `TeamWeek` adds `prior_weight`.
 - `ON_INJURY_REPORT` adds `team_id`, `season`, `week`; `DEPTH_CHART` is offense and defense only; `HEAD_COACH_OF` adds `games`; `TRADED_TO` adds `season`.
-- Not built yet: `COORDINATOR_OF` / `WORKED_UNDER` (optional seed, P08), `SIMILAR_TO` (GDS, P08), play-level nodes.
+- Not built yet: `COORDINATOR_OF` / `WORKED_UNDER` (coaching seed, P08), `SIMILAR_TO` (GDS, P08), play-level nodes. *(Both built in P08: see "As built in P08" below.)*
 
 **Size and speed (2026 week 4, live).** About 15.5k nodes (7.1k players, 2.3k games, 5.7k `TeamWeek`) and 590k relationships (210k `APPEARED_IN`, 254k `DEPTH_CHART`). A full rebuild takes about 1.5 minutes on the HDD bind mount (load ~75 s; schema ~12 s), and every library query runs in under 1 s on the full graph. The named Docker volume (D27) isn't needed.
 
@@ -242,7 +242,7 @@ The player model writes its projections into the graph (`graph/projections.py`; 
 - **Indexes:** `projection_key` (unique), plus `(season, week)` and `player_id` (`schema.cypher`).
 - **Not in the build's count check:** the projections are written after it, so `graph_counts` doesn't include them.
 
-## As built in P08: Q5–Q7, Q9, Q10 and Graph Data Science (decisions D83, D84)
+## As built in P08: Q5–Q7, Q9, Q10 and Graph Data Science (decisions D83, D84, D86)
 
 How to run the GDS algorithms by hand in Neo4j Browser, with real results: [Graph Data Science guide](guides/graph-data-science.md). Every new query with real examples: [knowledge graph guide](guides/knowledge-graph.md).
 
@@ -251,7 +251,7 @@ How to run the GDS algorithms by hand in Neo4j Browser, with real results: [Grap
 - `PLAYED_IN.pa_rate`, `pa_dropbacks`: FTN play action, always strictly before week W; a backtest also drops week W−1 (FTN is about a week late; its `date_pulled` is a refresh time and can't date rows).
 - `UsageProfile` nodes + `(Player)-[:HAS_PROFILE]->`: one per WR / TE / RB season (regular season, visible plays; past seasons need 8 games and 40 opportunities, the current one 3 and 12), `vector` = usage features as z-scores within the position group. 1,847 on the live week-4 graph.
 - **Officiating crews:** a live run loads week-W crews when the data has them; a backtest never does (D83). In practice crews arrive weeks late (on 2026-10-04 the officials table had only 2026 week 1), so Q9 is mostly quiet on Tuesdays.
-- **Optional coaching seed** (`config/coaching_seed.csv`, schema in `config/coaching_seed.example.csv`, header only): `COORDINATOR_OF {season, role}` and `WORKED_UNDER {seasons, teams, roles}`, rows with season ≤ S; a missing file is skipped silently, a malformed one is logged and skipped. Not curated yet (open question Q06: the loader exists, no data).
+- **Coaching seed** (`config/coaching_seed.csv`, built from Wikipedia by `nfl graph coaching-seed`, D86; schema in `config/coaching_seed.example.csv`): `COORDINATOR_OF {season, role}` and `WORKED_UNDER {seasons, teams, roles}`, rows with season ≤ S; a missing file is skipped silently, a malformed one is logged and skipped; a blank `head_coach` means "the team's head coach from the schedules". OC / DC / ST coordinators 2006–2026, 1,684 rows; on the live week-4 graph 1,684 `COORDINATOR_OF` and 771 `WORKED_UNDER` edges.
 
 **GDS jobs** (`graph/gds.py`, between the count check and the query library, doc 05's build order): **PageRank** (damping 0.85, 40 iterations: the default 20 didn't converge) and weighted degree on each team's season `THREW_TO` network (one relationship type per team, weight = targets), then again on **this week's network** without its out pass catchers (the Q0 rows), written as `(Player)-[:PASS_CENTRALITY {season, week, team_id, role, pagerank, degree, share, rank, hub_id, out_this_week, share_this_week, rank_this_week}]->(Team)`; **filtered KNN** (current → past seasons, Euclidean on the usage vectors, topK 10, seed 42, concurrency 1, the player's own seasons dropped, top 3 written) as `(Player)-[:SIMILAR_TO {season, other_season, other_team, group, score, rank, basis, week}]->(Player)`. Results are streamed and written as relationships (a traded player needs a share per team), projections named `nfl-*` are dropped after use. Each job is fail-soft on its own (`safe_error` text only; its queries then return nothing). 5–7 s on the live week 4, 6–13 s in 2025 backtests; the whole build 126–173 s live (the HDD load swings ~40 s).
 

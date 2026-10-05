@@ -325,7 +325,7 @@ def _seed(tmp_path: Path) -> pl.DataFrame:
     p.write_text(
         "coach,team,season,role,head_coach\n"
         "Matt Nagy,KC,2025,OC,\n"  # boss from the schedule: Andy Reid
-        "Matt Nagy,KC,2026,OC,\n"
+        'Matt Nagy,KC,2026,OC,""\n'  # a quoted blank (as the builder writes) is blank too
         "Kyle Shan,LV,2016,OC,Mike Old\n"  # before the graph: the boss is given
         "Sean Pay,KC,2025,QB coach,\n"  # not a coordinator, still a WORKED_UNDER
         "Late Guy,KC,2027,DC,\n",  # a future season: invisible

@@ -227,19 +227,24 @@ def build_dashboard_data(
                 _put(rows, s["week"], **{f"player/rolling_improvement_{slug}": s["improvement"]})
         weeks = sorted(sb["week"].unique().to_list())
         live_weeks = set(sb.filter(pl.col("mode") == "live")["week"].to_list())
+        # "all" = the player projections: the team stat totals (P08, `TEAM` rows in the same
+        # file) have their own `player/*_team` series but never enter the players' number
+        sbp = sb.filter(pl.col("position_group") != "TEAM")
         for w in weeks:
             _put(
                 rows,
                 w,
                 **{
-                    "player/improvement_all": drift.improvement_pct(sb.filter(pl.col("week") == w)),
+                    "player/improvement_all": drift.improvement_pct(
+                        sbp.filter(pl.col("week") == w)
+                    ),
                     "player/cum_improvement_all": drift.improvement_pct(
-                        sb.filter(pl.col("week") <= w)
+                        sbp.filter(pl.col("week") <= w)
                     ),
                     "player/live": float(w in live_weeks),
                 },
             )
-        data.summary["player_cum_improvement_all"] = drift.improvement_pct(sb)
+        data.summary["player_cum_improvement_all"] = drift.improvement_pct(sbp)
         data.summary["player_weeks"] = len(weeks)
         data.summary["player_live_weeks"] = len(live_weeks)
 

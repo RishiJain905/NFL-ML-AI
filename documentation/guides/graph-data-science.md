@@ -325,4 +325,4 @@ You should see 22 nodes and 38 relationships, then Jaccard **1.0** for everyone 
 - **Similarity scores aren't comparable across groups or weeks** (Euclidean on z-scores: an extreme profile has no close neighbor). The digest uses each week's median per group as the bar.
 - **Early weeks are thin:** three games make a usage profile; the comparison says "so far" and the item is low confidence under four games.
 - **In the digest so far:** in 2025 backtests (weeks 5-14) the GDS items reach *More from the graph*, not the prose: Ja'Marr Chase out of the Bengals' network (week 13), Harold Fannin Jr. ~ Evan Engram 2022 (week 14). The strongest P05 stories (0.85-1.0) still win the two prose slots. On the 2026 week-4 graph, DeVonta Smith's hub story (0.84) would take the second prose slot.
-- **Next:** community detection on the coaching and player-movement graph (doc 05) once the coaching seed exists; Track 2 (Big Data Bowl) movement profiles could join the usage vectors.
+- **Next:** community detection on the coaching and player-movement graph (doc 05) now that the coaching seed exists (D86); Track 2 (Big Data Bowl) movement profiles could join the usage vectors.

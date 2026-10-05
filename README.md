@@ -77,6 +77,7 @@ uv run nfl digest --season 2025 --weeks 8-9 --backtest   # past weeks as if live
 uv run nfl graph build --season 2026 --week N  # rebuild Neo4j as of week N + query library -> graph_results.json (P05)
 uv run nfl graph build --season 2025 --week 8 --backtest   # the graph a past week's Tuesday saw
 uv run nfl graph query q2_injury_ripple --season 2026 --week N   # one library query, read-only
+uv run nfl graph coaching-seed --refresh   # rebuild config/coaching_seed.csv from Wikipedia (each preseason; P08, D86)
 # Neo4j Browser: http://localhost:7474 (queries to try: .claude/skills/neo4j-graph/SKILL.md)
 
 uv run pytest                      # tests (integration tests excluded by default)

@@ -464,6 +464,27 @@ def scoreboard_rows(preds: pl.DataFrame, mode: str) -> pl.DataFrame:
     )
 
 
+def fitted_params(fit) -> dict[str, Any]:
+    """The fitted numbers outside the booster files (saved in the weekly `meta.json`, so a
+    `player-model` / `team-model` artifact reproduces its projections): conformal `shift`,
+    NB `dispersion` and `tail`, and the calibration layer (`kind`, Platt `slope` /
+    `intercept`, rows `n`; an isotonic layer is a step function and is only named)."""
+    cal = getattr(fit, "calibrator", None)
+    return {
+        "shift": float(fit.shift),
+        "dispersion": float(fit.dispersion),
+        "tail": float(fit.tail),
+        "calibrator": None
+        if cal is None or cal.kind == "none"
+        else {
+            "kind": cal.kind,
+            "slope": float(cal.slope) if cal.kind == "platt" else None,
+            "intercept": float(cal.intercept) if cal.kind == "platt" else None,
+            "n": int(cal.n),
+        },
+    }
+
+
 def upsert_scoreboard(path: Path, rows: pl.DataFrame) -> pl.DataFrame:
     """Replace the rows with the same (season, week, target, group, mode); keep the rest.
 
@@ -1390,6 +1411,10 @@ def run_train(
             "trained_through": tt,
             "range_param": model._range_param(fit),
             "scale": fit.scale,
+            # everything besides the booster files that the projections depend on (P08):
+            # the conformal shift (amounts), the NB dispersion and range tail (counts), the
+            # calibration layer (prob targets and event counts' P(>= 1))
+            "fitted": fitted_params(fit),
             "config": config.as_dict(),
         }
         log(

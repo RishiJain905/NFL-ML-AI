@@ -43,6 +43,7 @@ from nflengine.models.player_runs import (
     BURN_IN,
     REPORT_SEASONS,
     TUNE_SEASONS,
+    fitted_params,
     tuesdays,
     upsert_scoreboard,
 )
@@ -915,6 +916,7 @@ def run_train(
             "n_train": fit.n_train,
             "trained_through": tt,
             "range_param": fit.shift if target.kind == "amount" else fit.dispersion,
+            "fitted": fitted_params(fit),  # shift, dispersion, tail, calibration (P08)
             "config": config.as_dict(),
         }
         log(f"{target.key}: {len(all_preds[-1])} projections (trained on {fit.n_train:,} rows)")

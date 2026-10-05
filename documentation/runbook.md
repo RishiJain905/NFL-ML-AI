@@ -144,7 +144,7 @@ It regenerates once with the list of failures; if that fails too, it publishes w
 - **Week 1:** nothing to wait for; ratings lean on last season (the digest says so).
 - **Playoffs:** `--auto` targets weeks 19–22 like any other week. Between the end of week 18 and nflverse adding the wild-card games, it refreshes only the schedule and, if the games still aren't there, records a not-ready run (exit 3); after the retry window it raises the error alert "games still not in the schedule". Running the full pipeline on playoff weeks is P10 work: check the first one by hand.
 - **Offseason:** `idle`, exit 0.
-- **New season:** `--auto` refuses to run when the calendar's season differs from `seasons.current` in `config/settings.yaml`. Update it as part of the P10 pre-season work.
+- **New season:** `--auto` refuses to run when the calendar's season differs from `seasons.current` in `config/settings.yaml`. Update it as part of the P10 pre-season work, then rebuild the coaching seed with the new staffs: `uv run nfl graph coaching-seed --refresh` (also after a mid-season coordinator change; read its name-check lines; [knowledge-graph guide → Q5b](guides/knowledge-graph.md)).
 
 ## What each alert means
 

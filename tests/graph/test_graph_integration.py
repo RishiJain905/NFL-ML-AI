@@ -60,6 +60,16 @@ def paths():
     return ensure_data_root()
 
 
+@pytest.fixture(autouse=True)
+def _no_real_coaching_seed(tmp_path, monkeypatch):
+    """Golden weeks don't depend on `config/coaching_seed.csv` (rebuilt from Wikipedia every
+    preseason, D86); the P08 test sets its own seed, and the live rebuild at the end of the
+    module (after this is undone) loads the real one like a weekly run."""
+    from nflengine.graph import tables_extra
+
+    monkeypatch.setattr(tables_extra, "seed_path", lambda: tmp_path / "no-seed.csv")
+
+
 def _key(paths, season: int, week: int, mode: str = "backtest"):
     from nflengine.digest.run import read_games, tuesday_before
     from nflengine.graph.tables import GraphKey

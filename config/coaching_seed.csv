@@ -1,0 +1,1693 @@
+# Coaching seed (documentation/05 -> Q5b; decisions D83, D86; open question Q06).
+# Built by `nfl graph coaching-seed` from English Wikipedia: each team-season article's
+# {{NFL final staff}} template (or its infobox when the article has none), and the teams'
+# current staff templates for the current season.
+# Built 2026-10-04; pages: 550 staff templates, 65 infoboxes, 57 without coordinators, 0 missing.
+# One row per coach, team (canonical code), season and role (OC / DC / ST coordinators;
+# co-coordinators included). head_coach is filled before 2018 (from 2018 on the graph
+# takes the head coach from the schedules). Edit by hand if a row is wrong.
+coach,team,season,role,head_coach
+Clancy Pendergast,ARI,2006,DC,Dennis Green
+Keith Rowen,ARI,2006,OC,Dennis Green
+Gary Zauner,ARI,2006,ST,Dennis Green
+Ed Donatell,ATL,2006,DC,Jim Mora Jr.
+Greg Knapp,ATL,2006,OC,Jim Mora Jr.
+Rex Ryan,BAL,2006,DC,Brian Billick
+Jim Fassel,BAL,2006,OC,Brian Billick
+Perry Fewell,BUF,2006,DC,Dick Jauron
+Steve Fairchild,BUF,2006,OC,Dick Jauron
+Mike Trgovac,CAR,2006,DC,John Fox
+Dan Henning,CAR,2006,OC,John Fox
+Danny Crossman,CAR,2006,ST,John Fox
+Ron Rivera,CHI,2006,DC,Lovie Smith
+Ron Turner,CHI,2006,OC,Lovie Smith
+Chuck Bresnahan,CIN,2006,DC,Marvin Lewis
+Bob Bratkowski,CIN,2006,OC,Marvin Lewis
+Todd Grantham,CLE,2006,DC,Romeo Crennel
+Maurice Carthon,CLE,2006,OC,Romeo Crennel
+Jerry Rosburg,CLE,2006,ST,Romeo Crennel
+Mike Zimmer,DAL,2006,DC,Bill Parcells
+Larry Coyer,DEN,2006,DC,Mike Shanahan
+Rick Dennison,DEN,2006,OC,Mike Shanahan
+Mike Martz,DET,2006,OC,Rod Marinelli
+Chuck Priefer,DET,2006,ST,Rod Marinelli
+Bob Sanders,GB,2006,DC,Mike McCarthy
+Jeff Jagodzinski,GB,2006,OC,Mike McCarthy
+Mike Stock,GB,2006,ST,Mike McCarthy
+Richard Smith,HOU,2006,DC,Gary Kubiak
+Troy Calhoun,HOU,2006,OC,Gary Kubiak
+Ron Meeks,IND,2006,DC,Tony Dungy
+Tom Moore,IND,2006,OC,Tony Dungy
+Mike Smith,JAX,2006,DC,Jack Del Rio
+Carl Smith,JAX,2006,OC,Jack Del Rio
+Pete Rodriguez,JAX,2006,ST,Jack Del Rio
+Gunther Cunningham,KC,2006,DC,Herm Edwards
+Mike Solari,KC,2006,OC,Herm Edwards
+Mike Priefer,KC,2006,ST,Herm Edwards
+Wade Phillips,LAC,2006,DC,Marty Schottenheimer
+Cam Cameron,LAC,2006,OC,Marty Schottenheimer
+Dom Capers,MIA,2006,DC,Nick Saban
+Mike Mularkey,MIA,2006,OC,Nick Saban
+Mike Tomlin,MIN,2006,DC,Brad Childress
+Darrell Bevell,MIN,2006,OC,Brad Childress
+Paul Ferraro,MIN,2006,ST,Brad Childress
+Dean Pees,NE,2006,DC,Bill Belichick
+Josh McDaniels,NE,2006,OC,Bill Belichick
+Gary Gibbs,NO,2006,DC,Sean Payton
+Doug Marrone,NO,2006,OC,Sean Payton
+John Bonamego,NO,2006,ST,Sean Payton
+Tim Lewis,NYG,2006,DC,Tom Coughlin
+John Hufnagel,NYG,2006,OC,Tom Coughlin
+Bob Sutton,NYJ,2006,DC,Eric Mangini
+Brian Schottenheimer,NYJ,2006,OC,Eric Mangini
+Mike Westhoff,NYJ,2006,ST,Eric Mangini
+Jim Johnson,PHI,2006,DC,Andy Reid
+Marty Mornhinweg,PHI,2006,OC,Andy Reid
+John Harbaugh,PHI,2006,ST,Andy Reid
+Dick LeBeau,PIT,2006,DC,Bill Cowher
+Ken Whisenhunt,PIT,2006,OC,Bill Cowher
+John Marshall,SEA,2006,DC,Mike Holmgren
+Gil Haskell,SEA,2006,OC,Mike Holmgren
+Bill Davis,SF,2006,DC,Mike Nolan
+Norv Turner,SF,2006,OC,Mike Nolan
+Larry Mac Duff,SF,2006,ST,Mike Nolan
+Monte Kiffin,TB,2006,DC,Jon Gruden
+Bill Muir,TB,2006,OC,Jon Gruden
+Rich Bisaccia,TB,2006,ST,Jon Gruden
+Jim Schwartz,TEN,2006,DC,Jeff Fisher
+Norm Chow,TEN,2006,OC,Jeff Fisher
+Greg Blache,WAS,2006,DC,Joe Gibbs
+Don Breaux,WAS,2006,OC,Joe Gibbs
+Mike Zimmer,ATL,2007,DC,Bobby Petrino
+Hue Jackson,ATL,2007,OC,Bobby Petrino
+Jerry Rosburg,ATL,2007,ST,Bobby Petrino
+Rex Ryan,BAL,2007,DC,Brian Billick
+Rick Neuheisel,BAL,2007,OC,Brian Billick
+Perry Fewell,BUF,2007,DC,Dick Jauron
+Steve Fairchild,BUF,2007,OC,Dick Jauron
+Bobby April,BUF,2007,ST,Dick Jauron
+Mike Trgovac,CAR,2007,DC,John Fox
+Jeff Davidson,CAR,2007,OC,John Fox
+Danny Crossman,CAR,2007,ST,John Fox
+Bob Babich,CHI,2007,DC,Lovie Smith
+Ron Turner,CHI,2007,OC,Lovie Smith
+Chuck Bresnahan,CIN,2007,DC,Marvin Lewis
+Bob Bratkowski,CIN,2007,OC,Marvin Lewis
+Brian Stewart,DAL,2007,DC,Wade Phillips
+Jason Garrett,DAL,2007,OC,Wade Phillips
+Bob Slowik,DEN,2007,DC,Mike Shanahan
+Rick Dennison,DEN,2007,OC,Mike Shanahan
+Scott O'Brien,DEN,2007,ST,Mike Shanahan
+Bob Sanders,GB,2007,DC,Mike McCarthy
+Joe Philbin,GB,2007,OC,Mike McCarthy
+Richard Smith,HOU,2007,DC,Gary Kubiak
+Mike Sherman,HOU,2007,OC,Gary Kubiak
+Ron Meeks,IND,2007,DC,Tony Dungy
+Tom Moore,IND,2007,OC,Tony Dungy
+Mike Smith,JAX,2007,DC,Jack Del Rio
+Dirk Koetter,JAX,2007,OC,Jack Del Rio
+Gunther Cunningham,KC,2007,DC,Herm Edwards
+Mike Solari,KC,2007,OC,Herm Edwards
+Ted Cottrell,LAC,2007,DC,Norv Turner
+Clarence Shelmon,LAC,2007,OC,Norv Turner
+Leslie Frazier,MIN,2007,DC,Brad Childress
+Darrell Bevell,MIN,2007,OC,Brad Childress
+Paul Ferraro,MIN,2007,ST,Brad Childress
+Dean Pees,NE,2007,DC,Bill Belichick
+Josh McDaniels,NE,2007,OC,Bill Belichick
+Gary Gibbs,NO,2007,DC,Sean Payton
+Doug Marrone,NO,2007,OC,Sean Payton
+John Bonamego,NO,2007,ST,Sean Payton
+Steve Spagnuolo,NYG,2007,DC,Tom Coughlin
+Kevin Gilbride,NYG,2007,OC,Tom Coughlin
+Bob Sutton,NYJ,2007,DC,Eric Mangini
+Brian Schottenheimer,NYJ,2007,OC,Eric Mangini
+Mike Westhoff,NYJ,2007,ST,Eric Mangini
+Jim Johnson,PHI,2007,DC,Andy Reid
+Marty Mornhinweg,PHI,2007,OC,Andy Reid
+Dick LeBeau,PIT,2007,DC,Mike Tomlin
+Bruce Arians,PIT,2007,OC,Mike Tomlin
+John Marshall,SEA,2007,DC,Mike Holmgren
+Gil Haskell,SEA,2007,OC,Mike Holmgren
+Greg Manusky,SF,2007,DC,Mike Nolan
+Jim Hostler,SF,2007,OC,Mike Nolan
+Al Everest,SF,2007,ST,Mike Nolan
+Monte Kiffin,TB,2007,DC,Jon Gruden
+Bill Muir,TB,2007,OC,Jon Gruden
+Rich Bisaccia,TB,2007,ST,Jon Gruden
+Jim Schwartz,TEN,2007,DC,Jeff Fisher
+Norm Chow,TEN,2007,OC,Jeff Fisher
+Gregg Williams,WAS,2007,DC,Joe Gibbs
+Al Saunders,WAS,2007,OC,Joe Gibbs
+Clancy Pendergast,ARI,2008,DC,Ken Whisenhunt
+Todd Haley,ARI,2008,OC,Ken Whisenhunt
+Brian VanGorder,ATL,2008,DC,Mike Smith
+Mike Mularkey,ATL,2008,OC,Mike Smith
+Keith Armstrong,ATL,2008,ST,Mike Smith
+Rex Ryan,BAL,2008,DC,John Harbaugh
+Cam Cameron,BAL,2008,OC,John Harbaugh
+Perry Fewell,BUF,2008,DC,Dick Jauron
+Turk Schonert,BUF,2008,OC,Dick Jauron
+Bobby April,BUF,2008,ST,Dick Jauron
+Mike Trgovac,CAR,2008,DC,John Fox
+Jeff Davidson,CAR,2008,OC,John Fox
+Danny Crossman,CAR,2008,ST,John Fox
+Bob Babich,CHI,2008,DC,Lovie Smith
+Ron Turner,CHI,2008,OC,Lovie Smith
+Bob Slowik,DEN,2008,DC,Mike Shanahan
+Rick Dennison,DEN,2008,OC,Mike Shanahan
+Scott O'Brien,DEN,2008,ST,Mike Shanahan
+Joe Barry,DET,2008,DC,Rod Marinelli
+Jim Colletto,DET,2008,OC,Rod Marinelli
+Richard Smith,HOU,2008,DC,Gary Kubiak
+Kyle Shanahan,HOU,2008,OC,Gary Kubiak
+Ron Meeks,IND,2008,DC,Tony Dungy
+Tom Moore,IND,2008,OC,Tony Dungy
+Gregg Williams,JAX,2008,DC,Jack Del Rio
+Dirk Koetter,JAX,2008,OC,Jack Del Rio
+Gunther Cunningham,KC,2008,DC,Herm Edwards
+Chan Gailey,KC,2008,OC,Herm Edwards
+Ron Rivera,LAC,2008,DC,Norv Turner
+Ted Cottrell,LAC,2008,DC,Norv Turner
+Clarence Shelmon,LAC,2008,OC,Norv Turner
+Paul Pasqualoni,MIA,2008,DC,Tony Sparano
+Dan Henning,MIA,2008,OC,Tony Sparano
+Leslie Frazier,MIN,2008,DC,Brad Childress
+Darrell Bevell,MIN,2008,OC,Brad Childress
+Paul Ferraro,MIN,2008,ST,Brad Childress
+Gary Gibbs,NO,2008,DC,Sean Payton
+Doug Marrone,NO,2008,OC,Sean Payton
+Greg McMahon,NO,2008,ST,Sean Payton
+Steve Spagnuolo,NYG,2008,DC,Tom Coughlin
+Kevin Gilbride,NYG,2008,OC,Tom Coughlin
+Bob Sutton,NYJ,2008,DC,Eric Mangini
+Brian Schottenheimer,NYJ,2008,OC,Eric Mangini
+Kevin O'Dea,NYJ,2008,ST,Eric Mangini
+Mike Westhoff,NYJ,2008,ST,Eric Mangini
+Jim Johnson,PHI,2008,DC,Andy Reid
+Marty Mornhinweg,PHI,2008,OC,Andy Reid
+Dick LeBeau,PIT,2008,DC,Mike Tomlin
+Bruce Arians,PIT,2008,OC,Mike Tomlin
+Greg Manusky,SF,2008,DC,Mike Nolan
+Mike Martz,SF,2008,OC,Mike Nolan
+Al Everest,SF,2008,ST,Mike Nolan
+Monte Kiffin,TB,2008,DC,Jon Gruden
+Bill Muir,TB,2008,OC,Jon Gruden
+Rich Bisaccia,TB,2008,ST,Jon Gruden
+Jim Schwartz,TEN,2008,DC,Jeff Fisher
+Mike Heimerdinger,TEN,2008,OC,Jeff Fisher
+Greg Blache,WAS,2008,DC,Jim Zorn
+Sherman Smith,WAS,2008,OC,Jim Zorn
+Billy Davis,ARI,2009,DC,Ken Whisenhunt
+Brian VanGorder,ATL,2009,DC,Mike Smith
+Mike Mularkey,ATL,2009,OC,Mike Smith
+Keith Armstrong,ATL,2009,ST,Mike Smith
+Greg Mattison,BAL,2009,DC,John Harbaugh
+Cam Cameron,BAL,2009,OC,John Harbaugh
+Mike Zimmer,CIN,2009,DC,Marvin Lewis
+Bob Bratkowski,CIN,2009,OC,Marvin Lewis
+Rob Ryan,CLE,2009,DC,Eric Mangini
+Brian Daboll,CLE,2009,OC,Eric Mangini
+Brad Seely,CLE,2009,ST,Eric Mangini
+Wade Phillips,DAL,2009,DC,Wade Phillips
+Jason Garrett,DAL,2009,OC,Wade Phillips
+Joe DeCamillis,DAL,2009,ST,Wade Phillips
+Mike Nolan,DEN,2009,DC,Josh McDaniels
+Mike McCoy,DEN,2009,OC,Josh McDaniels
+Mike Priefer,DEN,2009,ST,Josh McDaniels
+Dom Capers,GB,2009,DC,Mike McCarthy
+Joe Philbin,GB,2009,OC,Mike McCarthy
+Frank Bush,HOU,2009,DC,Gary Kubiak
+Kyle Shanahan,HOU,2009,OC,Gary Kubiak
+Larry Coyer,IND,2009,DC,Jim Caldwell
+Tom Moore,IND,2009,OC,Jim Caldwell
+Mel Tucker,JAX,2009,DC,Jack Del Rio
+Dirk Koetter,JAX,2009,OC,Jack Del Rio
+Ron Rivera,LAC,2009,DC,Norv Turner
+Clarence Shelmon,LAC,2009,OC,Norv Turner
+Leslie Frazier,MIN,2009,DC,Brad Childress
+Darrell Bevell,MIN,2009,OC,Brad Childress
+Brian Murphy,MIN,2009,ST,Brad Childress
+Dean Pees,NE,2009,DC,Bill Belichick
+Gregg Williams,NO,2009,DC,Sean Payton
+Pete Carmichael Jr.,NO,2009,OC,Sean Payton
+Mike Pettine,NYJ,2009,DC,Rex Ryan
+Brian Schottenheimer,NYJ,2009,OC,Rex Ryan
+Kevin O'Dea,NYJ,2009,ST,Rex Ryan
+Mike Westhoff,NYJ,2009,ST,Rex Ryan
+Sean McDermott,PHI,2009,DC,Andy Reid
+Marty Mornhinweg,PHI,2009,OC,Andy Reid
+Dick LeBeau,PIT,2009,DC,Mike Tomlin
+Bruce Arians,PIT,2009,OC,Mike Tomlin
+Greg Manusky,SF,2009,DC,Mike Singletary
+Jimmy Raye,SF,2009,OC,Mike Singletary
+Al Everest,SF,2009,ST,Mike Singletary
+Jim Bates,TB,2009,DC,Raheem Morris
+Greg Olson,TB,2009,OC,Raheem Morris
+Rich Bisaccia,TB,2009,ST,Raheem Morris
+Greg Blache,WAS,2009,DC,Jim Zorn
+Sherman Lewis,WAS,2009,OC,Jim Zorn
+Brian VanGorder,ATL,2010,DC,Mike Smith
+Mike Mularkey,ATL,2010,OC,Mike Smith
+Greg Mattison,BAL,2010,DC,John Harbaugh
+Cam Cameron,BAL,2010,OC,John Harbaugh
+Rod Marinelli,CHI,2010,DC,Lovie Smith
+Mike Martz,CHI,2010,OC,Lovie Smith
+Rob Ryan,CLE,2010,DC,Eric Mangini
+Brian Daboll,CLE,2010,OC,Eric Mangini
+Wade Phillips,DAL,2010,DC,Wade Phillips
+Jason Garrett,DAL,2010,OC,Wade Phillips
+Joe DeCamillis,DAL,2010,ST,Wade Phillips
+Don Martindale,DEN,2010,DC,Josh McDaniels
+Mike McCoy,DEN,2010,OC,Josh McDaniels
+Mike Priefer,DEN,2010,ST,Josh McDaniels
+Dom Capers,GB,2010,DC,Mike McCarthy
+Joe Philbin,GB,2010,OC,Mike McCarthy
+Frank Bush,HOU,2010,DC,Gary Kubiak
+Rick Dennison,HOU,2010,OC,Gary Kubiak
+Larry Coyer,IND,2010,DC,Jim Caldwell
+Clyde Christensen,IND,2010,OC,Jim Caldwell
+Mel Tucker,JAX,2010,DC,Jack Del Rio
+Dirk Koetter,JAX,2010,OC,Jack Del Rio
+Romeo Crennel,KC,2010,DC,Todd Haley
+Charlie Weis,KC,2010,OC,Todd Haley
+Leslie Frazier,MIN,2010,DC,Brad Childress
+Darrell Bevell,MIN,2010,OC,Brad Childress
+Brian Murphy,MIN,2010,ST,Brad Childress
+Gregg Williams,NO,2010,DC,Sean Payton
+Pete Carmichael Jr.,NO,2010,OC,Sean Payton
+Mike Pettine,NYJ,2010,DC,Rex Ryan
+Brian Schottenheimer,NYJ,2010,OC,Rex Ryan
+Mike Westhoff,NYJ,2010,ST,Rex Ryan
+Sean McDermott,PHI,2010,DC,Andy Reid
+Marty Mornhinweg,PHI,2010,OC,Andy Reid
+Dick LeBeau,PIT,2010,DC,Mike Tomlin
+Bruce Arians,PIT,2010,OC,Mike Tomlin
+Gus Bradley,SEA,2010,DC,Pete Carroll
+Jeremy Bates,SEA,2010,OC,Pete Carroll
+Brian Schneider,SEA,2010,ST,Pete Carroll
+Greg Manusky,SF,2010,DC,Mike Singletary
+Jimmy Raye,SF,2010,OC,Mike Singletary
+Jim Haslett,WAS,2010,DC,Mike Shanahan
+Kyle Shanahan,WAS,2010,OC,Mike Shanahan
+Brian VanGorder,ATL,2011,DC,Mike Smith
+Mike Mularkey,ATL,2011,OC,Mike Smith
+Chuck Pagano,BAL,2011,DC,John Harbaugh
+Cam Cameron,BAL,2011,OC,John Harbaugh
+Mike Zimmer,CIN,2011,DC,Marvin Lewis
+Jay Gruden,CIN,2011,OC,Marvin Lewis
+Dick Jauron,CLE,2011,DC,Pat Shurmur
+Rob Ryan,DAL,2011,DC,Jason Garrett
+Joe DeCamillis,DAL,2011,ST,Jason Garrett
+Dennis Allen,DEN,2011,DC,John Fox
+Mike McCoy,DEN,2011,OC,John Fox
+Jeff Rodgers,DEN,2011,ST,John Fox
+Gunther Cunningham,DET,2011,DC,Jim Schwartz
+Scott Linehan,DET,2011,OC,Jim Schwartz
+Dom Capers,GB,2011,DC,Mike McCarthy
+Joe Philbin,GB,2011,OC,Mike McCarthy
+Wade Phillips,HOU,2011,DC,Gary Kubiak
+Rick Dennison,HOU,2011,OC,Gary Kubiak
+Mel Tucker,JAX,2011,DC,Jack Del Rio
+Dirk Koetter,JAX,2011,OC,Jack Del Rio
+Romeo Crennel,KC,2011,DC,Todd Haley
+Bill Muir,KC,2011,OC,Todd Haley
+Bill O'Brien,NE,2011,OC,Bill Belichick
+Gregg Williams,NO,2011,DC,Sean Payton
+Pete Carmichael Jr.,NO,2011,OC,Sean Payton
+Dick LeBeau,PIT,2011,DC,Mike Tomlin
+Bruce Arians,PIT,2011,OC,Mike Tomlin
+Al Everest,PIT,2011,ST,Mike Tomlin
+Vic Fangio,SF,2011,DC,Jim Harbaugh
+Greg Roman,SF,2011,OC,Jim Harbaugh
+Brad Seely,SF,2011,ST,Jim Harbaugh
+Jim Haslett,WAS,2011,DC,Mike Shanahan
+Kyle Shanahan,WAS,2011,OC,Mike Shanahan
+Ray Horton,ARI,2012,DC,Ken Whisenhunt
+Mike Miller,ARI,2012,OC,Ken Whisenhunt
+Mike Nolan,ATL,2012,DC,Mike Smith
+Dirk Koetter,ATL,2012,OC,Mike Smith
+Keith Armstrong,ATL,2012,ST,Mike Smith
+Dean Pees,BAL,2012,DC,John Harbaugh
+Cam Cameron,BAL,2012,OC,John Harbaugh
+Jerry Rosburg,BAL,2012,ST,John Harbaugh
+Dave Wannstedt,BUF,2012,DC,Chan Gailey
+Curtis Modkins,BUF,2012,OC,Chan Gailey
+Bruce DeHaven,BUF,2012,ST,Chan Gailey
+Sean McDermott,CAR,2012,DC,Ron Rivera
+Rob Chudzinski,CAR,2012,OC,Ron Rivera
+Brian Murphy,CAR,2012,ST,Ron Rivera
+Rod Marinelli,CHI,2012,DC,Lovie Smith
+Mike Tice,CHI,2012,OC,Lovie Smith
+Dave Toub,CHI,2012,ST,Lovie Smith
+Mike Zimmer,CIN,2012,DC,Marvin Lewis
+Jay Gruden,CIN,2012,OC,Marvin Lewis
+Dick Jauron,CLE,2012,DC,Pat Shurmur
+Brad Childress,CLE,2012,OC,Pat Shurmur
+Chris Tabor,CLE,2012,ST,Pat Shurmur
+Rob Ryan,DAL,2012,DC,Jason Garrett
+Bill Callahan,DAL,2012,OC,Jason Garrett
+Joe DeCamillis,DAL,2012,ST,Jason Garrett
+Jack Del Rio,DEN,2012,DC,John Fox
+Mike McCoy,DEN,2012,OC,John Fox
+Jeff Rodgers,DEN,2012,ST,John Fox
+Gunther Cunningham,DET,2012,DC,Jim Schwartz
+Scott Linehan,DET,2012,OC,Jim Schwartz
+Danny Crossman,DET,2012,ST,Jim Schwartz
+Dom Capers,GB,2012,DC,Mike McCarthy
+Tom Clements,GB,2012,OC,Mike McCarthy
+Shawn Slocum,GB,2012,ST,Mike McCarthy
+Wade Phillips,HOU,2012,DC,Gary Kubiak
+Rick Dennison,HOU,2012,OC,Gary Kubiak
+Greg Manusky,IND,2012,DC,Chuck Pagano
+Bruce Arians,IND,2012,OC,Chuck Pagano
+Marwan Maalouf,IND,2012,ST,Chuck Pagano
+Mel Tucker,JAX,2012,DC,Mike Mularkey
+Bob Bratkowski,JAX,2012,OC,Mike Mularkey
+John Bonamego,JAX,2012,ST,Mike Mularkey
+Romeo Crennel,KC,2012,DC,Romeo Crennel
+Brian Daboll,KC,2012,OC,Romeo Crennel
+Gregg Williams,LA,2012,DC,Jeff Fisher
+Brian Schottenheimer,LA,2012,OC,Jeff Fisher
+John Fassel,LA,2012,ST,Jeff Fisher
+John Pagano,LAC,2012,DC,Norv Turner
+Hal Hunter,LAC,2012,OC,Norv Turner
+Jason Tarver,LV,2012,DC,Dennis Allen
+Greg Knapp,LV,2012,OC,Dennis Allen
+Steve Hoffman,LV,2012,ST,Dennis Allen
+Kevin Coyle,MIA,2012,DC,Joe Philbin
+Mike Sherman,MIA,2012,OC,Joe Philbin
+Darren Rizzi,MIA,2012,ST,Joe Philbin
+Alan Williams,MIN,2012,DC,Leslie Frazier
+Bill Musgrave,MIN,2012,OC,Leslie Frazier
+Mike Priefer,MIN,2012,ST,Leslie Frazier
+Matt Patricia,NE,2012,DC,Bill Belichick
+Josh McDaniels,NE,2012,OC,Bill Belichick
+Steve Spagnuolo,NO,2012,DC,Sean Payton
+Pete Carmichael,NO,2012,OC,Sean Payton
+Greg McMahon,NO,2012,ST,Sean Payton
+Perry Fewell,NYG,2012,DC,Tom Coughlin
+Kevin Gilbride,NYG,2012,OC,Tom Coughlin
+Tom Quinn,NYG,2012,ST,Tom Coughlin
+Mike Pettine,NYJ,2012,DC,Rex Ryan
+Tony Sparano,NYJ,2012,OC,Rex Ryan
+Mike Westhoff,NYJ,2012,ST,Rex Ryan
+Juan Castillo,PHI,2012,DC,Andy Reid
+Todd Bowles,PHI,2012,DC,Andy Reid
+Marty Mornhinweg,PHI,2012,OC,Andy Reid
+Bobby April,PHI,2012,ST,Andy Reid
+Dick LeBeau,PIT,2012,DC,Mike Tomlin
+Todd Haley,PIT,2012,OC,Mike Tomlin
+Al Everest,PIT,2012,ST,Mike Tomlin
+Gus Bradley,SEA,2012,DC,Pete Carroll
+Darrell Bevell,SEA,2012,OC,Pete Carroll
+Brian Schneider,SEA,2012,ST,Pete Carroll
+Vic Fangio,SF,2012,DC,Jim Harbaugh
+Greg Roman,SF,2012,OC,Jim Harbaugh
+Brad Seely,SF,2012,ST,Jim Harbaugh
+Bill Sheridan,TB,2012,DC,Greg Schiano
+Mike Sullivan,TB,2012,OC,Greg Schiano
+Bob Ligashesky,TB,2012,ST,Greg Schiano
+Jerry Gray,TEN,2012,DC,Mike Munchak
+Chris Palmer,TEN,2012,OC,Mike Munchak
+Jim Haslett,WAS,2012,DC,Mike Shanahan
+Kyle Shanahan,WAS,2012,OC,Mike Shanahan
+Danny Smith,WAS,2012,ST,Mike Shanahan
+Todd Bowles,ARI,2013,DC,Bruce Arians
+Harold Goodwin,ARI,2013,OC,Bruce Arians
+Amos Jones,ARI,2013,ST,Bruce Arians
+Mike Nolan,ATL,2013,DC,Mike Smith
+Dirk Koetter,ATL,2013,OC,Mike Smith
+Keith Armstrong,ATL,2013,ST,Mike Smith
+Dean Pees,BAL,2013,DC,John Harbaugh
+Jim Caldwell,BAL,2013,OC,John Harbaugh
+Jerry Rosburg,BAL,2013,ST,John Harbaugh
+Mike Pettine,BUF,2013,DC,Doug Marrone
+Nathaniel Hackett,BUF,2013,OC,Doug Marrone
+Danny Crossman,BUF,2013,ST,Doug Marrone
+Sean McDermott,CAR,2013,DC,Ron Rivera
+Mike Shula,CAR,2013,OC,Ron Rivera
+Richard Rodgers,CAR,2013,ST,Ron Rivera
+Mel Tucker,CHI,2013,DC,Marc Trestman
+Aaron Kromer,CHI,2013,OC,Marc Trestman
+Joe DeCamillis,CHI,2013,ST,Marc Trestman
+Mike Zimmer,CIN,2013,DC,Marvin Lewis
+Jay Gruden,CIN,2013,OC,Marvin Lewis
+Ray Horton,CLE,2013,DC,Rob Chudzinski
+Norv Turner,CLE,2013,OC,Rob Chudzinski
+Chris Tabor,CLE,2013,ST,Rob Chudzinski
+Monte Kiffin,DAL,2013,DC,Jason Garrett
+Bill Callahan,DAL,2013,OC,Jason Garrett
+Rich Bisaccia,DAL,2013,ST,Jason Garrett
+Jack Del Rio,DEN,2013,DC,John Fox
+Adam Gase,DEN,2013,OC,John Fox
+Jeff Rodgers,DEN,2013,ST,John Fox
+Gunther Cunningham,DET,2013,DC,Jim Schwartz
+Scott Linehan,DET,2013,OC,Jim Schwartz
+John Bonamego,DET,2013,ST,Jim Schwartz
+Dom Capers,GB,2013,DC,Mike McCarthy
+Tom Clements,GB,2013,OC,Mike McCarthy
+Shawn Slocum,GB,2013,ST,Mike McCarthy
+Wade Phillips,HOU,2013,DC,Gary Kubiak
+Rick Dennison,HOU,2013,OC,Gary Kubiak
+Joe Marciano,HOU,2013,ST,Gary Kubiak
+Greg Manusky,IND,2013,DC,Chuck Pagano
+Pep Hamilton,IND,2013,OC,Chuck Pagano
+Tom McMahon,IND,2013,ST,Chuck Pagano
+Bob Babich,JAX,2013,DC,Gus Bradley
+Jedd Fisch,JAX,2013,OC,Gus Bradley
+Mike Mallory,JAX,2013,ST,Gus Bradley
+Bob Sutton,KC,2013,DC,Andy Reid
+Doug Pederson,KC,2013,OC,Andy Reid
+Dave Toub,KC,2013,ST,Andy Reid
+Tim Walton,LA,2013,DC,Jeff Fisher
+Brian Schottenheimer,LA,2013,OC,Jeff Fisher
+John Fassel,LA,2013,ST,Jeff Fisher
+John Pagano,LAC,2013,DC,Mike McCoy
+Ken Whisenhunt,LAC,2013,OC,Mike McCoy
+Kevin Spencer,LAC,2013,ST,Mike McCoy
+Jason Tarver,LV,2013,DC,Dennis Allen
+Greg Olson,LV,2013,OC,Dennis Allen
+Bobby April,LV,2013,ST,Dennis Allen
+Kevin Coyle,MIA,2013,DC,Joe Philbin
+Mike Sherman,MIA,2013,OC,Joe Philbin
+Darren Rizzi,MIA,2013,ST,Joe Philbin
+Alan Williams,MIN,2013,DC,Leslie Frazier
+Bill Musgrave,MIN,2013,OC,Leslie Frazier
+Mike Priefer,MIN,2013,ST,Leslie Frazier
+Matt Patricia,NE,2013,DC,Bill Belichick
+Josh McDaniels,NE,2013,OC,Bill Belichick
+Rob Ryan,NO,2013,DC,Sean Payton
+Pete Carmichael,NO,2013,OC,Sean Payton
+Greg McMahon,NO,2013,ST,Sean Payton
+Perry Fewell,NYG,2013,DC,Tom Coughlin
+Kevin Gilbride,NYG,2013,OC,Tom Coughlin
+Tom Quinn,NYG,2013,ST,Tom Coughlin
+Dennis Thurman,NYJ,2013,DC,Rex Ryan
+Marty Mornhinweg,NYJ,2013,OC,Rex Ryan
+Ben Kotwica,NYJ,2013,ST,Rex Ryan
+Billy Davis,PHI,2013,DC,Chip Kelly
+Pat Shurmur,PHI,2013,OC,Chip Kelly
+Dave Fipp,PHI,2013,ST,Chip Kelly
+Dick LeBeau,PIT,2013,DC,Mike Tomlin
+Todd Haley,PIT,2013,OC,Mike Tomlin
+Danny Smith,PIT,2013,ST,Mike Tomlin
+Dan Quinn,SEA,2013,DC,Pete Carroll
+Darrell Bevell,SEA,2013,OC,Pete Carroll
+Brian Schneider,SEA,2013,ST,Pete Carroll
+Vic Fangio,SF,2013,DC,Jim Harbaugh
+Greg Roman,SF,2013,OC,Jim Harbaugh
+Brad Seely,SF,2013,ST,Jim Harbaugh
+Bill Sheridan,TB,2013,DC,Greg Schiano
+Mike Sullivan,TB,2013,OC,Greg Schiano
+Dave Wannstedt,TB,2013,ST,Greg Schiano
+Jerry Gray,TEN,2013,DC,Mike Munchak
+Dowell Loggains,TEN,2013,OC,Mike Munchak
+Jim Haslett,WAS,2013,DC,Mike Shanahan
+Kyle Shanahan,WAS,2013,OC,Mike Shanahan
+Keith Burns,WAS,2013,ST,Mike Shanahan
+Todd Bowles,ARI,2014,DC,Bruce Arians
+Harold Goodwin,ARI,2014,OC,Bruce Arians
+Amos Jones,ARI,2014,ST,Bruce Arians
+Mike Nolan,ATL,2014,DC,Mike Smith
+Dirk Koetter,ATL,2014,OC,Mike Smith
+Keith Armstrong,ATL,2014,ST,Mike Smith
+Dean Pees,BAL,2014,DC,John Harbaugh
+Gary Kubiak,BAL,2014,OC,John Harbaugh
+Jerry Rosburg,BAL,2014,ST,John Harbaugh
+Jim Schwartz,BUF,2014,DC,Doug Marrone
+Nathaniel Hackett,BUF,2014,OC,Doug Marrone
+Danny Crossman,BUF,2014,ST,Doug Marrone
+Sean McDermott,CAR,2014,DC,Ron Rivera
+Mike Shula,CAR,2014,OC,Ron Rivera
+Richard Rodgers,CAR,2014,ST,Ron Rivera
+Mel Tucker,CHI,2014,DC,Marc Trestman
+Aaron Kromer,CHI,2014,OC,Marc Trestman
+Joe DeCamillis,CHI,2014,ST,Marc Trestman
+Paul Guenther,CIN,2014,DC,Marvin Lewis
+Hue Jackson,CIN,2014,OC,Marvin Lewis
+Darrin Simmons,CIN,2014,ST,Marvin Lewis
+Jim O'Neil,CLE,2014,DC,Mike Pettine
+Kyle Shanahan,CLE,2014,OC,Mike Pettine
+Chris Tabor,CLE,2014,ST,Mike Pettine
+Rod Marinelli,DAL,2014,DC,Jason Garrett
+Rich Bisaccia,DAL,2014,ST,Jason Garrett
+Jack Del Rio,DEN,2014,DC,John Fox
+Adam Gase,DEN,2014,OC,John Fox
+Jeff Rodgers,DEN,2014,ST,John Fox
+Teryl Austin,DET,2014,DC,Jim Caldwell
+Joe Lombardi,DET,2014,OC,Jim Caldwell
+John Bonamego,DET,2014,ST,Jim Caldwell
+Dom Capers,GB,2014,DC,Mike McCarthy
+Tom Clements,GB,2014,OC,Mike McCarthy
+Shawn Slocum,GB,2014,ST,Mike McCarthy
+Romeo Crennel,HOU,2014,DC,Bill O'Brien
+Bob Ligashesky,HOU,2014,ST,Bill O'Brien
+Greg Manusky,IND,2014,DC,Chuck Pagano
+Pep Hamilton,IND,2014,OC,Chuck Pagano
+Tom McMahon,IND,2014,ST,Chuck Pagano
+Bob Babich,JAX,2014,DC,Gus Bradley
+Jedd Fisch,JAX,2014,OC,Gus Bradley
+Mike Mallory,JAX,2014,ST,Gus Bradley
+Bob Sutton,KC,2014,DC,Andy Reid
+Doug Pederson,KC,2014,OC,Andy Reid
+Gregg Williams,LA,2014,DC,Jeff Fisher
+Brian Schottenheimer,LA,2014,OC,Jeff Fisher
+John Fassel,LA,2014,ST,Jeff Fisher
+John Pagano,LAC,2014,DC,Mike McCoy
+Frank Reich,LAC,2014,OC,Mike McCoy
+Kevin Spencer,LAC,2014,ST,Mike McCoy
+Jason Tarver,LV,2014,DC,Dennis Allen
+Greg Olson,LV,2014,OC,Dennis Allen
+Bobby April,LV,2014,ST,Dennis Allen
+Kevin Coyle,MIA,2014,DC,Joe Philbin
+Bill Lazor,MIA,2014,OC,Joe Philbin
+Darren Rizzi,MIA,2014,ST,Joe Philbin
+George Edwards,MIN,2014,DC,Mike Zimmer
+Norv Turner,MIN,2014,OC,Mike Zimmer
+Mike Priefer,MIN,2014,ST,Mike Zimmer
+Matt Patricia,NE,2014,DC,Bill Belichick
+Josh McDaniels,NE,2014,OC,Bill Belichick
+Rob Ryan,NO,2014,DC,Sean Payton
+Pete Carmichael,NO,2014,OC,Sean Payton
+Greg McMahon,NO,2014,ST,Sean Payton
+Perry Fewell,NYG,2014,DC,Tom Coughlin
+Ben McAdoo,NYG,2014,OC,Tom Coughlin
+Tom Quinn,NYG,2014,ST,Tom Coughlin
+Dennis Thurman,NYJ,2014,DC,Rex Ryan
+Marty Mornhinweg,NYJ,2014,OC,Rex Ryan
+Thomas McGaughey,NYJ,2014,ST,Rex Ryan
+Bill Davis,PHI,2014,DC,Chip Kelly
+Pat Shurmur,PHI,2014,OC,Chip Kelly
+Dave Fipp,PHI,2014,ST,Chip Kelly
+Dick LeBeau,PIT,2014,DC,Mike Tomlin
+Todd Haley,PIT,2014,OC,Mike Tomlin
+Danny Smith,PIT,2014,ST,Mike Tomlin
+Dan Quinn,SEA,2014,DC,Pete Carroll
+Darrell Bevell,SEA,2014,OC,Pete Carroll
+Brian Schneider,SEA,2014,ST,Pete Carroll
+Vic Fangio,SF,2014,DC,Jim Harbaugh
+Greg Roman,SF,2014,OC,Jim Harbaugh
+Brad Seely,SF,2014,ST,Jim Harbaugh
+Leslie Frazier,TB,2014,DC,Lovie Smith
+Jeff Tedford,TB,2014,OC,Lovie Smith
+Kevin O'Dea,TB,2014,ST,Lovie Smith
+Ray Horton,TEN,2014,DC,Ken Whisenhunt
+Jason Michael,TEN,2014,OC,Ken Whisenhunt
+Jim Haslett,WAS,2014,DC,Jay Gruden
+Sean McVay,WAS,2014,OC,Jay Gruden
+Ben Kotwica,WAS,2014,ST,Jay Gruden
+James Bettcher,ARI,2015,DC,Bruce Arians
+Harold Goodwin,ARI,2015,OC,Bruce Arians
+Amos Jones,ARI,2015,ST,Bruce Arians
+Richard Smith,ATL,2015,DC,Dan Quinn
+Kyle Shanahan,ATL,2015,OC,Dan Quinn
+Keith Armstrong,ATL,2015,ST,Dan Quinn
+Dean Pees,BAL,2015,DC,John Harbaugh
+Marc Trestman,BAL,2015,OC,John Harbaugh
+Jerry Rosburg,BAL,2015,ST,John Harbaugh
+Dennis Thurman,BUF,2015,DC,Rex Ryan
+Greg Roman,BUF,2015,OC,Rex Ryan
+Danny Crossman,BUF,2015,ST,Rex Ryan
+Sean McDermott,CAR,2015,DC,Ron Rivera
+Mike Shula,CAR,2015,OC,Ron Rivera
+Bruce DeHaven,CAR,2015,ST,Ron Rivera
+Vic Fangio,CHI,2015,DC,John Fox
+Adam Gase,CHI,2015,OC,John Fox
+Jeff Rodgers,CHI,2015,ST,John Fox
+Paul Guenther,CIN,2015,DC,Marvin Lewis
+Hue Jackson,CIN,2015,OC,Marvin Lewis
+Darrin Simmons,CIN,2015,ST,Marvin Lewis
+Jim O'Neil,CLE,2015,DC,Mike Pettine
+John DeFilippo,CLE,2015,OC,Mike Pettine
+Chris Tabor,CLE,2015,ST,Mike Pettine
+Rod Marinelli,DAL,2015,DC,Jason Garrett
+Scott Linehan,DAL,2015,OC,Jason Garrett
+Rich Bisaccia,DAL,2015,ST,Jason Garrett
+Wade Phillips,DEN,2015,DC,Gary Kubiak
+Rick Dennison,DEN,2015,OC,Gary Kubiak
+Joe DeCamillis,DEN,2015,ST,Gary Kubiak
+Teryl Austin,DET,2015,DC,Jim Caldwell
+Joe Lombardi,DET,2015,OC,Jim Caldwell
+Joe Marciano,DET,2015,ST,Jim Caldwell
+Dom Capers,GB,2015,DC,Mike McCarthy
+Edgar Bennett,GB,2015,OC,Mike McCarthy
+Ron Zook,GB,2015,ST,Mike McCarthy
+Romeo Crennel,HOU,2015,DC,Bill O'Brien
+George Godsey,HOU,2015,OC,Bill O'Brien
+Bob Ligashesky,HOU,2015,ST,Bill O'Brien
+Greg Manusky,IND,2015,DC,Chuck Pagano
+Rob Chudzinski,IND,2015,OC,Chuck Pagano
+Tom McMahon,IND,2015,ST,Chuck Pagano
+Bob Babich,JAX,2015,DC,Gus Bradley
+Greg Olson,JAX,2015,OC,Gus Bradley
+Mike Mallory,JAX,2015,ST,Gus Bradley
+Bob Sutton,KC,2015,DC,Andy Reid
+Doug Pederson,KC,2015,OC,Andy Reid
+Gregg Williams,LA,2015,DC,Jeff Fisher
+Rob Boras,LA,2015,OC,Jeff Fisher
+John Fassel,LA,2015,ST,Jeff Fisher
+John Pagano,LAC,2015,DC,Mike McCoy
+Frank Reich,LAC,2015,OC,Mike McCoy
+Craig Aukerman,LAC,2015,ST,Mike McCoy
+Ken Norton Jr.,LV,2015,DC,Jack Del Rio
+Bill Musgrave,LV,2015,OC,Jack Del Rio
+Brad Seely,LV,2015,ST,Jack Del Rio
+Zac Taylor,MIA,2015,OC,Joe Philbin
+Darren Rizzi,MIA,2015,ST,Joe Philbin
+George Edwards,MIN,2015,DC,Mike Zimmer
+Norv Turner,MIN,2015,OC,Mike Zimmer
+Mike Priefer,MIN,2015,ST,Mike Zimmer
+Matt Patricia,NE,2015,DC,Bill Belichick
+Josh McDaniels,NE,2015,OC,Bill Belichick
+Dennis Allen,NO,2015,DC,Sean Payton
+Pete Carmichael,NO,2015,OC,Sean Payton
+Greg McMahon,NO,2015,ST,Sean Payton
+Steve Spagnuolo,NYG,2015,DC,Tom Coughlin
+Ben McAdoo,NYG,2015,OC,Tom Coughlin
+Tom Quinn,NYG,2015,ST,Tom Coughlin
+Billy Davis,PHI,2015,DC,Chip Kelly
+Pat Shurmur,PHI,2015,OC,Chip Kelly
+Dave Fipp,PHI,2015,ST,Chip Kelly
+Keith Butler,PIT,2015,DC,Mike Tomlin
+Todd Haley,PIT,2015,OC,Mike Tomlin
+Danny Smith,PIT,2015,ST,Mike Tomlin
+Kris Richard,SEA,2015,DC,Pete Carroll
+Darrell Bevell,SEA,2015,OC,Pete Carroll
+Brian Schneider,SEA,2015,ST,Pete Carroll
+Eric Mangini,SF,2015,DC,Jim Tomsula
+Geep Chryst,SF,2015,OC,Jim Tomsula
+Thomas McGaughey,SF,2015,ST,Jim Tomsula
+Leslie Frazier,TB,2015,DC,Lovie Smith
+Dirk Koetter,TB,2015,OC,Lovie Smith
+Kevin O'Dea,TB,2015,ST,Lovie Smith
+Ray Horton,TEN,2015,DC,Ken Whisenhunt
+Jason Michael,TEN,2015,OC,Ken Whisenhunt
+Joe Barry,WAS,2015,DC,Jay Gruden
+Sean McVay,WAS,2015,OC,Jay Gruden
+Ben Kotwica,WAS,2015,ST,Jay Gruden
+James Bettcher,ARI,2016,DC,Bruce Arians
+Harold Goodwin,ARI,2016,OC,Bruce Arians
+Amos Jones,ARI,2016,ST,Bruce Arians
+Richard Smith,ATL,2016,DC,Dan Quinn
+Kyle Shanahan,ATL,2016,OC,Dan Quinn
+Keith Armstrong,ATL,2016,ST,Dan Quinn
+Dean Pees,BAL,2016,DC,John Harbaugh
+Marc Trestman,BAL,2016,OC,John Harbaugh
+Jerry Rosburg,BAL,2016,ST,John Harbaugh
+Dennis Thurman,BUF,2016,DC,Anthony Lynn
+Sean McDermott,CAR,2016,DC,Ron Rivera
+Mike Shula,CAR,2016,OC,Ron Rivera
+Bruce DeHaven,CAR,2016,ST,Ron Rivera
+Vic Fangio,CHI,2016,DC,John Fox
+Dowell Loggains,CHI,2016,OC,John Fox
+Jeff Rodgers,CHI,2016,ST,John Fox
+Paul Guenther,CIN,2016,DC,Marvin Lewis
+Ken Zampese,CIN,2016,OC,Marvin Lewis
+Darrin Simmons,CIN,2016,ST,Marvin Lewis
+Ray Horton,CLE,2016,DC,Hue Jackson
+Chris Tabor,CLE,2016,ST,Hue Jackson
+Rod Marinelli,DAL,2016,DC,Jason Garrett
+Scott Linehan,DAL,2016,OC,Jason Garrett
+Rich Bisaccia,DAL,2016,ST,Jason Garrett
+Wade Phillips,DEN,2016,DC,Gary Kubiak
+Rick Dennison,DEN,2016,OC,Gary Kubiak
+Joe DeCamillis,DEN,2016,ST,Gary Kubiak
+Teryl Austin,DET,2016,DC,Jim Caldwell
+Jim Bob Cooter,DET,2016,OC,Jim Caldwell
+Joe Marciano,DET,2016,ST,Jim Caldwell
+Dom Capers,GB,2016,DC,Mike McCarthy
+Edgar Bennett,GB,2016,OC,Mike McCarthy
+Ron Zook,GB,2016,ST,Mike McCarthy
+Romeo Crennel,HOU,2016,DC,Bill O'Brien
+George Godsey,HOU,2016,OC,Bill O'Brien
+Larry Izzo,HOU,2016,ST,Bill O'Brien
+Ted Monachino,IND,2016,DC,Chuck Pagano
+Rob Chudzinski,IND,2016,OC,Chuck Pagano
+Tom McMahon,IND,2016,ST,Chuck Pagano
+Todd Wash,JAX,2016,DC,Gus Bradley
+Greg Olson,JAX,2016,OC,Gus Bradley
+Mike Mallory,JAX,2016,ST,Gus Bradley
+Bob Sutton,KC,2016,DC,Andy Reid
+Brad Childress,KC,2016,OC,Andy Reid
+Matt Nagy,KC,2016,OC,Andy Reid
+Dave Toub,KC,2016,ST,Andy Reid
+Gregg Williams,LA,2016,DC,Jeff Fisher
+Rob Boras,LA,2016,OC,Jeff Fisher
+John Fassel,LA,2016,ST,Jeff Fisher
+John Pagano,LAC,2016,DC,Mike McCoy
+Ken Whisenhunt,LAC,2016,OC,Mike McCoy
+Craig Aukerman,LAC,2016,ST,Mike McCoy
+Ken Norton Jr.,LV,2016,DC,Jack Del Rio
+Bill Musgrave,LV,2016,OC,Jack Del Rio
+Brad Seely,LV,2016,ST,Jack Del Rio
+Vance Joseph,MIA,2016,DC,Adam Gase
+Clyde Christensen,MIA,2016,OC,Adam Gase
+Darren Rizzi,MIA,2016,ST,Adam Gase
+George Edwards,MIN,2016,DC,Mike Zimmer
+Mike Priefer,MIN,2016,ST,Mike Zimmer
+Matt Patricia,NE,2016,DC,Bill Belichick
+Josh McDaniels,NE,2016,OC,Bill Belichick
+Dennis Allen,NO,2016,DC,Sean Payton
+Pete Carmichael,NO,2016,OC,Sean Payton
+Greg McMahon,NO,2016,ST,Sean Payton
+Steve Spagnuolo,NYG,2016,DC,Ben McAdoo
+Mike Sullivan,NYG,2016,OC,Ben McAdoo
+Tom Quinn,NYG,2016,ST,Ben McAdoo
+Kacy Rodgers,NYJ,2016,DC,Todd Bowles
+Chan Gailey,NYJ,2016,OC,Todd Bowles
+Brant Boyer,NYJ,2016,ST,Todd Bowles
+Jim Schwartz,PHI,2016,DC,Doug Pederson
+Frank Reich,PHI,2016,OC,Doug Pederson
+Dave Fipp,PHI,2016,ST,Doug Pederson
+Keith Butler,PIT,2016,DC,Mike Tomlin
+Todd Haley,PIT,2016,OC,Mike Tomlin
+Danny Smith,PIT,2016,ST,Mike Tomlin
+Kris Richard,SEA,2016,DC,Pete Carroll
+Darrell Bevell,SEA,2016,OC,Pete Carroll
+Brian Schneider,SEA,2016,ST,Pete Carroll
+Jim O'Neil,SF,2016,DC,Chip Kelly
+Curtis Modkins,SF,2016,OC,Chip Kelly
+Derius Swinton,SF,2016,ST,Chip Kelly
+Mike Smith,TB,2016,DC,Dirk Koetter
+Todd Monken,TB,2016,OC,Dirk Koetter
+Nate Kaczor,TB,2016,ST,Dirk Koetter
+Dick LeBeau,TEN,2016,DC,Mike Mularkey
+Terry Robiskie,TEN,2016,OC,Mike Mularkey
+Bobby April,TEN,2016,ST,Mike Mularkey
+Joe Barry,WAS,2016,DC,Jay Gruden
+Sean McVay,WAS,2016,OC,Jay Gruden
+Ben Kotwica,WAS,2016,ST,Jay Gruden
+James Bettcher,ARI,2017,DC,Bruce Arians
+Harold Goodwin,ARI,2017,OC,Bruce Arians
+Amos Jones,ARI,2017,ST,Bruce Arians
+Marquand Manuel,ATL,2017,DC,Dan Quinn
+Steve Sarkisian,ATL,2017,OC,Dan Quinn
+Keith Armstrong,ATL,2017,ST,Dan Quinn
+Dean Pees,BAL,2017,DC,John Harbaugh
+Marty Mornhinweg,BAL,2017,OC,John Harbaugh
+Jerry Rosburg,BAL,2017,ST,John Harbaugh
+Leslie Frazier,BUF,2017,DC,Sean McDermott
+Rick Dennison,BUF,2017,OC,Sean McDermott
+Steve Wilks,CAR,2017,DC,Ron Rivera
+Mike Shula,CAR,2017,OC,Ron Rivera
+Thomas McGaughey,CAR,2017,ST,Ron Rivera
+Vic Fangio,CHI,2017,DC,John Fox
+Dowell Loggains,CHI,2017,OC,John Fox
+Jeff Rodgers,CHI,2017,ST,John Fox
+Paul Guenther,CIN,2017,DC,Marvin Lewis
+Ken Zampese,CIN,2017,OC,Marvin Lewis
+Darrin Simmons,CIN,2017,ST,Marvin Lewis
+Gregg Williams,CLE,2017,DC,Hue Jackson
+Chris Tabor,CLE,2017,ST,Hue Jackson
+Rod Marinelli,DAL,2017,DC,Jason Garrett
+Scott Linehan,DAL,2017,OC,Jason Garrett
+Rich Bisaccia,DAL,2017,ST,Jason Garrett
+Joe Woods,DEN,2017,DC,Vance Joseph
+Mike McCoy,DEN,2017,OC,Vance Joseph
+Brock Olivo,DEN,2017,ST,Vance Joseph
+Teryl Austin,DET,2017,DC,Jim Caldwell
+Jim Bob Cooter,DET,2017,OC,Jim Caldwell
+Joe Marciano,DET,2017,ST,Jim Caldwell
+Dom Capers,GB,2017,DC,Mike McCarthy
+Edgar Bennett,GB,2017,OC,Mike McCarthy
+Ron Zook,GB,2017,ST,Mike McCarthy
+Mike Vrabel,HOU,2017,DC,Bill O'Brien
+Larry Izzo,HOU,2017,ST,Bill O'Brien
+Ted Monachino,IND,2017,DC,Chuck Pagano
+Rob Chudzinski,IND,2017,OC,Chuck Pagano
+Tom McMahon,IND,2017,ST,Chuck Pagano
+Todd Wash,JAX,2017,DC,Doug Marrone
+Nathaniel Hackett,JAX,2017,OC,Doug Marrone
+Joe DeCamillis,JAX,2017,ST,Doug Marrone
+Bob Sutton,KC,2017,DC,Andy Reid
+Matt Nagy,KC,2017,OC,Andy Reid
+Dave Toub,KC,2017,ST,Andy Reid
+Wade Phillips,LA,2017,DC,Sean McVay
+Matt LaFleur,LA,2017,OC,Sean McVay
+John Fassel,LA,2017,ST,Sean McVay
+Gus Bradley,LAC,2017,DC,Anthony Lynn
+Ken Whisenhunt,LAC,2017,OC,Anthony Lynn
+George Stewart,LAC,2017,ST,Anthony Lynn
+Ken Norton Jr,LV,2017,DC,Jack Del Rio
+Todd Downing,LV,2017,OC,Jack Del Rio
+Brad Seely,LV,2017,ST,Jack Del Rio
+Matt Burke,MIA,2017,DC,Adam Gase
+Clyde Christensen,MIA,2017,OC,Adam Gase
+Darren Rizzi,MIA,2017,ST,Adam Gase
+George Edwards,MIN,2017,DC,Mike Zimmer
+Pat Shurmur,MIN,2017,OC,Mike Zimmer
+Mike Priefer,MIN,2017,ST,Mike Zimmer
+Matt Patricia,NE,2017,DC,Bill Belichick
+Josh McDaniels,NE,2017,OC,Bill Belichick
+Dennis Allen,NO,2017,DC,Sean Payton
+Pete Carmichael,NO,2017,OC,Sean Payton
+Bradford Banta,NO,2017,ST,Sean Payton
+Steve Spagnuolo,NYG,2017,DC,Ben McAdoo
+Mike Sullivan,NYG,2017,OC,Ben McAdoo
+Tom Quinn,NYG,2017,ST,Ben McAdoo
+Kacy Rodgers,NYJ,2017,DC,Todd Bowles
+John Morton,NYJ,2017,OC,Todd Bowles
+Brant Boyer,NYJ,2017,ST,Todd Bowles
+Jim Schwartz,PHI,2017,DC,Doug Pederson
+Frank Reich,PHI,2017,OC,Doug Pederson
+Dave Fipp,PHI,2017,ST,Doug Pederson
+Keith Butler,PIT,2017,DC,Mike Tomlin
+Todd Haley,PIT,2017,OC,Mike Tomlin
+Danny Smith,PIT,2017,ST,Mike Tomlin
+Kris Richard,SEA,2017,DC,Pete Carroll
+Darrell Bevell,SEA,2017,OC,Pete Carroll
+Brian Schneider,SEA,2017,ST,Pete Carroll
+Robert Saleh,SF,2017,DC,Kyle Shanahan
+Richard Hightower,SF,2017,ST,Kyle Shanahan
+Mike Smith,TB,2017,DC,Dirk Koetter
+Todd Monken,TB,2017,OC,Dirk Koetter
+Nate Kaczor,TB,2017,ST,Dirk Koetter
+Dick LeBeau,TEN,2017,DC,Mike Mularkey
+Terry Robiskie,TEN,2017,OC,Mike Mularkey
+Steve Hoffman,TEN,2017,ST,Mike Mularkey
+Greg Manusky,WAS,2017,DC,Jay Gruden
+Matt Cavanaugh,WAS,2017,OC,Jay Gruden
+Ben Kotwica,WAS,2017,ST,Jay Gruden
+Al Holcomb,ARI,2018,DC,
+Mike McCoy,ARI,2018,OC,
+Jeff Rodgers,ARI,2018,ST,
+Marquand Manuel,ATL,2018,DC,
+Steve Sarkisian,ATL,2018,OC,
+Keith Armstrong,ATL,2018,ST,
+Don Martindale,BAL,2018,DC,
+Marty Mornhinweg,BAL,2018,OC,
+Jerry Rosburg,BAL,2018,ST,
+Leslie Frazier,BUF,2018,DC,
+Brian Daboll,BUF,2018,OC,
+Danny Crossman,BUF,2018,ST,
+Eric Washington,CAR,2018,DC,
+Norv Turner,CAR,2018,OC,
+Chase Blackburn,CAR,2018,ST,
+Vic Fangio,CHI,2018,DC,
+Mark Helfrich,CHI,2018,OC,
+Chris Tabor,CHI,2018,ST,
+Marvin Lewis,CIN,2018,DC,
+Bill Lazor,CIN,2018,OC,
+Darrin Simmons,CIN,2018,ST,
+Gregg Williams,CLE,2018,DC,
+Todd Haley,CLE,2018,OC,
+Amos Jones,CLE,2018,ST,
+Rod Marinelli,DAL,2018,DC,
+Scott Linehan,DAL,2018,OC,
+Keith O'Quinn,DAL,2018,ST,
+Joe Woods,DEN,2018,DC,
+Bill Musgrave,DEN,2018,OC,
+Tom McMahon,DEN,2018,ST,
+Paul Pasqualoni,DET,2018,DC,
+Jim Bob Cooter,DET,2018,OC,
+Joe Marciano,DET,2018,ST,
+Mike Pettine,GB,2018,DC,
+Joe Philbin,GB,2018,OC,
+Ron Zook,GB,2018,ST,
+Romeo Crennel,HOU,2018,DC,
+Brad Seely,HOU,2018,ST,
+Matt Eberflus,IND,2018,DC,
+Nick Sirianni,IND,2018,OC,
+Raymond Ventrone,IND,2018,ST,
+Todd Wash,JAX,2018,DC,
+Nathaniel Hackett,JAX,2018,OC,
+Joe DeCamillis,JAX,2018,ST,
+Bob Sutton,KC,2018,DC,
+Eric Bieniemy,KC,2018,OC,
+Dave Toub,KC,2018,ST,
+Wade Phillips,LA,2018,DC,
+John Fassel,LA,2018,ST,
+Gus Bradley,LAC,2018,DC,
+Ken Whisenhunt,LAC,2018,OC,
+George Stewart,LAC,2018,ST,
+Paul Guenther,LV,2018,DC,
+Greg Olson,LV,2018,OC,
+Rich Bisaccia,LV,2018,ST,
+Matt Burke,MIA,2018,DC,
+Dowell Loggains,MIA,2018,OC,
+Darren Rizzi,MIA,2018,ST,
+George Edwards,MIN,2018,DC,
+Mike Priefer,MIN,2018,ST,
+Josh McDaniels,NE,2018,OC,
+Dennis Allen,NO,2018,DC,
+Pete Carmichael,NO,2018,OC,
+Bradford Banta,NO,2018,ST,
+James Bettcher,NYG,2018,DC,
+Mike Shula,NYG,2018,OC,
+Thomas McGaughey,NYG,2018,ST,
+Kacy Rodgers,NYJ,2018,DC,
+Jeremy Bates,NYJ,2018,OC,
+Brant Boyer,NYJ,2018,ST,
+Jim Schwartz,PHI,2018,DC,
+Mike Groh,PHI,2018,OC,
+Dave Fipp,PHI,2018,ST,
+Keith Butler,PIT,2018,DC,
+Randy Fichtner,PIT,2018,OC,
+Danny Smith,PIT,2018,ST,
+Ken Norton Jr.,SEA,2018,DC,
+Brian Schottenheimer,SEA,2018,OC,
+Brian Schneider,SEA,2018,ST,
+Robert Saleh,SF,2018,DC,
+Richard Hightower,SF,2018,ST,
+Todd Monken,TB,2018,OC,
+Nate Kaczor,TB,2018,ST,
+Dean Pees,TEN,2018,DC,
+Matt LaFleur,TEN,2018,OC,
+Craig Aukerman,TEN,2018,ST,
+Greg Manusky,WAS,2018,DC,
+Matt Cavanaugh,WAS,2018,OC,
+Ben Kotwica,WAS,2018,ST,
+Vance Joseph,ARI,2019,DC,
+Jeff Rodgers,ARI,2019,ST,
+Dirk Koetter,ATL,2019,OC,
+Ben Kotwica,ATL,2019,ST,
+Don Martindale,BAL,2019,DC,
+Greg Roman,BAL,2019,OC,
+Leslie Frazier,BUF,2019,DC,
+Brian Daboll,BUF,2019,OC,
+Heath Farwell,BUF,2019,ST,
+Eric Washington,CAR,2019,DC,
+Norv Turner,CAR,2019,OC,
+Chase Blackburn,CAR,2019,ST,
+Chuck Pagano,CHI,2019,DC,
+Mark Helfrich,CHI,2019,OC,
+Chris Tabor,CHI,2019,ST,
+Lou Anarumo,CIN,2019,DC,
+Brian Callahan,CIN,2019,OC,
+Darrin Simmons,CIN,2019,ST,
+Steve Wilks,CLE,2019,DC,
+Todd Monken,CLE,2019,OC,
+Mike Priefer,CLE,2019,ST,
+Rod Marinelli,DAL,2019,DC,
+Kellen Moore,DAL,2019,OC,
+Keith O'Quinn,DAL,2019,ST,
+Ed Donatell,DEN,2019,DC,
+Rich Scangarello,DEN,2019,OC,
+Tom McMahon,DEN,2019,ST,
+Paul Pasqualoni,DET,2019,DC,
+Darrell Bevell,DET,2019,OC,
+John Bonamego,DET,2019,ST,
+Mike Pettine,GB,2019,DC,
+Nathaniel Hackett,GB,2019,OC,
+Shawn Mennenga,GB,2019,ST,
+Romeo Crennel,HOU,2019,DC,
+Tim Kelly,HOU,2019,OC,
+Brad Seely,HOU,2019,ST,
+Matt Eberflus,IND,2019,DC,
+Nick Sirianni,IND,2019,OC,
+Bubba Ventrone,IND,2019,ST,
+Todd Wash,JAX,2019,DC,
+John DeFilippo,JAX,2019,OC,
+Joe DeCamillis,JAX,2019,ST,
+Steve Spagnuolo,KC,2019,DC,
+Eric Bieniemy,KC,2019,OC,
+Dave Toub,KC,2019,ST,
+Wade Phillips,LA,2019,DC,
+John Fassel,LA,2019,ST,
+Gus Bradley,LAC,2019,DC,
+George Stewart,LAC,2019,ST,
+Paul Guenther,LV,2019,DC,
+Greg Olson,LV,2019,OC,
+Rich Bisaccia,LV,2019,ST,
+Patrick Graham,MIA,2019,DC,
+Chad O'Shea,MIA,2019,OC,
+Danny Crossman,MIA,2019,ST,
+George Edwards,MIN,2019,DC,
+Kevin Stefanski,MIN,2019,OC,
+Marwan Maalouf,MIN,2019,ST,
+Greg Schiano,NE,2019,DC,
+Josh McDaniels,NE,2019,OC,
+Joe Judge,NE,2019,ST,
+Dennis Allen,NO,2019,DC,
+Pete Carmichael,NO,2019,OC,
+Darren Rizzi,NO,2019,ST,
+James Bettcher,NYG,2019,DC,
+Mike Shula,NYG,2019,OC,
+Thomas McGaughey,NYG,2019,ST,
+Gregg Williams,NYJ,2019,DC,
+Dowell Loggains,NYJ,2019,OC,
+Brant Boyer,NYJ,2019,ST,
+Jim Schwartz,PHI,2019,DC,
+Mike Groh,PHI,2019,OC,
+Dave Fipp,PHI,2019,ST,
+Keith Butler,PIT,2019,DC,
+Randy Fichtner,PIT,2019,OC,
+Danny Smith,PIT,2019,ST,
+Ken Norton Jr.,SEA,2019,DC,
+Brian Schottenheimer,SEA,2019,OC,
+Brian Schneider,SEA,2019,ST,
+Robert Saleh,SF,2019,DC,
+Richard Hightower,SF,2019,ST,
+Todd Bowles,TB,2019,DC,
+Byron Leftwich,TB,2019,OC,
+Keith Armstrong,TB,2019,ST,
+Dean Pees,TEN,2019,DC,
+Arthur Smith,TEN,2019,OC,
+Craig Aukerman,TEN,2019,ST,
+Greg Manusky,WAS,2019,DC,
+Kevin O'Connell,WAS,2019,OC,
+Nate Kaczor,WAS,2019,ST,
+Vance Joseph,ARI,2020,DC,
+Jeff Rodgers,ARI,2020,ST,
+Raheem Morris,ATL,2020,DC,
+Dirk Koetter,ATL,2020,OC,
+Ben Kotwica,ATL,2020,ST,
+Don Martindale,BAL,2020,DC,
+Greg Roman,BAL,2020,OC,
+Chris Horton,BAL,2020,ST,
+Leslie Frazier,BUF,2020,DC,
+Brian Daboll,BUF,2020,OC,
+Heath Farwell,BUF,2020,ST,
+Phil Snow,CAR,2020,DC,
+Joe Brady,CAR,2020,OC,
+Chase Blackburn,CAR,2020,ST,
+Chuck Pagano,CHI,2020,DC,
+Bill Lazor,CHI,2020,OC,
+Chris Tabor,CHI,2020,ST,
+Lou Anarumo,CIN,2020,DC,
+Brian Callahan,CIN,2020,OC,
+Darrin Simmons,CIN,2020,ST,
+Joe Woods,CLE,2020,DC,
+Alex Van Pelt,CLE,2020,OC,
+Mike Priefer,CLE,2020,ST,
+Mike Nolan,DAL,2020,DC,
+Kellen Moore,DAL,2020,OC,
+John Fassel,DAL,2020,ST,
+Ed Donatell,DEN,2020,DC,
+Pat Shurmur,DEN,2020,OC,
+Tom McMahon,DEN,2020,ST,
+Cory Undlin,DET,2020,DC,
+Darrell Bevell,DET,2020,OC,
+Mike Pettine,GB,2020,DC,
+Nathaniel Hackett,GB,2020,OC,
+Shawn Mennenga,GB,2020,ST,
+Anthony Weaver,HOU,2020,DC,
+Tim Kelly,HOU,2020,OC,
+Tracy Smith,HOU,2020,ST,
+Matt Eberflus,IND,2020,DC,
+Nick Sirianni,IND,2020,OC,
+Raymond Ventrone,IND,2020,ST,
+Todd Wash,JAX,2020,DC,
+Jay Gruden,JAX,2020,OC,
+Joe DeCamillis,JAX,2020,ST,
+Steve Spagnuolo,KC,2020,DC,
+Eric Bieniemy,KC,2020,OC,
+Dave Toub,KC,2020,ST,
+Brandon Staley,LA,2020,DC,
+Kevin O'Connell,LA,2020,OC,
+John Bonamego,LA,2020,ST,
+Gus Bradley,LAC,2020,DC,
+Shane Steichen,LAC,2020,OC,
+Keith Burns,LAC,2020,ST,
+Greg Olson,LV,2020,OC,
+Rich Bisaccia,LV,2020,ST,
+Josh Boyer,MIA,2020,DC,
+Chan Gailey,MIA,2020,OC,
+Danny Crossman,MIA,2020,ST,
+Adam Zimmer,MIN,2020,DC,
+Andre Patterson,MIN,2020,DC,
+Gary Kubiak,MIN,2020,OC,
+Marwan Maalouf,MIN,2020,ST,
+Josh McDaniels,NE,2020,OC,
+Cam Achord,NE,2020,ST,
+Dennis Allen,NO,2020,DC,
+Pete Carmichael,NO,2020,OC,
+Darren Rizzi,NO,2020,ST,
+Patrick Graham,NYG,2020,DC,
+Jason Garrett,NYG,2020,OC,
+Thomas McGaughey,NYG,2020,ST,
+Dowell Loggains,NYJ,2020,OC,
+Brant Boyer,NYJ,2020,ST,
+Jim Schwartz,PHI,2020,DC,
+Dave Fipp,PHI,2020,ST,
+Keith Butler,PIT,2020,DC,
+Randy Fichtner,PIT,2020,OC,
+Danny Smith,PIT,2020,ST,
+Ken Norton Jr.,SEA,2020,DC,
+Brian Schottenheimer,SEA,2020,OC,
+Robert Saleh,SF,2020,DC,
+Richard Hightower,SF,2020,ST,
+Todd Bowles,TB,2020,DC,
+Byron Leftwich,TB,2020,OC,
+Keith Armstrong,TB,2020,ST,
+Arthur Smith,TEN,2020,OC,
+Craig Aukerman,TEN,2020,ST,
+Jack Del Rio,WAS,2020,DC,
+Scott Turner,WAS,2020,OC,
+Nate Kaczor,WAS,2020,ST,
+Vance Joseph,ARI,2021,DC,
+Jeff Rodgers,ARI,2021,ST,
+Dean Pees,ATL,2021,DC,
+Dave Ragone,ATL,2021,OC,
+Marquice Williams,ATL,2021,ST,
+Don Martindale,BAL,2021,DC,
+Greg Roman,BAL,2021,OC,
+Chris Horton,BAL,2021,ST,
+Leslie Frazier,BUF,2021,DC,
+Brian Daboll,BUF,2021,OC,
+Heath Farwell,BUF,2021,ST,
+Phil Snow,CAR,2021,DC,
+Joe Brady,CAR,2021,OC,
+Chase Blackburn,CAR,2021,ST,
+Sean Desai,CHI,2021,DC,
+Bill Lazor,CHI,2021,OC,
+Chris Tabor,CHI,2021,ST,
+Lou Anarumo,CIN,2021,DC,
+Brian Callahan,CIN,2021,OC,
+Darrin Simmons,CIN,2021,ST,
+Joe Woods,CLE,2021,DC,
+Alex Van Pelt,CLE,2021,OC,
+Mike Priefer,CLE,2021,ST,
+Dan Quinn,DAL,2021,DC,
+Kellen Moore,DAL,2021,OC,
+John Fassel,DAL,2021,ST,
+Ed Donatell,DEN,2021,DC,
+Pat Shurmur,DEN,2021,OC,
+Tom McMahon,DEN,2021,ST,
+Aaron Glenn,DET,2021,DC,
+Anthony Lynn,DET,2021,OC,
+Dave Fipp,DET,2021,ST,
+Joe Barry,GB,2021,DC,
+Nathaniel Hackett,GB,2021,OC,
+Maurice Drayton,GB,2021,ST,
+Lovie Smith,HOU,2021,DC,
+Tim Kelly,HOU,2021,OC,
+Frank Ross,HOU,2021,ST,
+Matt Eberflus,IND,2021,DC,
+Marcus Brady,IND,2021,OC,
+Raymond Ventrone,IND,2021,ST,
+Joe Cullen,JAX,2021,DC,
+Darrell Bevell,JAX,2021,OC,
+Brian Schneider,JAX,2021,ST,
+Nick Sorensen,JAX,2021,ST,
+Steve Spagnuolo,KC,2021,DC,
+Eric Bieniemy,KC,2021,OC,
+Dave Toub,KC,2021,ST,
+Raheem Morris,LA,2021,DC,
+Kevin O'Connell,LA,2021,OC,
+Joe DeCamillis,LA,2021,ST,
+Renaldo Hill,LAC,2021,DC,
+Joe Lombardi,LAC,2021,OC,
+Derius Swinton,LAC,2021,ST,
+Gus Bradley,LV,2021,DC,
+Greg Olson,LV,2021,OC,
+Rich Bisaccia,LV,2021,ST,
+Josh Boyer,MIA,2021,DC,
+Eric Studesville,MIA,2021,OC,
+George Godsey,MIA,2021,OC,
+Danny Crossman,MIA,2021,ST,
+Adam Zimmer,MIN,2021,DC,
+Andre Patterson,MIN,2021,DC,
+Klint Kubiak,MIN,2021,OC,
+Ryan Ficken,MIN,2021,ST,
+Josh McDaniels,NE,2021,OC,
+Cam Achord,NE,2021,ST,
+Dennis Allen,NO,2021,DC,
+Pete Carmichael,NO,2021,OC,
+Darren Rizzi,NO,2021,ST,
+Patrick Graham,NYG,2021,DC,
+Jason Garrett,NYG,2021,OC,
+Thomas McGaughey,NYG,2021,ST,
+Jeff Ulbrich,NYJ,2021,DC,
+Mike LaFleur,NYJ,2021,OC,
+Brant Boyer,NYJ,2021,ST,
+Jonathan Gannon,PHI,2021,DC,
+Shane Steichen,PHI,2021,OC,
+Michael Clay,PHI,2021,ST,
+Keith Butler,PIT,2021,DC,
+Matt Canada,PIT,2021,OC,
+Danny Smith,PIT,2021,ST,
+Ken Norton Jr.,SEA,2021,DC,
+Shane Waldron,SEA,2021,OC,
+Larry Izzo,SEA,2021,ST,
+DeMeco Ryans,SF,2021,DC,
+Mike McDaniel,SF,2021,OC,
+Richard Hightower,SF,2021,ST,
+Todd Bowles,TB,2021,DC,
+Byron Leftwich,TB,2021,OC,
+Keith Armstrong,TB,2021,ST,
+Shane Bowen,TEN,2021,DC,
+Todd Downing,TEN,2021,OC,
+Craig Aukerman,TEN,2021,ST,
+Jack Del Rio,WAS,2021,DC,
+Scott Turner,WAS,2021,OC,
+Nate Kaczor,WAS,2021,ST,
+Vance Joseph,ARI,2022,DC,
+Jeff Rodgers,ARI,2022,ST,
+Dean Pees,ATL,2022,DC,
+Dave Ragone,ATL,2022,OC,
+Marquice Williams,ATL,2022,ST,
+Mike Macdonald,BAL,2022,DC,
+Greg Roman,BAL,2022,OC,
+Chris Horton,BAL,2022,ST,
+Leslie Frazier,BUF,2022,DC,
+Ken Dorsey,BUF,2022,OC,
+Matthew Smiley,BUF,2022,ST,
+Ben McAdoo,CAR,2022,OC,
+Chris Tabor,CAR,2022,ST,
+Alan Williams,CHI,2022,DC,
+Luke Getsy,CHI,2022,OC,
+Richard Hightower,CHI,2022,ST,
+Lou Anarumo,CIN,2022,DC,
+Brian Callahan,CIN,2022,OC,
+Darrin Simmons,CIN,2022,ST,
+Joe Woods,CLE,2022,DC,
+Alex Van Pelt,CLE,2022,OC,
+Mike Priefer,CLE,2022,ST,
+Dan Quinn,DAL,2022,DC,
+Kellen Moore,DAL,2022,OC,
+John Fassel,DAL,2022,ST,
+Ejiro Evero,DEN,2022,DC,
+Justin Outten,DEN,2022,OC,
+Aaron Glenn,DET,2022,DC,
+Ben Johnson,DET,2022,OC,
+Dave Fipp,DET,2022,ST,
+Joe Barry,GB,2022,DC,
+Adam Stenavich,GB,2022,OC,
+Rich Bisaccia,GB,2022,ST,
+Pep Hamilton,HOU,2022,OC,
+Frank Ross,HOU,2022,ST,
+Gus Bradley,IND,2022,DC,
+Raymond Ventrone,IND,2022,ST,
+Mike Caldwell,JAX,2022,DC,
+Press Taylor,JAX,2022,OC,
+Heath Farwell,JAX,2022,ST,
+Steve Spagnuolo,KC,2022,DC,
+Eric Bieniemy,KC,2022,OC,
+Dave Toub,KC,2022,ST,
+Raheem Morris,LA,2022,DC,
+Liam Coen,LA,2022,OC,
+Joe DeCamillis,LA,2022,ST,
+Renaldo Hill,LAC,2022,DC,
+Joe Lombardi,LAC,2022,OC,
+Ryan Ficken,LAC,2022,ST,
+Patrick Graham,LV,2022,DC,
+Mick Lombardi,LV,2022,OC,
+Tom McMahon,LV,2022,ST,
+Josh Boyer,MIA,2022,DC,
+Frank Smith,MIA,2022,OC,
+Danny Crossman,MIA,2022,ST,
+Ed Donatell,MIN,2022,DC,
+Wes Phillips,MIN,2022,OC,
+Matt Daniels,MIN,2022,ST,
+Cam Achord,NE,2022,ST,
+Kris Richard,NO,2022,DC,
+Ryan Nielsen,NO,2022,DC,
+Pete Carmichael,NO,2022,OC,
+Darren Rizzi,NO,2022,ST,
+Don Martindale,NYG,2022,DC,
+Mike Kafka,NYG,2022,OC,
+Thomas McGaughey,NYG,2022,ST,
+Jeff Ulbrich,NYJ,2022,DC,
+Mike LaFleur,NYJ,2022,OC,
+Brant Boyer,NYJ,2022,ST,
+Jonathan Gannon,PHI,2022,DC,
+Shane Steichen,PHI,2022,OC,
+Michael Clay,PHI,2022,ST,
+Teryl Austin,PIT,2022,DC,
+Matt Canada,PIT,2022,OC,
+Danny Smith,PIT,2022,ST,
+Clint Hurtt,SEA,2022,DC,
+Shane Waldron,SEA,2022,OC,
+Larry Izzo,SEA,2022,ST,
+DeMeco Ryans,SF,2022,DC,
+Brian Schneider,SF,2022,ST,
+Byron Leftwich,TB,2022,OC,
+Keith Armstrong,TB,2022,ST,
+Shane Bowen,TEN,2022,DC,
+Todd Downing,TEN,2022,OC,
+Craig Aukerman,TEN,2022,ST,
+Jack Del Rio,WAS,2022,DC,
+Scott Turner,WAS,2022,OC,
+Nate Kaczor,WAS,2022,ST,
+Nick Rallis,ARI,2023,DC,
+Drew Petzing,ARI,2023,OC,
+Jeff Rodgers,ARI,2023,ST,
+Ryan Nielsen,ATL,2023,DC,
+Dave Ragone,ATL,2023,OC,
+Marquice Williams,ATL,2023,ST,
+Mike Macdonald,BAL,2023,DC,
+Todd Monken,BAL,2023,OC,
+Chris Horton,BAL,2023,ST,
+Ken Dorsey,BUF,2023,OC,
+Matthew Smiley,BUF,2023,ST,
+Ejiro Evero,CAR,2023,DC,
+Thomas Brown,CAR,2023,OC,
+Chris Tabor,CAR,2023,ST,
+Alan Williams,CHI,2023,DC,
+Luke Getsy,CHI,2023,OC,
+Richard Hightower,CHI,2023,ST,
+Lou Anarumo,CIN,2023,DC,
+Brian Callahan,CIN,2023,OC,
+Darrin Simmons,CIN,2023,ST,
+Jim Schwartz,CLE,2023,DC,
+Alex Van Pelt,CLE,2023,OC,
+Raymond Ventrone,CLE,2023,ST,
+Dan Quinn,DAL,2023,DC,
+Brian Schottenheimer,DAL,2023,OC,
+John Fassel,DAL,2023,ST,
+Vance Joseph,DEN,2023,DC,
+Joe Lombardi,DEN,2023,OC,
+Ben Kotwica,DEN,2023,ST,
+Aaron Glenn,DET,2023,DC,
+Ben Johnson,DET,2023,OC,
+Dave Fipp,DET,2023,ST,
+Joe Barry,GB,2023,DC,
+Adam Stenavich,GB,2023,OC,
+Rich Bisaccia,GB,2023,ST,
+Matt Burke,HOU,2023,DC,
+Bobby Slowik,HOU,2023,OC,
+Frank Ross,HOU,2023,ST,
+Gus Bradley,IND,2023,DC,
+Jim Bob Cooter,IND,2023,OC,
+Brian Mason,IND,2023,ST,
+Mike Caldwell,JAX,2023,DC,
+Press Taylor,JAX,2023,OC,
+Heath Farwell,JAX,2023,ST,
+Steve Spagnuolo,KC,2023,DC,
+Matt Nagy,KC,2023,OC,
+Dave Toub,KC,2023,ST,
+Raheem Morris,LA,2023,DC,
+Mike LaFleur,LA,2023,OC,
+Chase Blackburn,LA,2023,ST,
+Derrick Ansley,LAC,2023,DC,
+Kellen Moore,LAC,2023,OC,
+Ryan Ficken,LAC,2023,ST,
+Patrick Graham,LV,2023,DC,
+Mick Lombardi,LV,2023,OC,
+Tom McMahon,LV,2023,ST,
+Vic Fangio,MIA,2023,DC,
+Frank Smith,MIA,2023,OC,
+Danny Crossman,MIA,2023,ST,
+Brian Flores,MIN,2023,DC,
+Wes Phillips,MIN,2023,OC,
+Matt Daniels,MIN,2023,ST,
+Bill O'Brien,NE,2023,OC,
+Cam Achord,NE,2023,ST,
+Joe Woods,NO,2023,DC,
+Pete Carmichael,NO,2023,OC,
+Darren Rizzi,NO,2023,ST,
+Don Martindale,NYG,2023,DC,
+Mike Kafka,NYG,2023,OC,
+Thomas McGaughey,NYG,2023,ST,
+Jeff Ulbrich,NYJ,2023,DC,
+Nathaniel Hackett,NYJ,2023,OC,
+Brant Boyer,NYJ,2023,ST,
+Sean Desai,PHI,2023,DC,
+Brian Johnson,PHI,2023,OC,
+Michael Clay,PHI,2023,ST,
+Teryl Austin,PIT,2023,DC,
+Matt Canada,PIT,2023,OC,
+Danny Smith,PIT,2023,ST,
+Clint Hurtt,SEA,2023,DC,
+Shane Waldron,SEA,2023,OC,
+Larry Izzo,SEA,2023,ST,
+Steve Wilks,SF,2023,DC,
+Brian Schneider,SF,2023,ST,
+Dave Canales,TB,2023,OC,
+Keith Armstrong,TB,2023,ST,
+Shane Bowen,TEN,2023,DC,
+Tim Kelly,TEN,2023,OC,
+Tom Quinn,TEN,2023,ST,
+Ron Rivera,WAS,2023,DC,
+Eric Bieniemy,WAS,2023,OC,
+Nate Kaczor,WAS,2023,ST,
+Nick Rallis,ARI,2024,DC,
+Drew Petzing,ARI,2024,OC,
+Jeff Rodgers,ARI,2024,ST,
+Jimmy Lake,ATL,2024,DC,
+Zac Robinson,ATL,2024,OC,
+Marquice Williams,ATL,2024,ST,
+Zachary Orr,BAL,2024,DC,
+Todd Monken,BAL,2024,OC,
+Chris Horton,BAL,2024,ST,
+Bobby Babich,BUF,2024,DC,
+Joe Brady,BUF,2024,OC,
+Matthew Smiley,BUF,2024,ST,
+Ejiro Evero,CAR,2024,DC,
+Brad Idzik,CAR,2024,OC,
+Tracy Smith,CAR,2024,ST,
+Eric Washington,CHI,2024,DC,
+Shane Waldron,CHI,2024,OC,
+Richard Hightower,CHI,2024,ST,
+Lou Anarumo,CIN,2024,DC,
+Dan Pitcher,CIN,2024,OC,
+Darrin Simmons,CIN,2024,ST,
+Jim Schwartz,CLE,2024,DC,
+Ken Dorsey,CLE,2024,OC,
+Ray Ventrone,CLE,2024,ST,
+Mike Zimmer,DAL,2024,DC,
+Brian Schottenheimer,DAL,2024,OC,
+John Fassel,DAL,2024,ST,
+Vance Joseph,DEN,2024,DC,
+Joe Lombardi,DEN,2024,OC,
+Ben Kotwica,DEN,2024,ST,
+Aaron Glenn,DET,2024,DC,
+Ben Johnson,DET,2024,OC,
+Dave Fipp,DET,2024,ST,
+Jeff Hafley,GB,2024,DC,
+Adam Stenavich,GB,2024,OC,
+Rich Bisaccia,GB,2024,ST,
+Matt Burke,HOU,2024,DC,
+Bobby Slowik,HOU,2024,OC,
+Frank Ross,HOU,2024,ST,
+Gus Bradley,IND,2024,DC,
+Jim Bob Cooter,IND,2024,OC,
+Brian Mason,IND,2024,ST,
+Ryan Nielsen,JAX,2024,DC,
+Press Taylor,JAX,2024,OC,
+Heath Farwell,JAX,2024,ST,
+Steve Spagnuolo,KC,2024,DC,
+Matt Nagy,KC,2024,OC,
+Dave Toub,KC,2024,ST,
+Chris Shula,LA,2024,DC,
+Mike LaFleur,LA,2024,OC,
+Chase Blackburn,LA,2024,ST,
+Jesse Minter,LAC,2024,DC,
+Greg Roman,LAC,2024,OC,
+Ryan Ficken,LAC,2024,ST,
+Patrick Graham,LV,2024,DC,
+Luke Getsy,LV,2024,OC,
+Tom McMahon,LV,2024,ST,
+Anthony Weaver,MIA,2024,DC,
+Frank Smith,MIA,2024,OC,
+Danny Crossman,MIA,2024,ST,
+Brian Flores,MIN,2024,DC,
+Wes Phillips,MIN,2024,OC,
+Matt Daniels,MIN,2024,ST,
+DeMarcus Covington,NE,2024,DC,
+Alex Van Pelt,NE,2024,OC,
+Jeremy Springer,NE,2024,ST,
+Joe Woods,NO,2024,DC,
+Klint Kubiak,NO,2024,OC,
+Darren Rizzi,NO,2024,ST,
+Shane Bowen,NYG,2024,DC,
+Mike Kafka,NYG,2024,OC,
+Michael Ghobrial,NYG,2024,ST,
+Nathaniel Hackett,NYJ,2024,OC,
+Brant Boyer,NYJ,2024,ST,
+Vic Fangio,PHI,2024,DC,
+Kellen Moore,PHI,2024,OC,
+Michael Clay,PHI,2024,ST,
+Teryl Austin,PIT,2024,DC,
+Arthur Smith,PIT,2024,OC,
+Danny Smith,PIT,2024,ST,
+Aden Durde,SEA,2024,DC,
+Ryan Grubb,SEA,2024,OC,
+Jay Harbaugh,SEA,2024,ST,
+Nick Sorensen,SF,2024,DC,
+Brian Schneider,SF,2024,ST,
+Liam Coen,TB,2024,OC,
+Thomas McGaughey,TB,2024,ST,
+Dennard Wilson,TEN,2024,DC,
+Nick Holz,TEN,2024,OC,
+Colt Anderson,TEN,2024,ST,
+Joe Whitt Jr.,WAS,2024,DC,
+Kliff Kingsbury,WAS,2024,OC,
+Larry Izzo,WAS,2024,ST,
+Nick Rallis,ARI,2025,DC,
+Drew Petzing,ARI,2025,OC,
+Jeff Rodgers,ARI,2025,ST,
+Jeff Ulbrich,ATL,2025,DC,
+Zac Robinson,ATL,2025,OC,
+Marquice Williams,ATL,2025,ST,
+Zachary Orr,BAL,2025,DC,
+Todd Monken,BAL,2025,OC,
+Chris Horton,BAL,2025,ST,
+Bobby Babich,BUF,2025,DC,
+Joe Brady,BUF,2025,OC,
+Chris Tabor,BUF,2025,ST,
+Ejiro Evero,CAR,2025,DC,
+Brad Idzik,CAR,2025,OC,
+Tracy Smith,CAR,2025,ST,
+Dennis Allen,CHI,2025,DC,
+Declan Doyle,CHI,2025,OC,
+Richard Hightower,CHI,2025,ST,
+Al Golden,CIN,2025,DC,
+Dan Pitcher,CIN,2025,OC,
+Darrin Simmons,CIN,2025,ST,
+Jim Schwartz,CLE,2025,DC,
+Tommy Rees,CLE,2025,OC,
+Ray Ventrone,CLE,2025,ST,
+Matt Eberflus,DAL,2025,DC,
+Klayton Adams,DAL,2025,OC,
+Nick Sorensen,DAL,2025,ST,
+Vance Joseph,DEN,2025,DC,
+Joe Lombardi,DEN,2025,OC,
+Darren Rizzi,DEN,2025,ST,
+Kelvin Sheppard,DET,2025,DC,
+John Morton,DET,2025,OC,
+Dave Fipp,DET,2025,ST,
+Jeff Hafley,GB,2025,DC,
+Adam Stenavich,GB,2025,OC,
+Rich Bisaccia,GB,2025,ST,
+Matt Burke,HOU,2025,DC,
+Nick Caley,HOU,2025,OC,
+Frank Ross,HOU,2025,ST,
+Lou Anarumo,IND,2025,DC,
+Jim Bob Cooter,IND,2025,OC,
+Brian Mason,IND,2025,ST,
+Anthony Campanile,JAX,2025,DC,
+Grant Udinski,JAX,2025,OC,
+Heath Farwell,JAX,2025,ST,
+Steve Spagnuolo,KC,2025,DC,
+Matt Nagy,KC,2025,OC,
+Dave Toub,KC,2025,ST,
+Chris Shula,LA,2025,DC,
+Mike LaFleur,LA,2025,OC,
+Jesse Minter,LAC,2025,DC,
+Greg Roman,LAC,2025,OC,
+Ryan Ficken,LAC,2025,ST,
+Patrick Graham,LV,2025,DC,
+Anthony Weaver,MIA,2025,DC,
+Frank Smith,MIA,2025,OC,
+Craig Aukerman,MIA,2025,ST,
+Brian Flores,MIN,2025,DC,
+Wes Phillips,MIN,2025,OC,
+Matt Daniels,MIN,2025,ST,
+Terrell Williams,NE,2025,DC,
+Josh McDaniels,NE,2025,OC,
+Jeremy Springer,NE,2025,ST,
+Brandon Staley,NO,2025,DC,
+Doug Nussmeier,NO,2025,OC,
+Phil Galiano,NO,2025,ST,
+Tim Kelly,NYG,2025,OC,
+Michael Ghobrial,NYG,2025,ST,
+Tanner Engstrand,NYJ,2025,OC,
+Chris Banjo,NYJ,2025,ST,
+Vic Fangio,PHI,2025,DC,
+Kevin Patullo,PHI,2025,OC,
+Michael Clay,PHI,2025,ST,
+Teryl Austin,PIT,2025,DC,
+Arthur Smith,PIT,2025,OC,
+Danny Smith,PIT,2025,ST,
+Aden Durde,SEA,2025,DC,
+Klint Kubiak,SEA,2025,OC,
+Jay Harbaugh,SEA,2025,ST,
+Robert Saleh,SF,2025,DC,
+Klay Kubiak,SF,2025,OC,
+Brant Boyer,SF,2025,ST,
+Josh Grizzard,TB,2025,OC,
+Thomas McGaughey,TB,2025,ST,
+Dennard Wilson,TEN,2025,DC,
+Nick Holz,TEN,2025,OC,
+John Fassel,TEN,2025,ST,
+Joe Whitt Jr.,WAS,2025,DC,
+Kliff Kingsbury,WAS,2025,OC,
+Larry Izzo,WAS,2025,ST,
+Nick Rallis,ARI,2026,DC,
+Nathaniel Hackett,ARI,2026,OC,
+Michael Ghobrial,ARI,2026,ST,
+Jeff Ulbrich,ATL,2026,DC,
+Tommy Rees,ATL,2026,OC,
+Craig Aukerman,ATL,2026,ST,
+Anthony Weaver,BAL,2026,DC,
+Declan Doyle,BAL,2026,OC,
+Anthony Levine Sr.,BAL,2026,ST,
+Jim Leonhard,BUF,2026,DC,
+Pete Carmichael,BUF,2026,OC,
+Jeff Rodgers,BUF,2026,ST,
+Ejiro Evero,CAR,2026,DC,
+Brad Idzik,CAR,2026,OC,
+Tracy Smith,CAR,2026,ST,
+Dennis Allen,CHI,2026,DC,
+Press Taylor,CHI,2026,OC,
+Richard Hightower,CHI,2026,ST,
+Al Golden,CIN,2026,DC,
+Dan Pitcher,CIN,2026,OC,
+Darrin Simmons,CIN,2026,ST,
+Mike Rutenberg,CLE,2026,DC,
+Travis Switzer,CLE,2026,OC,
+Byron Storer,CLE,2026,ST,
+Christian Parker,DAL,2026,DC,
+Klayton Adams,DAL,2026,OC,
+Nick Sorensen,DAL,2026,ST,
+Vance Joseph,DEN,2026,DC,
+Davis Webb,DEN,2026,OC,
+Darren Rizzi,DEN,2026,ST,
+Kelvin Sheppard,DET,2026,DC,
+Drew Petzing,DET,2026,OC,
+Dave Fipp,DET,2026,ST,
+Jonathan Gannon,GB,2026,DC,
+Adam Stenavich,GB,2026,OC,
+Cameron Achord,GB,2026,ST,
+Matt Burke,HOU,2026,DC,
+Nick Caley,HOU,2026,OC,
+Frank Ross,HOU,2026,ST,
+Lou Anarumo,IND,2026,DC,
+Jim Bob Cooter,IND,2026,OC,
+Brian Mason,IND,2026,ST,
+Anthony Campanile,JAX,2026,DC,
+Grant Udinski,JAX,2026,OC,
+Heath Farwell,JAX,2026,ST,
+Steve Spagnuolo,KC,2026,DC,
+Eric Bieniemy,KC,2026,OC,
+Dave Toub,KC,2026,ST,
+Chris Shula,LA,2026,DC,
+Nathan Scheelhaase,LA,2026,OC,
+Ray Ventrone,LA,2026,ST,
+Chris O'Leary,LAC,2026,DC,
+Mike McDaniel,LAC,2026,OC,
+Ryan Ficken,LAC,2026,ST,
+Rob Leonard,LV,2026,DC,
+Andrew Janocko,LV,2026,OC,
+Joe DeCamillis,LV,2026,ST,
+Sean Duggan,MIA,2026,DC,
+Bobby Slowik,MIA,2026,OC,
+Chris Tabor,MIA,2026,ST,
+Brian Flores,MIN,2026,DC,
+Wes Phillips,MIN,2026,OC,
+Matt Daniels,MIN,2026,ST,
+Zak Kuhr,NE,2026,DC,
+Josh McDaniels,NE,2026,OC,
+Jeremy Springer,NE,2026,ST,
+Brandon Staley,NO,2026,DC,
+Doug Nussmeier,NO,2026,OC,
+Phil Galiano,NO,2026,ST,
+Dennard Wilson,NYG,2026,DC,
+Matt Nagy,NYG,2026,OC,
+Chris Horton,NYG,2026,ST,
+Brian Duker,NYJ,2026,DC,
+Frank Reich,NYJ,2026,OC,
+Chris Banjo,NYJ,2026,ST,
+Vic Fangio,PHI,2026,DC,
+Sean Mannion,PHI,2026,OC,
+Michael Clay,PHI,2026,ST,
+Patrick Graham,PIT,2026,DC,
+Brian Angelichio,PIT,2026,OC,
+Danny Crossman,PIT,2026,ST,
+Aden Durde,SEA,2026,DC,
+Brian Fleury,SEA,2026,OC,
+Jay Harbaugh,SEA,2026,ST,
+Raheem Morris,SF,2026,DC,
+Klay Kubiak,SF,2026,OC,
+Brant Boyer,SF,2026,ST,
+Zac Robinson,TB,2026,OC,
+Danny Smith,TB,2026,ST,
+Gus Bradley,TEN,2026,DC,
+Brian Daboll,TEN,2026,OC,
+John Fassel,TEN,2026,ST,
+Daronte Jones,WAS,2026,DC,
+David Blough,WAS,2026,OC,
+Larry Izzo,WAS,2026,ST,

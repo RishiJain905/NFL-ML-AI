@@ -1,7 +1,8 @@
-// Q5 coaching tree (documentation/05 -> Q5; decisions-log open question Q06): links between
-// this week's coaching staffs that only the optional hand-made seed knows
-// (`config/coaching_seed.csv` -> COORDINATOR_OF, WORKED_UNDER; graph/tables_extra.py). With
-// no seed there are no such relationships and the query returns nothing. Two patterns:
+// Q5 coaching tree (documentation/05 -> Q5; decisions D83, D86; Q06): links between this
+// week's coaching staffs that only the coaching seed knows (`config/coaching_seed.csv`,
+// built from Wikipedia by `nfl graph coaching-seed` -> COORDINATOR_OF, WORKED_UNDER;
+// graph/tables_extra.py). With no seed there are no such relationships and the query
+// returns nothing. Two patterns:
 //   coordinator_vs_boss: a coordinator this season faces the head coach he used to work
 //     under: (c)-[:COORDINATOR_OF {season: S}]->(his Team)-[:PLAYED_IN]->(g)
 //     <-[:COACHED_IN]-(boss), (c)-[:WORKED_UNDER]->(boss)

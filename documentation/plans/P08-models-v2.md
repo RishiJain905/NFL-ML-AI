@@ -37,7 +37,7 @@ Push accuracy and insight further, without breaking production:
 - [x] ✋ **Checkpoint:** choose which new targets ship (each must beat its baseline); add them to the scoreboard and, where useful, the digest. *(Waived; by the pre-registered rules: all 12 player targets (D82) and 4 of 5 team targets (D80) ship; on the scoreboard; the digest's watch tables show TD and sack chances.)*
 
 ### Advanced graph
-- [x] 🤖 Q5 coaching connections (head coaches from nflverse; optional coordinator / coaching-tree seed CSV if Rishi wants to hand-curate it; see decisions log Q06). *(opus-high; head-coach reunions from P05 + `q5_coaching_tree` on an optional seed; loader built, no data curated: Q06 answered, D83.)*
+- [x] 🤖 Q5 coaching connections (head coaches from nflverse; optional coordinator / coaching-tree seed CSV if Rishi wants to hand-curate it; see decisions log Q06). *(opus-high; head-coach reunions from P05 + `q5_coaching_tree` on the coaching seed; loader built in P08 (D83), then the seed itself built from Wikipedia after the close at Rishi's request (`nfl graph coaching-seed`, 1,684 coordinator rows 2006–2026, D86; Q06 answered).)*
 - [x] 🤖 Q6 former teammates on opposite sides; Q7 style matchups (mobile QBs, deep passers, play-action-heavy offenses via FTN); Q9 officiating crew tendencies. *(Q9: week-W crews only live and only when in the data, D83.)*
 - [x] 🤖 Q10 GDS: per-team `THREW_TO` projection → PageRank / degree centrality (who the offense runs through, and how that changes with an absence). Node similarity / k-nearest-neighbors on usage vectors → `SIMILAR_TO` ("usage looks like X's breakout year"). *(`graph/gds.py`; KNN, not Jaccard similarity, D84.)*
 - [x] 🧑 **Rishi runs** the GDS algorithms interactively in Neo4j Browser first (projection → stream → write), as a learning step, before the agent wires them into the pipeline. *(Waived; the agent ran them and wrote the step-by-step Browser walkthrough with real results for Rishi to repeat: `documentation/guides/graph-data-science.md`.)*
@@ -81,7 +81,7 @@ Waivers (Rishi, at the kickoff): every 🧑 step run by the agents, both ✋ dec
 - **Team takeaways** didn't beat the league average and don't ship (D80).
 - **Consistency:** the yards gaps are logged, not adjusted: the adjustment helped MAE but hurt the WR/TE watch picks (D81).
 - **Team totals and the consistency layer run inside the weekly `player` step** (fail-soft), not as a new pipeline step.
-- **Q9 officiating** only fires in a live run whose data has the week's crew (crews arrive weeks late; D83). **The coaching seed** loader exists; nothing is curated (Q06).
+- **Q9 officiating** only fires in a live run whose data has the week's crew (crews arrive weeks late; D83). **The coaching seed** is built from Wikipedia, not hand-curated (D86, Q06); coordinators only.
 - **GDS exit criterion** shown on 2025 weeks 13 / 14 backtest digests (Rishi chose this at the kickoff); the first live GDS item is expected from 2026 week 5.
 
 ## Exit criteria: verified
