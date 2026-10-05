@@ -32,10 +32,11 @@ One guide per major technology or component, written for a reader who's new to i
 
 | Guide | What it explains |
 |---|---|
-| [Knowledge graph (Neo4j)](guides/knowledge-graph.md) | Neo4j in two minutes, what our graph holds, a Neo4j Browser walkthrough, each Cypher query in the library, how graph findings reach the digest (P05) |
+| [Knowledge graph (Neo4j)](guides/knowledge-graph.md) | Neo4j in two minutes, what our graph holds, a Neo4j Browser walkthrough, each Cypher query in the library, how graph findings reach the digest (P05; P08 queries Q5-Q7, Q9) |
+| [Graph Data Science](guides/graph-data-science.md) | GDS primer (projections, PageRank, degree, KNN vs node similarity, stream / write / mutate), the two weekly GDS jobs, and a Neo4j Browser walkthrough with real results (P08) |
 | [Weights & Biases](guides/weights-and-biases.md) | Every W&B run, chart, table and artifact, step by step through the weekly run and the research runs, what to check each week, and the **2026 Season Dashboard** chart by chart (what each shows, whether higher or lower is better, normal ranges) |
 | [The LLM digest writer](guides/llm-digest-writer.md) | What the LLM does and doesn't do, the prompt, the checks it must pass, cost and latency, and how to switch the model or provider safely |
-| [Player projections](guides/player-projections.md) | The player model (P06): LightGBM, quantile ranges, count distributions, SHAP drivers in a few minutes; how projections become the watch list, tough spots, the look-back and the accuracy scoreboard; files, W&B runs, commands, how to change it safely |
+| [Player projections](guides/player-projections.md) | The player model (P06): LightGBM, quantile ranges, count distributions, SHAP drivers in a few minutes; how projections become the watch list, tough spots, the look-back and the accuracy scoreboard; files, W&B runs, commands, how to change it safely; P08: chances of a TD / sack / interception (calibrated), QB TDs and interceptions, CB/S coverage |
 | [Weekly operations](guides/weekly-operations.md) | How the weekly run is operated (P07, manual-first): the calendar (which week, the deadline, special weeks), `nfl weekly run --auto` and its exit codes, the lock, Neo4j start-up, the run records and W&B pipeline run, alerts, drift checks and their 2019–2025 replay, the season dashboard, the Saturday injury update, time-travel simulations |
 
 ## Weekly graph queries
@@ -51,6 +52,9 @@ One guide per major technology or component, written for a reader who's new to i
 | [Team ratings, Elo, trend](model_cards/team_ratings.md) | P02 |
 | [Game model v0](model_cards/game-model-v0.md) | P03 |
 | [Player model v1](model_cards/player-model-v1.md): overview of all 11 target models, plus one card per target family: [QB](model_cards/player-qb.md), [RB](model_cards/player-rb.md), [WR/TE](model_cards/player-wrte.md), [defense](model_cards/player-defense.md) | P06 |
+| [Player model, P08 targets](model_cards/player-p08.md): chance of a touchdown, sacks, interceptions, QB TDs and rushing, QB hits, coverage stats for CBs and safeties | P08 |
+| [Game model v1](model_cards/game-model-v1.md): LightGBM with injury load, weather and a trailing home edge; evaluated and **not promoted** (v0 stays in production, D79) | P08 |
+| [Team stat totals + consistency layer](model_cards/team-stats-v1.md): team passing / rushing yards, sacks made / taken (takeaways tried, not shipped); receptions vs targets and receivers vs QB vs team yards | P08 |
 
 `plans/` is the phase-by-phase build plan. `archive/` holds the original starter docs, for reference only.
 

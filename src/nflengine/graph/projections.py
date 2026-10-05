@@ -37,8 +37,9 @@ BATCH = 5_000
 PROPS = (
     "player_id", "player", "team", "opponent", "game_id", "season", "week", "target",
     "target_label", "group", "unit", "kind", "is_main", "p10", "p50", "p90", "mean",
-    "baseline", "baseline_p50", "baseline_source", "outperformance", "outperf_z", "confidence",
-    "model_version", "feature_hash", "trained_through",
+    "p_ge1", "p_ge2", "baseline", "baseline_p50", "baseline_p_ge1", "baseline_source",
+    "outperformance", "outperf_z", "confidence", "model_version", "feature_hash",
+    "trained_through",
 )  # fmt: skip
 MERGE_QUERY = (
     "UNWIND $rows AS r "

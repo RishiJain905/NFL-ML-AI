@@ -49,17 +49,35 @@ def _fit(required: list[str], optional: list[str], budget: int | None) -> str:
     return " ".join(out)
 
 
+def _payload_players(payload: dict[str, Any]) -> set[str]:
+    """Every player name the checks know (the fact index: game QBs, graph items, starters
+    out, ...), so a last name is only used when the entity check can bind it."""
+    try:
+        from nflengine.digest.facts import build_fact_index
+        from nflengine.digest.payload import Payload
+
+        fx = build_fact_index(Payload.model_validate(payload))
+        return {e.aliases[0] for e in fx.entities.values() if e.kind == "player" and e.aliases}
+    except Exception:  # a partial payload (tests): the writer's own players only
+        return set()
+
+
 def _short_names(payload: dict[str, Any]) -> dict[str, str]:
-    """Player id -> last name when it's unique among the payload's players, else full name."""
+    """Player id -> last name when it's unique among **all** the payload's players (the
+    entity check's view: "Jones" with Chris, Travis, Mac and Zay Jones in one payload binds
+    to nobody), else the full name."""
     people = {
         p["player_id"]: p["player"]
         for key in ("under_the_hood", "players_to_watch")
         for p in payload.get(key, [])
     }
     counts: dict[str, int] = {}
-    for name in set(people.values()):
-        counts[last_name(name)] = counts.get(last_name(name), 0) + 1
-    return {pid: (last_name(n) if counts[last_name(n)] == 1 else n) for pid, n in people.items()}
+    for name in set(people.values()) | _payload_players(payload):
+        key = last_name(name).lower()
+        counts[key] = counts.get(key, 0) + 1
+    return {
+        pid: (last_name(n) if counts[last_name(n).lower()] == 1 else n) for pid, n in people.items()
+    }
 
 
 class PlaceholderLLM:

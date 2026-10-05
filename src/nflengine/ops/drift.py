@@ -9,6 +9,9 @@ alerts and never change anything: no retuning, no refit, no model swap.
   probabilities is above `ece_max`.
 - `player_vs_baseline` (one signal per position group): the accuracy scoreboard. Alert when
   the model's MAE is behind the rolling baseline's, same windows as the games.
+- `player_prob_vs_baseline` (P08, one per group that has chances): the same check on the
+  Brier score of the probability targets and event counts (chance of a TD, a sack, an
+  interception ...), which have no MAE (Sol review).
 - `data_freshness`: the freshness list the caller passes. Alert when any source is stale.
 - `checks`: `pipeline_history.parquet`. Alert when more than `checks_fail_rate_max` of the
   last `checks_window_weeks` digests failed their final checks.
@@ -81,6 +84,10 @@ R_CALIBRATION = (
 R_PLAYER = (
     "Check feature freshness (snap counts, NGS and PFR lag) and role changes for this "
     "position group. Nothing is retuned automatically."
+)
+R_PLAYER_PROB = (
+    "Check the group's reliability diagram on the walk-forward backtest (are the chances "
+    "still calibrated?) and its features' freshness. Nothing is retuned automatically."
 )
 R_FRESH = (
     "The digest footer already notes it. Check `nfl data-status`, then re-ingest the stale "
@@ -281,11 +288,25 @@ def calibration_signal(graded: pl.DataFrame, cfg: dict[str, Any]) -> DriftSignal
 # ---- players: MAE vs the rolling baseline -------------------------------------------------------
 
 
-def prepare_scoreboard(sb: pl.DataFrame | None, season: int, week: int) -> pl.DataFrame:
+METRICS = {
+    # metric -> (model column, baseline column): `mae` for amounts and counts (P06), `brier`
+    # for the chances of P08's probability targets and event counts (Sol review, P08)
+    "mae": ("mae_model", "mae_baseline"),
+    "brier": ("brier_model", "brier_baseline"),
+}
+
+
+def prepare_scoreboard(
+    sb: pl.DataFrame | None, season: int, week: int, metric: str = "mae"
+) -> pl.DataFrame:
     """Scoreboard rows of `season` for weeks before `week`, scored, one per (week, target,
     group): live rows win over walk-forward backtest rows of the same week. Adds `mode`
-    (`backtest` when the file has none)."""
+    (`backtest` when the file has none). `metric="brier"` keeps the rows with a Brier score
+    (P08 chances) instead of the rows with an MAE."""
     if sb is None or sb.is_empty():
+        return pl.DataFrame()
+    m_col, b_col = METRICS[metric]
+    if m_col not in sb.columns or b_col not in sb.columns:
         return pl.DataFrame()
     df = sb.with_columns(
         (pl.col("mode") if "mode" in sb.columns else pl.lit("backtest")).alias("mode")
@@ -294,8 +315,8 @@ def prepare_scoreboard(sb: pl.DataFrame | None, season: int, week: int) -> pl.Da
         (pl.col("season") == season)
         & (pl.col("week") < week)
         & (pl.col("n_scored").fill_null(0) > 0)
-        & pl.col("mae_model").is_not_null()
-        & pl.col("mae_baseline").is_not_null()
+        & pl.col(m_col).is_not_null()
+        & pl.col(b_col).is_not_null()
     )
     if df.is_empty():
         return df
@@ -308,8 +329,9 @@ def prepare_scoreboard(sb: pl.DataFrame | None, season: int, week: int) -> pl.Da
     )
 
 
-def improvement_pct(rows: pl.DataFrame) -> float | None:
-    """Percent by which the model's MAE beats the baseline's over `rows`.
+def improvement_pct(rows: pl.DataFrame, metric: str = "mae") -> float | None:
+    """Percent by which the model's MAE (or Brier score, `metric="brier"`) beats the
+    baseline's over `rows`.
 
     Targets are compared on their own scale (a carry is not a yard): per target,
     (baseline MAE - model MAE) / baseline MAE with each week's MAE weighted by its scored
@@ -318,13 +340,14 @@ def improvement_pct(rows: pl.DataFrame) -> float | None:
     """
     if rows.is_empty():
         return None
+    m_col, b_col = METRICS[metric]
     n = pl.col("n_scored").cast(pl.Float64)
     per = (
         rows.group_by("target")
         .agg(
             n.sum().alias("n"),
-            (n * pl.col("mae_model")).sum().alias("m"),
-            (n * pl.col("mae_baseline")).sum().alias("b"),
+            (n * pl.col(m_col)).sum().alias("m"),
+            (n * pl.col(b_col)).sum().alias("b"),
         )
         .filter(pl.col("b") > 0)
     )
@@ -334,7 +357,11 @@ def improvement_pct(rows: pl.DataFrame) -> float | None:
 
 
 def group_series(
-    sb: pl.DataFrame, group: str, window: int | None, min_window: int | None = None
+    sb: pl.DataFrame,
+    group: str,
+    window: int | None,
+    min_window: int | None = None,
+    metric: str = "mae",
 ) -> list[dict]:
     """The group's improvement at every graded week, over the last `window` graded weeks
     (`None` = season to date). One dict per week: `week`, `weeks`, `improvement`, `n`, `live`
@@ -351,7 +378,7 @@ def group_series(
         if min_window and len(win) < min_window:
             continue
         rows = g.filter(pl.col("week").is_in(win))
-        imp = improvement_pct(rows)
+        imp = improvement_pct(rows, metric)
         if imp is None:
             continue
         n_live = sum(live_by_week[w] for w in win)
@@ -368,13 +395,19 @@ def group_series(
     return out
 
 
-def player_signal(sb: pl.DataFrame, group: str, cfg: dict[str, Any]) -> DriftSignal:
+def player_signal(
+    sb: pl.DataFrame, group: str, cfg: dict[str, Any], metric: str = "mae"
+) -> DriftSignal:
     """Alert when the group's model MAE is behind the rolling baseline's in each of the last
-    `streak_weeks` rolling windows."""
-    name = "player_vs_baseline"
+    `streak_weeks` rolling windows. `metric="brier"` (P08) is the same check on the Brier
+    score of the group's chances (probability targets and event counts):
+    `player_prob_vs_baseline`, so a calibrated-chance model that falls behind the player's
+    rolling rate alerts even while the MAE-based signal is healthy."""
+    name = "player_vs_baseline" if metric == "mae" else "player_prob_vs_baseline"
+    what = "MAE" if metric == "mae" else "Brier score on its chances"
     streak = int(cfg["streak_weeks"])
     margin = float(cfg.get("player_margin") or 0.0)
-    series = group_series(sb, group, int(cfg["rolling_weeks"]), min_window_weeks(cfg))
+    series = group_series(sb, group, int(cfg["rolling_weeks"]), min_window_weeks(cfg), metric)
     n_weeks = sb.filter(pl.col("position_group") == group)["week"].n_unique() if sb.height else 0
     if len(series) < streak:
         return _signal(
@@ -404,10 +437,11 @@ def player_signal(sb: pl.DataFrame, group: str, cfg: dict[str, Any]) -> DriftSig
         threshold=margin,
         detail=(
             f"{group}: over scored weeks {_weeks(now['weeks'])} ({' + '.join(kinds)}, "
-            f"{now['n']} projections) the model's MAE is {now['improvement']:+.1f}% against the "
-            f"rolling baseline's; it was behind in {behind} of the last {streak} rolling windows."
+            f"{now['n']} projections) the model's {what} is {now['improvement']:+.1f}% against "
+            f"the rolling baseline's; it was behind in {behind} of the last {streak} rolling "
+            "windows."
         ),
-        response=R_PLAYER if alert else NO_ACTION,
+        response=(R_PLAYER if metric == "mae" else R_PLAYER_PROB) if alert else NO_ACTION,
         weeks=sorted({w for s in last for w in s["weeks"]}),
     )
 
@@ -580,6 +614,15 @@ def evaluate_drift(
         if "players" in read_err:
             s.detail = f"{g}: could not read the accuracy scoreboard ({read_err['players']})."
         signals.append(s)
+    # P08: the chances (probability targets, event counts) on their Brier score, one signal
+    # per group that has any (Sol review: MAE-less rows never reached the signal above)
+    try:
+        sbp = prepare_scoreboard(raw, season, week, "brier") if "players" not in read_err else None
+    except Exception:  # noqa: BLE001
+        sbp = None
+    if sbp is not None and sbp.height:
+        for g in sorted(sbp["position_group"].unique().to_list()):
+            signals.append(player_signal(sbp, g, cfg, metric="brier"))
 
     signals.append(freshness_signal(freshness, cfg))
 
@@ -598,6 +641,10 @@ TITLES: dict[str, Callable[[DriftSignal, dict[str, Any]], str]] = {
     "calibration": lambda s, c: f"game probabilities poorly calibrated (ECE {s.value:.3f})",
     "player_vs_baseline": lambda s, c: (
         f"{s.group} projections behind the baseline for {c['streak_weeks']} weeks"
+    ),
+    "player_prob_vs_baseline": lambda s, c: (
+        f"{s.group} chances (TD, sack, interception ...) behind the baseline for "
+        f"{c['streak_weeks']} weeks"
     ),
     "data_freshness": lambda s, c: "stale data source",
     "checks": lambda s, c: f"digest checks failing ({s.value:.0%} of recent runs)",
@@ -681,6 +728,12 @@ def replay_drift(
             if sb_all is not None:
                 sb = prepare_scoreboard(sb_all, season, run_week)
                 sigs += [player_signal(sb, g, cfg) for g in GROUPS]
+                sbp = prepare_scoreboard(sb_all, season, run_week, "brier")
+                if sbp.height:
+                    sigs += [
+                        player_signal(sbp, g, cfg, metric="brier")
+                        for g in sorted(sbp["position_group"].unique().to_list())
+                    ]
             for s in sigs:
                 noise = noise90 = None
                 if s.name == "calibration" and s.status != "insufficient_data":
@@ -695,7 +748,7 @@ def replay_drift(
                         "value": s.value,
                         "threshold": s.threshold,
                         "graded_weeks": len(s.weeks),
-                        "n": graded.height if s.name != "player_vs_baseline" else None,
+                        "n": graded.height if not s.name.startswith("player_") else None,
                         "noise": noise,
                         "noise_p90": noise90,
                     }

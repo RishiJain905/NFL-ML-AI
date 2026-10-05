@@ -52,7 +52,14 @@ MODEL_ALIASES = [
 ]
 _RANGE_PCT = re.compile(r"(\d+)\s?-\s?(\d+)%")
 # people whose story a graph item tells (insights.SUBJECT_ROLES): they own its headline
-GRAPH_SUBJECT_ROLES = ("out", "former player", "expected starter", "head coach")
+GRAPH_SUBJECT_ROLES = (
+    "out",
+    "former player",
+    "expected starter",
+    "head coach",
+    "former teammate",
+    "usage comparison",
+)
 
 
 @dataclass

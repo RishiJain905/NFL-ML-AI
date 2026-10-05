@@ -138,9 +138,12 @@ def load_tables(
 
 
 def graph_counts(driver: Driver) -> dict[str, int]:
-    """Nodes per label and relationships per type, as `node:<label>` / `rel:<type>`."""
+    """Nodes per label and relationships per type, as `node:<label>` / `rel:<type>`. A type
+    no table filled (no coaching seed) counts 0 without Neo4j's "does not exist" warning."""
+    from nflengine.graph.queries import QUIET
+
     out: dict[str, int] = {}
-    with driver.session() as session:
+    with driver.session(**QUIET) as session:
         for label in NODE_ORDER:
             out[f"node:{label}"] = session.run(f"MATCH (n:{label}) RETURN count(n) AS c").single()[
                 "c"

@@ -351,28 +351,38 @@ def backtest_game(
     qb_mode: str = typer.Option(
         "tuesday", help="tuesday (what a Tuesday run knows) | actual (research oracle)."
     ),
+    version: str = typer.Option(
+        "v0", help="v0 (ridge, P03) | v1 (LightGBM, P08; scores v0 on the same games)."
+    ),
     launched_by: str | None = LAUNCHED_BY,
 ) -> None:
     """Walk-forward backtest of the game model vs home / Elo / market baselines."""
     from nflengine.models.backtest import SampleWeights
-    from nflengine.models.game_runs import run_backtest
+    from nflengine.models.game_runs import VERSIONS, run_backtest
 
+    if version not in VERSIONS:
+        raise typer.BadParameter(f"version must be one of {VERSIONS}")
     weights = SampleWeights.for_current(current_weight) if current_weight else None
+    extra = {"win_method": win_method} if version == "v0" else {}
     res = run_backtest(
         _variant(variant),
         _parse_seasons(seasons),
         launched_by,
         log=console.print,
         qb_mode=qb_mode,
+        version=version,
         weights=weights,
-        win_method=win_method,
         calibration=calibration,
+        **extra,
     )
     s = res.summary
-    table = Table(title=f"backtest {variant} (pooled, {int(s['games'])} games)")
+    table = Table(title=f"backtest {version} {variant} (pooled, {int(s['games'])} games)")
     for col in ("predictor", "brier", "log loss", "accuracy", "ECE"):
         table.add_column(col)
-    for name in ("model", "elo", "market", "home"):
+    names = ("model", "v0", "elo", "market", "home") if "brier_v0" in s else (
+        "model", "elo", "market", "home"
+    )  # fmt: skip
+    for name in names:
         table.add_row(
             name,
             f"{s[f'brier_{name}']:.4f}",
@@ -386,6 +396,12 @@ def backtest_game(
         f"points MAE per team {s['mae_points_model']:.2f} (rolling {s['mae_points_rolling']:.2f},"
         f" market {s['mae_points_market']:.2f}); total MAE {s['mae_total_model']:.2f}"
     )
+    if "brier_diff_vs_v0" in s:
+        console.print(
+            f"v1 - v0 Brier {s['brier_diff_vs_v0']:+.4f} (95% {s['brier_diff_vs_v0_lo95']:+.4f} "
+            f"to {s['brier_diff_vs_v0_hi95']:+.4f}); better in "
+            f"{int(s['seasons_beating_v0'])} of {int(s['seasons'])} seasons"
+        )
     console.print(f"predictions saved -> {res.saved_to}")
 
 
@@ -415,12 +431,15 @@ def train_game(
     promote: bool = typer.Option(
         False, "--promote", help="Also give the W&B artifact the `production` alias."
     ),
+    version: str | None = typer.Option(
+        None, help="v0 | v1 (default: settings.yaml game_model.version, the production model)."
+    ),
     launched_by: str | None = LAUNCHED_BY,
 ) -> None:
     """Refit on everything before week N, predict week N, save predictions_games.parquet."""
     from nflengine.models.game_runs import run_train
 
-    out = run_train(season, week, launched_by, promote=promote, log=console.print)
+    out = run_train(season, week, launched_by, promote=promote, log=console.print, version=version)
     t = out["table"].filter(out["table"]["is_primary"])
     table = Table(title=f"{season} week {t['week'][0]:02d} predictions (digest rows)")
     for col in ("game", "home win %", "margin", "score", "variant", "QBs"):
@@ -452,7 +471,14 @@ TARGET_OPT = typer.Option(
     help="Target name (rec_yds, receptions ...), key (receptions-rb) or `all`; "
     "see models/player_schema.py TARGETS.",
 )
-GROUP_OPT = typer.Option(None, help="Only this position group (QB, RB, WR/TE, EDGE/DL, LB/S).")
+GROUP_OPT = typer.Option(
+    None, help="Only this position group (QB, RB, WR/TE, EDGE/DL, LB/S, CB/S)."
+)
+TEAM_TARGET_OPT = typer.Option(
+    ...,
+    help="pass_yds | rush_yds | sacks_made | sacks_taken | takeaways | all "
+    "(models/team_model.py TEAM_TARGETS).",
+)
 
 
 @features_app.command("player")
@@ -521,6 +547,44 @@ tune_app = typer.Typer(
 app.add_typer(tune_app, name="tune")
 
 
+@tune_app.command("game")
+def tune_game(
+    variant: str = VARIANT_OPT,
+    seasons: str = typer.Option("2013-2017", help="Tuning window (never the reported seasons)."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """W&B grid sweep over the game model v1 tree settings (P08), scored by walk-forward
+    Brier on the tuning window, with v0 scored on the same games."""
+    from nflengine.models.game_runs import run_tune_v1
+
+    window = _parse_seasons(seasons)
+    df = run_tune_v1(variant=_variant(variant), tune_seasons=window, launched_by=launched_by,
+                     log=console.print)  # fmt: skip
+    if df.height:
+        cols = [
+            c
+            for c in df.columns
+            if c in ("base", "num_leaves", "n_estimators", "min_data_in_leaf")
+            or c in ("brier_model", "brier_v0", "ece_model", "brier_diff_vs_v0")
+        ]
+        console.print(df.select(cols).head(10))
+
+
+@tune_app.command("team")
+def tune_team(
+    target: str = TEAM_TARGET_OPT,
+    threads: int | None = typer.Option(None, help="LightGBM threads per fit."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Grid over the team models' tree settings, scored on 2017-2018 only (P08)."""
+    from nflengine.models.team_model import get_team_target
+    from nflengine.models.team_runs import run_tune
+
+    for t in get_team_target(target):
+        df = run_tune(t, launched_by=launched_by, log=console.print, num_threads=threads)
+        console.print(df.head(5))
+
+
 @tune_app.command("player")
 def tune_player(
     target: str = TARGET_OPT,
@@ -536,6 +600,100 @@ def tune_player(
     for t in get_target(target, group):
         df = run_tune(t, data, launched_by=launched_by, log=console.print, num_threads=threads)
         console.print(df.head(5))
+
+
+@backtest_app.command("team")
+def backtest_team(
+    target: str = TEAM_TARGET_OPT,
+    seasons: str = PLAYER_SEASONS_OPT,
+    threads: int | None = typer.Option(None, help="LightGBM threads per fit."),
+    save: bool = typer.Option(True, help="Save predictions + scoreboard rows on D:."),
+    smoke: bool = typer.Option(False, "--smoke", help="Tag the run `smoke` and don't save."),
+    no_market: bool = typer.Option(
+        False, "--no-market", help="Research variant without the closing-line features."
+    ),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Walk-forward backtest of team stat totals vs their baselines (P08, live W&B curves)."""
+    from nflengine.models.team_model import get_team_target
+    from nflengine.models.team_runs import build_team_data, run_backtest
+
+    data = build_team_data(log=console.print)
+    reported = _parse_seasons(seasons) or [2019, 2025]
+    table = Table(title="team backtests (reported seasons, pooled)")
+    for col in ("model", "n", "MAE model", "MAE baseline", "improvement", "80% range", "ship"):
+        table.add_column(col)
+    for t in get_team_target(target):
+        res = run_backtest(
+            t,
+            data,
+            reported,
+            launched_by,
+            log=console.print,
+            save=save and not smoke,
+            tags=(["smoke"] if smoke else []) + (["no-market"] if no_market else []),
+            num_threads=threads,
+            no_market=no_market,
+        )
+        s = res.summary
+        table.add_row(
+            t.key,
+            f"{int(s.get('n_scored', 0)):,}",
+            f"{s.get('mae_model', float('nan')):.3f}",
+            f"{s.get('mae_baseline', float('nan')):.3f}",
+            f"{s.get('improvement_pct', float('nan')):+.1f}%",
+            f"{100 * s.get('coverage_80', float('nan')):.0f}%",
+            "pass" if s.get("ship/pass") else "fail",
+        )
+        console.print(f"{t.key}: W&B {res.url}; saved -> {res.saved_to}")
+    console.print(table)
+
+
+@train_app.command("team")
+def train_team(
+    season: int = typer.Option(..., help="Season to predict."),
+    week: int | None = typer.Option(None, help="Week to predict (default: the next one)."),
+    promote: bool = typer.Option(
+        False, "--promote", help="Also give the W&B artifact the `production` alias."
+    ),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Refit the shipped team stat targets (`team_model.live_targets`) and project week N
+    into predictions_teams.parquet (P08; the weekly `player` step does this too)."""
+    from nflengine.models.team_runs import run_train
+
+    out = run_train(season, week, launched_by, promote=promote, log=console.print)
+    t = out["table"].sort("game_id", "team", "target")
+    table = Table(title=f"{season} week {week or ''}: team projections")
+    for col in ("team", "vs", "stat", "projection", "80% range", "baseline"):
+        table.add_column(col)
+    for r in t.head(40).iter_rows(named=True):
+        table.add_row(
+            r["team"],
+            r.get("opponent") or "",
+            r["target"],
+            f"{r['p50']:.0f}" if r["p50"] is not None else "?",
+            f"{r['p10']:.0f}-{r['p90']:.0f}" if r["p10"] is not None else "?",
+            f"{r['baseline']:.0f}" if r["baseline"] is not None else "?",
+        )
+    console.print(table)
+    console.print(f"-> {out['predictions']}; W&B: {out['url']}  aliases {out['aliases']}")
+
+
+@app.command("consistency")
+def consistency_eval(
+    seasons: str = typer.Option("2019-2025", help="Backtest seasons to measure."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Measure the consistency layer on the walk-forward backtests (receptions vs targets,
+    receivers' yards vs the QB's vs the team's passing yards; P08). Changes no projection."""
+    from nflengine.models.consistency import run_eval
+
+    window = _parse_seasons(seasons) or [2019, 2025]
+    res = run_eval(seasons=tuple(range(window[0], window[-1] + 1)), launched_by=launched_by,
+                   log=console.print)  # fmt: skip
+    console.print(res.get("by_season"))
+    console.print(f"decision: {res.get('decision')}; W&B {res.get('url')}")
 
 
 @train_app.command("player")

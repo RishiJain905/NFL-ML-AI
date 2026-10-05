@@ -13,6 +13,7 @@ import polars as pl
 import pytest
 from graph_world import (
     ALL_GAMES,
+    BT_KEY,
     G1,
     G2,
     G3,
@@ -361,13 +362,22 @@ def test_scramble_rates_without_plays() -> None:
 # ---- OFFICIATED ---------------------------------------------------------------------------------
 
 
-def test_officials_map_through_old_game_ids(gt: T.GraphTables) -> None:
-    rel = gt.rels["OFFICIATED"]
+def test_officials_map_through_old_game_ids(inp: GraphInputs) -> None:
+    gt_bt = build_tables(inp, BT_KEY)
+    rel = gt_bt.rels["OFFICIATED"]
     assert pairs(rel) == {("101", G1), ("102", G1), ("101", G3)}  # ids as strings; no dup row
     assert by(rel, "s", "e")[("102", G1)]["role"] == "U"
-    # the week-W crew (103) and the row without an id are not there
-    assert set(gt.nodes["Official"]["official_id"]) == {"101", "102"}
-    assert by(gt.nodes["Official"], "official_id")["101"]["name"] == "Ref One"
+    # a backtest never sees the week-W crew (103); the row without an id is never there
+    assert set(gt_bt.nodes["Official"]["official_id"]) == {"101", "102"}
+    assert by(gt_bt.nodes["Official"], "official_id")["101"]["name"] == "Ref One"
+
+
+def test_a_live_run_sees_a_week_w_crew_the_snapshot_has(gt: T.GraphTables) -> None:
+    """P08 (Q9): crews are published after their games; a live run takes a week-W crew when
+    the snapshot has one, a backtest never does (above: no Tuesday run could have had it)."""
+    rel = gt.rels["OFFICIATED"]
+    assert pairs(rel) == {("101", G1), ("102", G1), ("101", G3), ("103", GW)}
+    assert "103" in set(gt.nodes["Official"]["official_id"])
 
 
 def test_officials_without_a_table_are_empty(inp: GraphInputs) -> None:

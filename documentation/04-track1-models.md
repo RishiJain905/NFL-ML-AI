@@ -197,6 +197,16 @@ Code: `features/game.py` (feature table), `features/qb.py` (QB status), `feature
 
 **Outputs:** `runs/<season>/week<NN>/predictions_games.parquet`, one row per game per variant, with `is_primary` marking the digest row (schema in the model card). Fitted models go to `models/game-model/<season>-w<NN>/` and the W&B artifact `game-model:<season>-w<NN>`. Backtest predictions for every week go to `runs/backtests/game/<variant>/`.
 
+### As built in P08: game model v1, evaluated, v0 kept (decisions D78, D79)
+
+Full details, numbers and charts: [game model v1 card](model_cards/game-model-v1.md).
+
+- **Features added** (`features/game_extra.py`, joined by `features/game.py`; v0 ignores them): a **Tuesday-view injury load** (snap-weighted regulars missing from the team's last game, by OL / skill / front / secondary; QBs left out; not the week's injury report, because the live run is on Tuesday), **coarse weather** (`wind_15`, `cold_32`: actual readings in history, the Open-Meteo forecast live), a **trailing home edge** (the league's home margin over the previous 3 seasons). ESPN FPI / QBR aren't used: only current snapshots exist (D50). Travel, rest, byes, matchups and success rate were already in the table.
+- **Model** (`models/game_model_v1.py`): LightGBM margin and total heads **boosted from v0's ridge prediction** (`init_score`), shallow and few (4 leaves, 50 trees), with **monotonic constraints**; probability `Φ(margin / σ)` with σ from its own walk-forward misses; optional Platt / isotonic calibration. Every v1 run also carries **v0's exact walk-forward predictions on the same games** (`v0_prob`, `v0_margin`, `v0_total`), so W&B shows the two side by side.
+- **Tuning** on 2013–2017 only (W&B sweep `47vq67gw`, 24 settings): every setting lost to v0 (best +0.0008 Brier); trees from scratch lost by 0.004–0.009; calibration made it worse.
+- **Reported 2018–2025:** model-only 0.2193 vs v0 0.2199 (−0.0005, 95% −0.0012 to +0.0002; 5 of 8 seasons; ECE 0.035 vs 0.032); market 0.2101 vs 0.2102. **The ✋ rule (written before these runs) keeps v0** (D79): the gain is inside the noise and calibration is worse. The new features barely relate to v0's misses (|r| ≤ 0.06); wind is the one consistent signal, and it moves totals, not winners.
+- **Switch:** `settings.yaml` → `game_model.version` (`v0`) selects the model the weekly run fits; `nfl backtest game --version v1`, `nfl tune game` and `nfl train game --version v1` run v1. v1 backtests are saved as `runs/backtests/game/v1_<variant>/`, never over the canonical v0 folders the digest backtests, the player model's game context and the drift replay read.
+
 ---
 
 ## C. Player model
@@ -261,6 +271,16 @@ Results, settings and how to read the charts: [player model card](model_cards/pl
 - **Drivers:** LightGBM's own SHAP values (`pred_contrib`), top 3 per projection, phrased from `features/descriptions.yaml`. SHAP explains the projection against the model's average, not against the player's own baseline, so the digest lists the drivers that agree with the projection's direction first and adds a note when the baseline rests on little history.
 - **Watch list** (doc 04 rule): the main stat per group, a real role (snap share ≥ 50% over the last 2 games, or vacated usage), ranked by (projection − baseline) / the target's typical baseline miss; **10 offense + 10 defense** chosen separately (D70; Rishi: more players to watch and to grade the model on), at most 2 per team per side, soft per-group caps (QB ≤ 3, RB ≤ 4, WR/TE ≤ 4; EDGE/DL ≤ 6, LB/S ≤ 6). Before D70: 8 picks with at most 3 defenders (D69). The **5** most negative gaps among regular starters are **tough spots** for *Matchup / risk*.
 - **Weekly path** (D67): the `player` step between `graph` and `digest`.
+
+### As built in P08: more targets, team totals, consistency (decisions D80–D82)
+
+Details and numbers: [P08 player targets card](model_cards/player-p08.md), [team stats card](model_cards/team-stats-v1.md), doc 11 "Measured in P08".
+
+- **12 new player targets, all shipped** (D82): QB passing TDs, interceptions (counts with P(≥ 1), P(≥ 2)) and rushing yards; the chance of a TD for RBs and WR/TE; EDGE/DL sacks (count + chance; a half sack counts) and QB hits; a new **CB/S** pool with coverage targets / completions / yards allowed (PFR, a week late) and the chance of an interception / pass defended. A third model kind, `prob`: LightGBM binary + a Platt layer fitted on the model's own earlier walk-forward probabilities; event counts' P(≥ 1) is recalibrated the same way. CB/S has its own feature family (`cvg_*`, `features/player_coverage.py`, last 8 games: the opposing offense's targets per game, air yards per target, completion rate and yards per target; the defender's own defense's targets faced, depth, completion rate and yards allowed, pressure rate and pass-defense rating), used by CB/S models only (`player_model.GROUP_PREFIXES`). The weekly run refits the 23 `player_model.live_targets`; a run that projects no CB/S target builds no CB rows.
+- **Team stat totals** (D80; `models/team_runs.py`): passing / rushing yards, sacks made / taken shipped (takeaways not), refit fail-soft inside the weekly `player` step into `predictions_teams.parquet`; scored in the season scoreboard as `position_group = "TEAM"` (never in the player report card).
+- **Consistency layer** (D81; `models/consistency.py`): receptions ≤ targets clamped on the week's unstarted rows; the receivers-vs-QB-vs-team passing-yards gaps (on means) logged to `consistency.json` and W&B; no yards adjustment (it hurt the WR/TE watch picks).
+- **Digest:** the watch tables gain code-written "TD chance" and "Sack chance" columns (table-only, never in the payload or the LLM input); the scorecard's `player_mae_vs_baseline` stays on the 11 P06 targets so the season series stays comparable.
+- **Determinism:** the P06 ripple sums are now sorted before summing (two builds used to differ at 1e-16, enough to flip one LightGBM split in `receptions-rb`: −0.018% MAE).
 
 ---
 

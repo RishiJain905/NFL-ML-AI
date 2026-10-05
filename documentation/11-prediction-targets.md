@@ -90,6 +90,8 @@ These set expectations. **Our own measured baselines from P03 and P06 replace th
 
 Why ~65% accuracy is near the ceiling (and 80%+ isn't reachable for winners over a season) is explained, with evidence, in the game model card's ["Is 64% accuracy good?"](model_cards/game-model-v0.md#is-64-accuracy-good-why-nfl-winners-top-out-around-6570) section.
 
+**P08 game model v1** (LightGBM boosted from v0 with injury load, weather and a trailing home edge; [card](model_cards/game-model-v1.md)) on the same 2018–2025 games: model-only Brier 0.2193 (v0 0.2199), market-informed 0.2101 (v0 0.2102), accuracy 64.3% / 66.2%, margin MAE 10.19 / 9.87, total MAE 10.63 / 10.46. The gain is inside the noise and calibration is worse, so **v0 stays in production** (D79); the table above is still the production model.
+
 **Measured in P06** (walk-forward 2019–2025, every regular-season week, only games the player played; [player model card](model_cards/player-model-v1.md)). These replace the public ceilings for player stats. Improvement is over the player-rolling baseline on the same rows; count targets are compared with the baseline's median (D65), because a median beats any mean on MAE by itself.
 
 | Target | MAE model | MAE baseline | Improvement | Without market lines | 80% range held | Seasons better |
@@ -107,6 +109,37 @@ Why ~65% accuracy is near the ceiling (and 80%+ isn't reachable for winners over
 | LB/S tackles | 1.80 | 1.89 | +4.8% | +4.7% | 81% | 7 / 7 |
 
 Yardage lands in the 5–15% band above; usage counts (carries, targets) beat per-play efficiency stats as expected, but catches and pressures, which depend on what the defense allows on a few plays, gain least. The watch list (8 picks a week) beat its players' baselines 69.5% of the time against a 42.2% base rate.
+
+**Measured in P08: the 12 new player targets** (walk-forward 2019–2025, vs the player's rolling baseline on the same rows; [P08 player targets card](model_cards/player-p08.md)). All 12 ship (D82); every one beats its baseline in **7 of 7** seasons, with and without market lines.
+
+| Target | Kind | Model vs baseline | Improvement | 80% range / calibration | Base rate |
+|---|---|---|---|---|---|
+| QB passing TDs | count + chance of ≥ 1 | MAE 0.862 vs 0.892; Brier 0.164 vs 0.174 | +3.4% MAE, +5.5% Brier | range 80%; ECE 0.016 (baseline 0.050) | 78% throw ≥ 1 |
+| QB interceptions | count + chance of ≥ 1 | MAE 0.680 vs 0.720; Brier 0.248 vs 0.255 | +5.5% MAE, +2.6% Brier | range 85%; ECE 0.016 | 51% (the chance is coin-flip quality: base-rate Brier 0.250) |
+| QB rushing yards | amount | MAE 11.63 vs 11.87 | +2.0% | range 81% | |
+| RB chance of a TD | probability | Brier 0.161 vs 0.176 | +8.4% | ECE 0.009 (0.067) | 24.5% |
+| WR/TE chance of a TD | probability | Brier 0.116 vs 0.126 | +8.0% | ECE 0.003 (0.055) | 15.1% |
+| EDGE/DL sacks (half credit counts) | count + chance of ≥ 1 | MAE 0.181 vs 0.186; Brier 0.125 vs 0.133 | +2.6% MAE, +6.0% Brier | range 89%; ECE 0.003 | 16.7% |
+| EDGE/DL QB hits | count | MAE 0.384 vs 0.395 | +2.7% | range 86% | |
+| CB/S targets allowed (PFR) | count | MAE 1.837 vs 1.934 | +5.0% | range 80% | |
+| CB/S completions allowed | count | MAE 1.331 vs 1.393 | +4.4% | range 82% | |
+| CB/S coverage yards allowed | amount | MAE 18.58 vs 20.58 | +9.7% | range 84% | |
+| CB/S chance of an interception | probability | Brier 0.071 vs 0.077 | +8.5% | ECE 0.003 (0.056) | 7.8% |
+| CB/S chance of a pass defended | probability | Brier 0.199 vs 0.218 | +8.8% | ECE 0.005 (0.096) | 30.7% |
+
+As doc 11 expected for yes/no events, the gains are in Brier and above all in **calibration**: the models' ECE is 0.003–0.016 against the rolling rates' 0.05–0.10 (a player's rolling TD rate says exactly 0% for a fifth to a third of players). Coverage yards (+9.7%) is the biggest MAE gain of any player target so far; the counts' ranges run a little wide (85–89% for interceptions, sacks, QB hits: whole-number quantiles of small counts).
+
+**Measured in P08: team stat totals** (walk-forward 2019–2025, 3,742 team-games each; [team stats model card](model_cards/team-stats-v1.md)). Baselines: yards and sacks = (the team's last-8-games average + the opponent's last-8-games average allowed) / 2; takeaways = the league's per-team-game average as of the week. Counts are compared with the baseline's median (D65) and by Poisson deviance.
+
+| Target | MAE model | MAE baseline | Improvement | Seasons better | 80% range held | Poisson deviance (model / baseline) | Shipped |
+|---|---|---|---|---|---|---|---|
+| Team passing yards | 55.23 | 56.65 | +2.5% | 7 / 7 | 81% | | **yes** |
+| Team rushing yards | 38.19 | 38.81 | +1.6% | 6 / 7 | 81% | | **yes** |
+| Sacks made (defense) | 1.340 | 1.343 | +0.2% | 6 / 7 | 80% | 1.346 / 1.369 | **yes** (thin) |
+| Sacks taken (offense) | 1.342 | 1.343 | +0.1% | 5 / 7 | 80% | 1.346 / 1.369 | **yes** (thin) |
+| Takeaways | 0.870 | 0.869 | −0.1% | 2 / 7 | 82% | 1.218 / 1.229 | no |
+
+As doc 11 expected, takeaways are mostly noise: the model's mean beat the league average on deviance but its median lost on MAE in 5 of 7 seasons, and it over-projected (1.35 vs 1.29 actual). The sack models are a tie on MAE (a whole-number median of a ~2.5 mean) but better on the proper scores: deviance −1.7%, Brier of P(≥ 1 sack) 0.107 vs 0.111. Without the closing-line features they lose their edge (+0.06% / −0.04%), so they lean on the market total (leakage rule 5).
 
 ## The accuracy scoreboard
 

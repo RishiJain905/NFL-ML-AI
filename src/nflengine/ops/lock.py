@@ -123,6 +123,47 @@ def is_locked(path: Path) -> bool:
 
 
 @contextlib.contextmanager
+def file_lock(path: Path, timeout: float = 600.0, poll: float = 0.05) -> Iterator[None]:
+    """A short OS lock around a read-modify-write of a shared file (P08, Sol review: the
+    accuracy scoreboard, written by parallel backtest chains and by the weekly player and
+    team fits). `<path>.lock` holds the same kind of byte-range lock as `run_lock`, so a
+    holder that dies releases it with its process. Waiting longer than `timeout` raises
+    `TimeoutError`; it never takes a lock away from a live holder."""
+    import time
+
+    lock = path.with_name(path.name + ".lock")
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock, os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0))
+    try:
+        start = time.monotonic()
+        while not _try_lock(fd):
+            if time.monotonic() - start > timeout:
+                raise TimeoutError(f"{lock} is held by another process (waited {timeout:.0f} s)")
+            time.sleep(poll)
+        try:
+            yield
+        finally:
+            _unlock(fd)
+    finally:
+        os.close(fd)
+
+
+def write_parquet_atomic(df, path: Path, **kwargs) -> Path:
+    """Write a Polars frame next to `path`, then replace `path` in one step: an interrupted
+    write never leaves a truncated file (or loses the saved rows of games that already
+    kicked off) behind (P08, Sol review)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        df.write_parquet(tmp, **kwargs)
+        os.replace(tmp, path)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            tmp.unlink()
+    return path
+
+
+@contextlib.contextmanager
 def run_lock(path: Path, command: str, stale_hours: float | None = None) -> Iterator[LockInfo]:
     """Hold the weekly-run lock for the duration of the block, or raise `LockHeld`.
     (`stale_hours` is accepted for older callers and ignored: the OS releases a dead run's

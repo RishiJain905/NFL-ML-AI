@@ -24,6 +24,13 @@ Column groups (see `FEATURES` in `models/game_model.py` for what each model uses
   pts_base_home / pts_base_away (rolling points), market_ml_prob (vig-free moneyline)
 - market: spread_line (+ = home favored), total_line, market_source,
   mkt_home_points / mkt_away_points (implied team totals)
+- P08 extras for the game model v1 (`features/game_extra.py`; v0 doesn't use them):
+  per side `home_inj_*` / `away_inj_*` (snap-weighted regulars missing from the team's
+  last game: ol, skill, front, secondary), `inj_off_edge` / `inj_def_edge` (the away
+  side's load minus the home side's: + = good for the home team), `inj_off_sum` /
+  `inj_def_sum` (both sides, for totals), weather buckets `wind_15` / `cold_32`, and
+  `home_edge_trailing` (the league's home margin over the previous 3 seasons, 0 at
+  neutral sites)
 
 `build_game_features` is pure (frames in, frame out). `load_game_inputs` reads what it
 needs from D:, and `nfl features game` writes `features/game_features.parquet`.
@@ -200,9 +207,13 @@ def build_game_features(
     lines: pl.DataFrame | None = None,
     elo_hfa: float = 48.0,
     min_season: int = 2011,
+    injury: pl.DataFrame | None = None,
+    weather: pl.DataFrame | None = None,
+    home_edge: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """The game feature table (see the module docstring). Games without as-of team rows
-    (weeks beyond the latest as-of key) are left out."""
+    (weeks beyond the latest as-of key) are left out. `injury` / `weather` / `home_edge`
+    are the P08 extras (`features.game_extra`); without them those columns are absent."""
     g = games.filter(pl.col("season") >= min_season)
     base = g.select(
         "season",
@@ -365,8 +376,53 @@ def build_game_features(
                 "qb_adj_sum"
             ),
         )
+    out = _add_extras(out, injury, weather, home_edge)
     drop = [c for c in ("t", "ln_spread", "ln_total", "ln_source") if c in out.columns]
     return out.drop(drop).sort("season", "week", "kickoff_utc", "game_id")
+
+
+def _add_extras(
+    out: pl.DataFrame,
+    injury: pl.DataFrame | None,
+    weather: pl.DataFrame | None,
+    home_edge: pl.DataFrame | None,
+) -> pl.DataFrame:
+    """The P08 columns (module docstring); each family only when its frame is given."""
+    from nflengine.features.game_extra import INJURY_COLS, WEATHER_COLS
+
+    if injury is not None:
+        for side in ("home", "away"):
+            out = out.join(
+                injury.select(
+                    pl.col("season").cast(out.schema["season"]),
+                    pl.col("week").cast(out.schema["week"]),
+                    pl.col("team").alias(f"{side}_team"),
+                    *[pl.col(c).alias(f"{side}_{c}") for c in INJURY_COLS],
+                ),
+                on=["season", "week", f"{side}_team"],
+                how="left",
+            )
+        off = lambda s: pl.col(f"{s}_inj_ol").fill_null(0) + pl.col(f"{s}_inj_skill").fill_null(0)  # noqa: E731
+        dfn = lambda s: (  # noqa: E731
+            pl.col(f"{s}_inj_front").fill_null(0) + pl.col(f"{s}_inj_secondary").fill_null(0)
+        )
+        out = out.with_columns(
+            (off("away") - off("home")).alias("inj_off_edge"),
+            (dfn("away") - dfn("home")).alias("inj_def_edge"),
+            (off("home") + off("away")).alias("inj_off_sum"),
+            (dfn("home") + dfn("away")).alias("inj_def_sum"),
+        )
+    if weather is not None:
+        out = out.join(weather.select("game_id", *WEATHER_COLS), on="game_id", how="left")
+    if home_edge is not None:
+        out = out.join(
+            home_edge.select(pl.col("season").cast(out.schema["season"]), "home_edge"),
+            on="season",
+            how="left",
+        ).with_columns(
+            (pl.col("hfa") * pl.col("home_edge").fill_null(0.0)).alias("home_edge_trailing")
+        )
+    return out
 
 
 # ---- I/O ------------------------------------------------------------------------------------
@@ -380,6 +436,9 @@ class GameInputs:
     qb: pl.DataFrame | None
     travel: pl.DataFrame | None
     lines: pl.DataFrame | None
+    injury: pl.DataFrame | None = None
+    weather: pl.DataFrame | None = None
+    home_edge: pl.DataFrame | None = None
 
 
 def load_game_inputs(
@@ -388,10 +447,12 @@ def load_game_inputs(
     *,
     with_qb: bool = True,
     with_travel: bool = True,
+    with_extras: bool = True,
     qb_overrides: Callable[[pl.DataFrame], pl.DataFrame | None] | None = None,
     log: Callable[[str], None] = print,
 ) -> GameInputs:
-    """Read games, the P02 feature tables, lines; compute QB status and travel.
+    """Read games, the P02 feature tables, lines; compute QB status and travel, and (with
+    `with_extras`) the P08 injury load, weather buckets and trailing home edge.
 
     `qb_overrides(games)` may return expected-starter overrides (the live run's schedule /
     depth-chart / injury resolver, or the research oracle) for `features.qb`.
@@ -427,4 +488,21 @@ def load_game_inputs(
             players=qi.get("players"),
         )
         log(f"  qb features: {qb.height:,} team-weeks")
-    return GameInputs(games, ratings, elo, qb, travel, lines)
+    injury = weather = home_edge = None
+    if with_extras:
+        from nflengine.features.game_extra import game_weather, team_injury_load, trailing_home_edge
+
+        g = games.filter(pl.col("season") >= min_season - 1)
+        snaps_path = cur / "snaps.parquet"
+        if snaps_path.exists():
+            snaps = pl.read_parquet(
+                snaps_path,
+                columns=["gsis_id", "game_id", "team", "position", "offense_pct", "defense_pct"],
+            ).filter(pl.col("game_id").is_in(g["game_id"].to_list()))
+            injury = team_injury_load(snaps, g)
+        fc_path = cur / "weather_forecasts.parquet"
+        forecasts = pl.read_parquet(fc_path) if fc_path.exists() else None
+        weather = game_weather(g, forecasts)
+        home_edge = trailing_home_edge(games)
+        log(f"  extras: injury load {0 if injury is None else injury.height:,} team-games")
+    return GameInputs(games, ratings, elo, qb, travel, lines, injury, weather, home_edge)

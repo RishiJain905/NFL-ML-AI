@@ -19,6 +19,11 @@ CREATE INDEX published_insight_id IF NOT EXISTS FOR (pi:PublishedInsight) ON (pi
 // Player projections (P06, `graph/projections.py`): looked up by week and by player.
 CREATE INDEX projection_season_week IF NOT EXISTS FOR (pp:PlayerProjection) ON (pp.season, pp.week);
 CREATE INDEX projection_player IF NOT EXISTS FOR (pp:PlayerProjection) ON (pp.player_id);
+// P08: usage profiles (one per player-season, the GDS similarity input) and the GDS outputs.
+CREATE CONSTRAINT usage_profile_key IF NOT EXISTS FOR (u:UsageProfile) REQUIRE u.key IS UNIQUE;
+CREATE INDEX usage_profile_group IF NOT EXISTS FOR (u:UsageProfile) ON (u.group, u.season);
+CREATE INDEX pass_centrality_season IF NOT EXISTS FOR ()-[r:PASS_CENTRALITY]-() ON (r.season);
+CREATE INDEX similar_to_season IF NOT EXISTS FOR ()-[r:SIMILAR_TO]-() ON (r.season);
 CREATE INDEX played_for_season IF NOT EXISTS FOR ()-[r:PLAYED_FOR]-() ON (r.season);
 CREATE INDEX threw_to_season IF NOT EXISTS FOR ()-[r:THREW_TO]-() ON (r.season);
 CREATE INDEX depth_chart_season_week IF NOT EXISTS FOR ()-[r:DEPTH_CHART]-() ON (r.season, r.week);

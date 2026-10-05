@@ -166,14 +166,118 @@ def _player(o: WeeklyOptions, log: Callable[[str], None]) -> str:
             "player", f"{type(e).__name__}; the digest uses the heuristic watch list"
         ) from e
     notes.append(f"{out['table'].height} projections -> {out['predictions']}; W&B {out['url']}")
+    teams = _team_fit(o, log, notes)
+    table = _consistency(o, out["table"], teams, Path(out["predictions"]), log, notes)
     try:
         from nflengine.graph.projections import write_projections
 
-        res = write_projections(out["table"], log=log)
+        res = write_projections(table, log=log)
         notes.append(f"graph: {getattr(res, 'summary', res)}")
     except Exception as e:  # the graph is optional (P05 fail-soft rule)
         notes.append(f"graph write skipped ({type(e).__name__})")
     return "; ".join(notes)
+
+
+def _team_fit(o: WeeklyOptions, log: Callable[[str], None], notes: list[str]):
+    """P08 team stat totals (the shipped `team_model.live_targets`): score the season's
+    saved team projections, then refit + project week N into `predictions_teams.parquet`.
+    Never stops the step (a failure is a note): the digest doesn't read team projections.
+    Returns the week's team projections, or None."""
+    try:
+        from nflengine.models.team_model import live_team_targets
+
+        if not live_team_targets():
+            return None
+        from nflengine.models.team_runs import run_train as team_train
+        from nflengine.models.team_runs import score_weeks as team_score
+
+        if o.week > 1:
+            try:
+                team_score(o.season, range(1, o.week), o.launched_by, log=log)
+            except Exception as e:  # bookkeeping only
+                notes.append(f"team scoreboard skipped ({type(e).__name__})")
+        res = team_train(o.season, o.week, o.launched_by, promote=o.promote, log=log)
+        notes.append(f"team: {res['table'].height} projections -> {res['predictions']}")
+        return res["table"]
+    except Exception as e:
+        notes.append(f"team fit skipped ({type(e).__name__})")
+        log(f"[yellow]team fit skipped ({type(e).__name__})[/]")
+        return None
+
+
+def _consistency(
+    o: WeeklyOptions,
+    players,
+    teams,
+    pred_path: Path,
+    log: Callable[[str], None],
+    notes: list[str],
+):
+    """P08 consistency layer (`models/consistency.py`, settings `consistency`) on the
+    week's new projections (games not kicked off yet; saved rows of started games are never
+    touched): receptions <= targets, optionally receiving yards toward the team's passing
+    yards; the `inconsistency/*` numbers go to `consistency.json` (the run summary and the
+    pipeline W&B run read it). The player file is rewritten only when a row changed.
+    Fail-soft: on any error the projections stay as the refit wrote them."""
+    import polars as pl
+
+    from nflengine.ops.summary import CONSISTENCY_FILE
+    from nflengine.settings import get_config
+
+    try:
+        from nflengine.models.consistency import apply_consistency
+
+        cfg = get_config().consistency or {}
+        now = dt.datetime.now(dt.UTC)
+        fresh = players.filter(pl.col("kickoff_utc") > now)
+        if fresh.is_empty():
+            return players
+        adj, summary = apply_consistency(
+            fresh,
+            teams,
+            receptions=bool(cfg.get("receptions", True)),
+            rec_yds_anchor=cfg.get("rec_yds_anchor"),
+            strength=float(cfg.get("strength", 0.5)),
+        )
+        changed = int(
+            summary.get("inconsistency/rec_gt_tgt_adjusted_rows", 0)
+            + summary.get("inconsistency/rec_yds_adjusted_rows", 0)
+        )
+        table = players
+        if changed:
+            from nflengine.ops.lock import write_parquet_atomic
+
+            adjusted = pl.concat(
+                [players.filter(pl.col("kickoff_utc") <= now), adj.select(players.columns)],
+                how="vertical_relaxed",
+            )
+            write_parquet_atomic(adjusted, pred_path, compression="zstd")
+            table = adjusted  # committed: from here on the file holds the clamped rows
+    except Exception as e:
+        notes.append(f"consistency skipped ({type(e).__name__})")
+        log(f"[yellow]consistency skipped ({type(e).__name__})[/]")
+        return players
+    # the record is bookkeeping: a failed write never undoes the committed table (the graph
+    # and the digest must see the same projections; Sol review)
+    gap = summary.get("inconsistency/gap_recv_qb_median_abs")
+    note = f"consistency: {changed} rows adjusted" + (
+        f", receivers vs QB median gap {100 * gap:.1f}%" if gap is not None else ""
+    )
+    try:
+        record = {
+            "at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+            "adjusted_rows": changed,
+            "rec_yds_anchor": cfg.get("rec_yds_anchor"),
+            "summary": summary,
+        }
+        rec_path = pred_path.parent / CONSISTENCY_FILE
+        tmp = rec_path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(record, indent=2))
+        tmp.replace(rec_path)
+    except Exception as e:
+        note += f" (record not written: {type(e).__name__})"
+    notes.append(note)
+    return table
 
 
 def _digest(o: WeeklyOptions, log: Callable[[str], None]) -> str:

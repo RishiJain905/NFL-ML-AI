@@ -15,6 +15,7 @@ from graph_world import KEY, FakeDriver
 
 from nflengine.graph import load
 from nflengine.graph import tables as T
+from nflengine.graph.gds import GDS_RELS
 
 # ---- schema.cypher ------------------------------------------------------------------------------
 
@@ -71,7 +72,8 @@ def test_schema_indexes_name_known_relationship_types() -> None:
     rel_indexes = [s for s in load.schema_statements() if "FOR ()-[" in s]
     assert rel_indexes
     for s in rel_indexes:
-        assert re.search(r"\[\w+:(\w+)\]", s).group(1) in T.REL_ENDS  # type: ignore[union-attr]
+        rel = re.search(r"\[\w+:(\w+)\]", s).group(1)  # type: ignore[union-attr]
+        assert rel in T.REL_ENDS or rel in GDS_RELS
 
 
 def test_apply_schema_runs_each_statement_then_waits_for_the_indexes() -> None:
@@ -122,6 +124,9 @@ REL_KEYS = {
     "HAS_WEEK": ("Team", "team_id", "TeamWeek", "key"),
     "NEXT": ("TeamWeek", "key", "TeamWeek", "key"),
     "HAS_PREDICTION": ("Game", "game_id", "GamePrediction", "key"),
+    "COORDINATOR_OF": ("Coach", "coach_id", "Team", "team_id"),
+    "WORKED_UNDER": ("Coach", "coach_id", "Coach", "coach_id"),
+    "HAS_PROFILE": ("Player", "player_id", "UsageProfile", "key"),
 }
 
 

@@ -6,6 +6,8 @@
 
 **Code:** `features/player_data.py` (history), `features/player.py` (rows, `own_*` / `use_*` / `team_*` / `rip_*` / `avail_*`, baselines), `features/player_efficiency.py` (`eff_*`), `features/player_opponent.py` (`opp_*`), `models/player_model.py` (the LightGBM models, ranges, SHAP), `models/player_schema.py` (targets and pools), `models/player_runs.py` (backtest, tuning, weekly fit, scoreboard) · **Tables:** `features/player_features.parquet` (`nfl features player`), `runs/backtests/player/<target>-<group>/` (`nfl backtest player`), `runs/<season>/week<NN>/predictions_players.parquet` (`nfl train player`)
 
+**P08 addition (not covered below):** the chance of a rushing or receiving touchdown, a calibrated classifier, in the [P08 targets card](player-p08.md): Brier 0.1611 vs the baseline's 0.1759 (+8.4%) and 13% below the base-rate score, ECE 0.009, better in 7 of 7 seasons; carry share and snap share drive it.
+
 ## What it is
 
 Four models for the running backs a team is expected to use in a game:

@@ -1,6 +1,8 @@
 # Knowledge graph guide (Neo4j)
 
-**What this is:** a plain-language guide to the project's knowledge graph: what Neo4j is, what our graph contains, how to look at it in Neo4j Browser, what each query in the library asks, and how its answers end up in the weekly digest. Built in P05.
+**What this is:** a plain-language guide to the project's knowledge graph: what Neo4j is, what our graph contains, how to look at it in Neo4j Browser, what each query in the library asks, and how its answers end up in the weekly digest. Built in P05; P08 added former teammates, style matchups, referee crews, the coaching tree and Graph Data Science.
+
+**Graph Data Science** (PageRank on passing networks, nearest-neighbor player similarity, and a Neo4j Browser walkthrough you can repeat) has its own guide: [graph-data-science.md](graph-data-science.md).
 
 **Related docs:** the design spec is [05 Knowledge graph](../05-knowledge-graph.md) (schema tables, the "As built in P05" section, findings). Decisions D58–D62 are in the [decisions log](../10-decisions-log.md). The W&B side is in the [W&B guide](weights-and-biases.md). How the LLM writes the two graph sections is in the [LLM writer guide](llm-digest-writer.md). Agents working on the code use the `neo4j-graph` skill (`.claude/skills/neo4j-graph/SKILL.md`).
 
@@ -77,6 +79,7 @@ A week-4 2026 build holds about **15.5k nodes and 588k relationships**, covering
 | `Official` | 294 | a game official | `official_id` | `name` |
 | `Venue` | 44 | a stadium (international games resolved to the real stadium) | `stadium_id` | `name`, `roof`, `surface` |
 | `PublishedInsight` | 3 after week 4 | a graph item a digest already published (novelty) | `key` | `insight_id`, `type`, `season`, `week`, `entities` |
+| `UsageProfile` (P08) | ~1,850 | one WR / TE / RB season with enough volume (regular season, visible plays) | `key` (`<player_id>:<season>`) | `group`, `season`, `team_id`, `current` (this season), `games`, `targets`, `carries`, `rec_yds`, `scrimmage_yds`, `target_share`, `air_yards_share`, `adot`, `rz_share`, `snap_share`, `yards_per_team_att`, `carry_share`, `yards_per_team_play`, `yds_rank` (in its group and season), `vector` (z-scores, the GDS input) |
 | `PlayerProjection` | one per player × game × target this week (0 right after a build, until the `player` step runs) | a player model projection for this week's game (P06) | `key` (`player_id\|game_id\|rec_yds-wrte\|model version`) | `target_label`, `p10`, `p50`, `p90`, `mean`, `baseline`, `outperformance`, `outperf_z`, `confidence`, `top_drivers`, `is_main` |
 
 ### Relationships
@@ -98,6 +101,11 @@ A week-4 2026 build holds about **15.5k nodes and 588k relationships**, covering
 | `(Player)-[:TRADED_TO]->(Team)` | 545 | he was traded to that team (draft-pick trades excluded) | `date`, `from_team` |
 | `(Coach)-[:HEAD_COACH_OF]->(Team)` | 302 | head coach of the team that season | `season`, `games` |
 | `(Game)-[:HAS_PREDICTION]->(GamePrediction)` | 32 | this week's predictions | |
+| `(Player)-[:HAS_PROFILE]->(UsageProfile)` (P08) | ~1,850 | his usage in that season | |
+| `(Coach)-[:COORDINATOR_OF]->(Team)` (P08) | 0 until a seed exists | coordinator that season (optional hand-made seed) | `season`, `role` (OC / DC / ST) |
+| `(Coach)-[:WORKED_UNDER]->(Coach)` (P08) | 0 until a seed exists | an assistant and his head coach (optional seed) | `seasons`, `teams`, `roles` |
+| `(Player)-[:PASS_CENTRALITY]->(Team)` (P08, GDS) | ~500 (this season) | his place in the team's passing network this season | `pagerank`, `degree` (targets), `share`, `rank`, `role` (passer / receiver), `hub_id`, `out_this_week`, `share_this_week`, `rank_this_week` |
+| `(Player)-[:SIMILAR_TO]->(Player)` (P08, GDS) | ~900 | his usage this season is close to the other player's in `other_season` | `season`, `other_season`, `other_team`, `group`, `score`, `rank` (1-3), `basis` |
 | `(Player)-[:HAS_PROJECTION]->(PlayerProjection)` | one per projection | the player model projected him this week (P06) | |
 | `(PlayerProjection)-[:FOR_GAME]->(Game)` | one per projection | the game the projection is for | |
 
@@ -105,9 +113,11 @@ A week-4 2026 build holds about **15.5k nodes and 588k relationships**, covering
 
 The two big ones are `DEPTH_CHART` (one row per player per team per week per slot) and `APPEARED_IN` (one per player per game). They're also the slowest to load (about 22 seconds each).
 
+**Added in P08 on existing relationships:** `APPEARED_IN.scrambles`, `air_yards`, `air_att` (a QB's scrambles and intended air yards per game, for Q7); `PLAYED_IN.pa_rate` and `pa_dropbacks` (FTN play-action share of the offense's charted dropbacks; FTN is about a week late, so a Tuesday graph has none for last week); `OFFICIATED` now also holds this week's crew in a live run when the data has it (it never does on a Tuesday: crews are published weeks after their games). `PASS_CENTRALITY` and `SIMILAR_TO` are written by the GDS jobs after the count check, so they aren't in it.
+
 ## 5. The query library: what each query asks
 
-Each query is a `.cypher` file in `src/nflengine/graph/queries/`. They all take the season and week, run read-only, and return rows that already contain every number (the LLM never computes anything) plus an `insight_type`, a `strength` score from 0 to 1 used for ranking, and the `sample_size` behind the claim. All five run in **under a second** on the full graph (the requirement is 2 s). You can run any of them yourself: `uv run nfl graph query q2_injury_ripple --season 2026 --week 4`.
+Each query is a `.cypher` file in `src/nflengine/graph/queries/`. They all take the season and week, run read-only, and return rows that already contain every number (the LLM never computes anything) plus an `insight_type`, a `strength` score from 0 to 1 used for ranking, and the `sample_size` behind the claim. Every query runs in **under a second** on the full graph (the requirement is 2 s). You can run any of them yourself: `uv run nfl graph query q2_injury_ripple --season 2026 --week 4`.
 
 ### Q1: Revenge game (player vs former team) → *Non-obvious insights*
 
@@ -218,7 +228,51 @@ It returns his seasons there and his regular-season and playoff record with them
 
 **Real example (2026 week 4):** "The Vikings have gained 3.5 EPA per game on special teams this season; the Dolphins have lost 3.5 EPA per game." Season totals look right: 2025's best were SEA, SF and HOU, the worst NO, ARI and LV. Low confidence under 6 games.
 
-Q6 (former teammates on opposite sides), Q7 (style matchups) and Q9 (officiating crews) are sketched in doc 05 and come in P08, with the Graph Data Science jobs (Q10).
+### Q6: Former teammates on opposite sides → *Non-obvious insights* (P08)
+
+**The question:** does this week's expected starting QB face a receiver he used to throw to?
+
+**The walk:**
+```text
+(this week's game).home_qb_expected / away_qb_expected -> (QB)
+(QB)-[:THREW_TO {any earlier season, or this season with another team}]->(receiver)
+(receiver)-[:PLAYED_FOR {this season}]->(the opponent)
+```
+It sums their history (targets, catches, yards, TDs, seasons and the team it was for), needs at least 40 targets, and keeps receivers still on the opponent (not on a reserve list, not ruled out) who have played for it this season; his target share there is his role now. **Strength** grows with the history, how recent it is, and his role.
+
+**Real example (golden test, 2024 week 14):** "Kirk Cousins (Falcons QB) faces Justin Jefferson (Vikings WR), a receiver he used to throw to. Kirk Cousins targeted Justin Jefferson 600+ times for the Vikings in 2020, 2021, 2022 and 2023 ..." Others found: Josh Allen vs Stefon Diggs (2025 week 5), Geno Smith vs Tyler Lockett (2025 week 6), Trevor Lawrence vs Christian Kirk (2025 week 10: 290 targets, 2,392 yards).
+
+### Q7: Style matchups → *Non-obvious insights* (P08)
+
+**The question:** this week's QB (or offense) has a style at the league's top end. How has his opponent's defense done against that style, compared with other opponents and with every defense?
+
+Three styles, two queries:
+- `q7_style_matchup`, QB styles from `APPEARED_IN` per game: **scrambling** (scrambles per dropback) and **deep passing** (intended air yards per pass attempt). The QB is rated over this season and last (≥ 150 dropbacks).
+- `q7_play_action` (its own type, `play_action`), team style from FTN: play-action share of dropbacks this season (≥ 3 charted games).
+
+**The cut** is the league's 75th percentile over the three completed seasons before this one (as of the week). **The comparison:** the defense's EPA per play allowed in its games since two seasons ago against offenses with that style (that season) vs against the rest, minus the same split for all defenses: `gap > 0` means it did worse than usual against that style. Needs ≥ 4 games against the style, ≥ 8 others and a gap of at least 0.05.
+
+**Real example (2025 week 10):** "Jayden Daniels (Commanders QB) is one of the league's most frequent scramblers, and the Lions defense has fared worse than usual against scrambling QBs in recent seasons. Jayden Daniels has scrambled on 12.7% of his dropbacks this season and last (946 dropbacks); the quarter of QBs who scramble most do so on 6.8% or more. Since the start of the 2023 season the Lions defense allowed +0.10 EPA per play in 15 games against scrambling QBs, against -0.09 EPA per play in 31 games against other QBs. Over the same span all defenses allowed +0.04 EPA per play against scrambling QBs and -0.02 EPA per play against other QBs." Always worded as descriptive: opponents differ in many other ways.
+
+### Q9: Officiating crew → *Non-obvious insights* (P08; quiet for now)
+
+**The question:** does this week's referee's crew call more (or fewer) penalties than average, or lean on home or visiting teams?
+
+**The walk:** `(Official)-[:OFFICIATED {role: Referee}]->(this week's game)`, then his games over this season and the 2 before: penalties and penalty yards per game (both teams) and the home-minus-away penalty split (neutral sites left out), against the league over the same span. It fires only on a clear gap (1.5 penalties per game, or a split 1 penalty away from the league's) over at least 10 games, and its strength stays at 0.5 or below (penalties are noisy).
+
+**Why it's quiet:** nflverse publishes a game's crew after the game, weeks late (on 2026-10-04 the officials table had 2026 week 1 only). A Tuesday run never knows this week's referee, so the query returns nothing until a week's crews are in the data (a live run would use them; a backtest never does, by rule). The integration test checks it by adding a real crew (Alex Kemp for Falcons at Vikings, 2024 week 14) the way a run that had it would see it.
+
+### Q5b: Coaching tree → *Non-obvious insights* (P08; needs the optional seed)
+
+Head-coach reunions (above) come from the schedules. Coordinators and coaching trees need a hand-made file nobody has curated yet (decisions-log open question Q06): `config/coaching_seed.csv`, one row per coach, team, season and role (`coach,team,season,role,head_coach`; the template is `config/coaching_seed.example.csv`, header only). OC / DC / ST rows become `COORDINATOR_OF`; every row becomes `WORKED_UNDER` the team's head coach that season (from the schedules, or the `head_coach` column for seasons before 2018). With no file, nothing is loaded and the query returns nothing.
+
+**Two patterns:** a coordinator this season facing the head coach he used to work under, and two head coaches 1-2 `WORKED_UNDER` hops apart (`shortestPath((h1)-[:WORKED_UNDER*1..2]-(h2))`: one worked under the other, or both under the same mentor). Tested with a seed made for the test: for Falcons at Vikings (2024 week 14), Kevin O'Connell and Raheem Morris both worked under Sean McVay with the Rams.
+
+### Q10: Graph Data Science stories → *Non-obvious insights* (P08)
+
+Two queries read what the GDS jobs wrote (how they work: [graph-data-science.md](graph-data-science.md)):
+- **`q10_network_hub`:** a pass catcher in his team's top 3 by PageRank share of this season's passing network (≥ 15%) won't play this week; who leads the network without him (PageRank re-run on this week's network). "Justin Jefferson (Vikings WR), the center of the Vikings' passing network, is on a reserve list and missed the team's last game ... T.J. Hockenson leads that network" (2023 week 7).
+- **`q10_usage_comp`:** a player with a real role whose usage this season is closest (KNN) to another player's top-10 season. "Puka Nacua (Rams WR), in his first two seasons, is being used much like Stefon Diggs was in 2020, the most productive season by a WR that year." Always a comparison, never a projection; one story per player (novelty doesn't let a new match repeat it within 3 weeks).
 
 ### Q0: Starters out (data, not an insight)
 
@@ -230,7 +284,7 @@ The same "won't play" rules as Q2 (listed Out / Doubtful this week, on a reserve
 flowchart LR
     A[curated Parquet on D:] -->|as of the week| B[graph tables in Polars]
     B -->|wipe + load| C[(Neo4j)]
-    C -->|Q1 Q2 Q3 Q4 Q8| D[query rows]
+    C -->|GDS jobs, then the query library| D[query rows]
     D --> E[candidates: code-written headline + facts]
     E -->|score, skip started games, novelty, one player once| F[picks]
     F --> G[payload graph_insights]
@@ -240,7 +294,7 @@ flowchart LR
 ```
 
 1. **Candidates.** Every query row becomes a digest item whose words are written by code (`src/nflengine/graph/insights.py`): a headline without numbers, then facts that are complete, time-scoped sentences with their numbers, each tagged with the team or player that owns those numbers. A typical week has 40–70 candidates.
-2. **Picks.** Ranked by strength (+0.1 for a followed team), skipping games that have already kicked off (a live digest also skips games starting within 90 minutes, because the LLM can take a while), skipping anything published in the last 3 weeks, and using each player at most once. One item for *Matchup / risk to watch* (an injury ripple, or a QB change at 80% weight), one or two for *Non-obvious insights* (revenge, common opponents, trend mismatch, coach vs former team, unit mismatch, special teams), from different games.
+2. **Picks.** Ranked by strength (+0.1 for a followed team), skipping games that have already kicked off (a live digest also skips games starting within 90 minutes, because the LLM can take a while), skipping anything published in the last 3 weeks, and using each player at most once. One item for *Matchup / risk to watch* (an injury ripple, or a QB change at 80% weight), one or two for *Non-obvious insights* (revenge, common opponents, trend mismatch, coach vs former team, unit mismatch, special teams, and from P08 former teammates, style matchups, play action, referee crews, the coaching tree and the two GDS stories), from different games. The P08 types use the same strength scale; most land between 0.4 and 0.8, so the strongest P05 stories (0.8-1.0) still usually win, and the new ones show up when they're strong (former teammates often make *More from the graph*).
 3. **More from the graph.** The strong stories that didn't fit the prose (strength ≥ 0.7, no QB changes, at most 2 of a kind and 2 per game, 6 in all) are listed by code after the Non-obvious prose, one line each (each item's `brief`). Before this list, 6–14 strong stories a week were simply dropped.
 4. **Novelty survives the weekly wipe** because what was published is kept in `runs/published_insights.parquet` on D: and reloaded as `PublishedInsight` nodes on every build. Proof from the 2025 weeks 5–9 backtests: nothing repeated within 3 weeks, and the filter held back James Conner's injury ripple in week 6, the Barkley vs Giants rematch in week 8 and Joe Flacco's start in weeks 8–9.
 5. **The LLM** (GLM via OpenRouter) writes the two sections from the picked items only, copying the fact texts. The digest's automated checks verify every number came from the payload and is attached to its owner. An independent fact-check of the first GLM digests recomputed every graph number from the raw data: all correct.
@@ -366,8 +420,9 @@ Tip: in the Graph view, click the `Player` chip in the frame's legend and set it
 | A digest's graph sections | `uv run nfl digest ... --graph auto\|build\|read\|off` |
 | The build's full record | `D:/nfl-ml-data/runs/<season>/week<NN>/graph_results.json` (counts, timings, every query's rows, all candidates, the picks); backtests under `runs/digest-backtests/` |
 | What was published | `D:/nfl-ml-data/runs/published_insights.parquet` (backtests keep their own) |
-| Tests | `uv run pytest tests/graph` (no Neo4j); `uv run pytest -m integration tests/graph/test_graph_integration.py` (~7 min, rebuilds the graph for three past "golden" weeks: Saquon Barkley vs the Giants 2024 w7, Justin Jefferson on IR 2023 w7, Jake Browning for Joe Burrow 2023 w13) |
-| Code | `src/nflengine/graph/` (`tables.py`, `load.py`, `schema.cypher`, `queries/`, `insights.py`, `published.py`, `build.py`, `projections.py`), `src/nflengine/digest/graph_sections.py` |
+| Tests | `uv run pytest tests/graph` (no Neo4j); `uv run pytest -m integration tests/graph/test_graph_integration.py` (~15 min, rebuilds the graph for four past "golden" weeks: Saquon Barkley vs the Giants 2024 w7, Justin Jefferson on IR 2023 w7 (also the GDS hub and Puka Nacua's usage comparison), Jake Browning for Joe Burrow 2023 w13, Kirk Cousins vs Justin Jefferson 2024 w14 (also Q7, Q9, the coaching tree and GDS fail-soft)) |
+| Code | `src/nflengine/graph/` (`tables.py`, `tables_extra.py`, `load.py`, `schema.cypher`, `queries/`, `insights.py`, `insights_extra.py`, `insights_advanced.py`, `gds.py`, `published.py`, `build.py`, `projections.py`), `src/nflengine/digest/graph_sections.py` |
+| Optional coaching seed | `config/coaching_seed.csv` (template `config/coaching_seed.example.csv`) |
 | Player projections | written by the weekly `player` step after the build (`nfl weekly run`); tests `uv run pytest tests/graph/test_projections.py` |
 
 ## 10. Limits and what comes next
@@ -376,4 +431,5 @@ Tip: in the Graph view, click the `Player` chip in the frame's legend and set it
 - **Samples are small.** A starter usually missed only a few games; a QB change usually has little shared history. The items say so (`confidence: low` plus a note on what's uncertain), and the LLM is told to keep that wording.
 - **"As of Tuesday" is conservative.** A Tuesday backtest can't see this week's injury report, so its QB changes are always "not confirmed yet". The Saturday injury update (P07) is where these sections get sharper.
 - **Q1 looks back 2 seasons**, so "played 17 games for the Seahawks in 2023" is exact but isn't his whole career with them.
-- **P06** recomputes Q2 and Q3 in Polars as player-model features (vacated targets, history with the new QB), so every past week has them, and fills `PlayerProjection` nodes every week. **P08** adds Graph Data Science (passing-network centrality, player similarity) and queries Q5–Q7 and Q9.
+- **P06** recomputes Q2 and Q3 in Polars as player-model features (vacated targets, history with the new QB), so every past week has them, and fills `PlayerProjection` nodes every week. **P08** added Graph Data Science (passing-network centrality, player similarity) and queries Q5 (coaching tree), Q6, Q7 and Q9.
+- **Q9 waits for data:** referee crews arrive weeks after their games, so no Tuesday digest can use them; the coaching tree waits for a hand-made seed. Community detection on the coaching / movement graph (doc 05) is still for later.

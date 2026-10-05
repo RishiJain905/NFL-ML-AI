@@ -146,3 +146,16 @@ opp_def_rush_epa: the opponent's run-defense rating
 opp_off_epa: the opponent's offensive rating
 opp_off_pass_epa: the opponent's passing-offense rating
 opp_off_rush_epa: the opponent's rushing-offense rating
+
+# ---- coverage context (P08, defensive backs) ----
+cvg_opp_targets_l8: how many passes the opponent throws per game
+cvg_opp_adot_l8: how deep the opponent throws
+cvg_opp_cmp_pct_l8: how often the opponent completes its passes
+cvg_opp_ypt_l8: how many yards the opponent gains per pass thrown
+cvg_own_targets_l8: how many passes his defense faces per game
+cvg_own_adot_l8: how deep the passes against his defense travel
+cvg_own_cmp_pct_l8: how often passes against his defense are completed
+cvg_own_ypt_l8: how many yards his defense allows per pass thrown
+cvg_own_pressure_rate_l8: how often his own defense pressures the quarterback
+cvg_own_sack_rate_l8: how often his own defense gets sacks
+cvg_own_def_pass_epa: his own defense's pass-defense rating

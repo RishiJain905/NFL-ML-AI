@@ -241,3 +241,34 @@ The player model writes its projections into the graph (`graph/projections.py`; 
 - **Fail-soft:** Neo4j down, bad credentials or any driver error returns `status = unavailable` with `graph.client.safe_error` text (never the driver's message), and the weekly run carries on. The step logs one line (`ProjectionWriteResult.summary`): "graph projections: N written (N linked to players, N to games) in S s".
 - **Indexes:** `projection_key` (unique), plus `(season, week)` and `player_id` (`schema.cypher`).
 - **Not in the build's count check:** the projections are written after it, so `graph_counts` doesn't include them.
+
+## As built in P08: Q5–Q7, Q9, Q10 and Graph Data Science (decisions D83, D84)
+
+How to run the GDS algorithms by hand in Neo4j Browser, with real results: [Graph Data Science guide](guides/graph-data-science.md). Every new query with real examples: [knowledge graph guide](guides/knowledge-graph.md).
+
+**New data in the graph** (`graph/tables_extra.py`, each as of the build like the P05 tables):
+- `APPEARED_IN.scrambles`, `air_yards`, `air_att`: a QB's style per game, from visible plays only.
+- `PLAYED_IN.pa_rate`, `pa_dropbacks`: FTN play action, always strictly before week W; a backtest also drops week W−1 (FTN is about a week late; its `date_pulled` is a refresh time and can't date rows).
+- `UsageProfile` nodes + `(Player)-[:HAS_PROFILE]->`: one per WR / TE / RB season (regular season, visible plays; past seasons need 8 games and 40 opportunities, the current one 3 and 12), `vector` = usage features as z-scores within the position group. 1,847 on the live week-4 graph.
+- **Officiating crews:** a live run loads week-W crews when the data has them; a backtest never does (D83). In practice crews arrive weeks late (on 2026-10-04 the officials table had only 2026 week 1), so Q9 is mostly quiet on Tuesdays.
+- **Optional coaching seed** (`config/coaching_seed.csv`, schema in `config/coaching_seed.example.csv`, header only): `COORDINATOR_OF {season, role}` and `WORKED_UNDER {seasons, teams, roles}`, rows with season ≤ S; a missing file is skipped silently, a malformed one is logged and skipped. Not curated yet (open question Q06: the loader exists, no data).
+
+**GDS jobs** (`graph/gds.py`, between the count check and the query library, doc 05's build order): **PageRank** (damping 0.85, 40 iterations: the default 20 didn't converge) and weighted degree on each team's season `THREW_TO` network (one relationship type per team, weight = targets), then again on **this week's network** without its out pass catchers (the Q0 rows), written as `(Player)-[:PASS_CENTRALITY {season, week, team_id, role, pagerank, degree, share, rank, hub_id, out_this_week, share_this_week, rank_this_week}]->(Team)`; **filtered KNN** (current → past seasons, Euclidean on the usage vectors, topK 10, seed 42, concurrency 1, the player's own seasons dropped, top 3 written) as `(Player)-[:SIMILAR_TO {season, other_season, other_team, group, score, rank, basis, week}]->(Player)`. Results are streamed and written as relationships (a traded player needs a share per team), projections named `nfl-*` are dropped after use. Each job is fail-soft on its own (`safe_error` text only; its queries then return nothing). 5–7 s on the live week 4, 6–13 s in 2025 backtests; the whole build 126–173 s live (the HDD load swings ~40 s).
+
+**New queries** (all under 0.7 s; the 2 s limit is tested for every library query):
+
+| Query | Finds | Golden case |
+|---|---|---|
+| Q5b `q5_coaching_tree` | A coordinator facing his old boss; head coaches within two `WORKED_UNDER` steps (needs the seed) | O'Connell and Morris under McVay (test seed) |
+| Q6 `q6_former_teammates` | This week's expected QB faces a receiver he targeted ≥ 40 times who now plays for the opponent; strength from history size, recency, the receiver's current share | Cousins vs Jefferson, 2024 w14 |
+| Q7 `q7_style_matchup` | A scrambling or deep-passing QB (top quarter as of the week) vs this defense's EPA allowed against that style, with the league's split as the bar | Hurts scrambling, 2024 w14; Daniels vs DET 2025 w10: +0.10 EPA/play allowed in 15 games vs scramblers, −0.09 in 31 vs others (league +0.04 / −0.02) |
+| Q7 `q7_play_action` | A play-action-heavy offense (FTN) vs this defense's record against such offenses | |
+| Q9 `q9_officiating` | The week's referee crew: penalties per game and home / away split vs the league over ≥ 10 games; always low confidence, strength ≤ 0.5 | Alex Kemp's crew (injected, 2024 w14) |
+| Q10 `q10_network_hub` | An out receiver in his team's top 3 by PageRank share (≥ 15%), and who leads the network without him | Jefferson → Hockenson, 2023 w7 |
+| Q10 `q10_usage_comp` | A KNN match to another player's top-10 season, at or above the week's group median score; worded "a comparison, not a projection" | Puka Nacua ~ Diggs 2020 |
+
+**In the digest:** the new types compete with the P05 ones (ranking in `insights_advanced.py`). In 2025 weeks 5–14 backtests the GDS items landed in "More from the graph" while the two prose slots went to the strongest P05 stories (0.85–1.0). **Exit criterion** (a GDS-driven insight in a published digest; Rishi chose a backtest proof now, the first live one from week 5): 2025 week 13 backtest digest (`reports/backtests/2025/week13-digest-placeholder.md`, W&B `9fmebmll`, every check passed): "Ja'Marr Chase (Bengals), the center of their passing network this season (25% PageRank share), won't play; Tee Higgins leads it without him." Week 14 (`n5ky2d59`): "Harold Fannin Jr. (Browns TE): usage this season closest to Evan Engram's 2022 (766 receiving yards, 4th-most among tight ends); a comparison, not a projection." On the live week-4 graph, DeVonta Smith's hub story (0.843) would now take the second non-obvious slot (the published week-4 file is unchanged).
+
+**Findings:** on these star-shaped networks PageRank closely tracks target share (real hubs through 2024 week 13: Jefferson 24%, Nabers 25%, Nacua 17%, Kelce 20%), so it is used as a principled ranking and worded descriptively; node similarity (Jaccard) scored every receiver on one team 1.0, hence KNN on usage vectors; one relationship type per team-receiver ran the 2 GB heap out of memory, one per team didn't; Neo4j warns on every build about relationship types that don't exist yet (no seed, a failed job), so library queries and the count check run with those notifications off. A converter error on one odd row now skips that row (`converter_errors` in `graph_results.json`) instead of failing the build.
+
+**Live graph after P08** (2026 week 4, restored): 17,369 nodes / 590,177 relationships from the build (+1,847 `UsageProfile`, +1,847 `HAS_PROFILE`), plus 1,860 projections, 392 `PASS_CENTRALITY`, 426 `SIMILAR_TO`.

@@ -230,11 +230,38 @@ MODEL_HEADER = [
 SIDE_TITLES = {"offense": "Offense", "defense": "Defense"}
 
 
-def _model_rows(rows: list[WatchItem]) -> list[str]:
+# P08: a side's table gets one extra column after the baseline when a shipped target projects
+# some pick on it (offense: chance of a touchdown, passing TDs for a QB; defense: chance of a
+# sack). With no such pick the tables are exactly the P06 ones.
+EXTRA_COLUMNS = {"offense": "TD chance", "defense": "Sack chance"}
+
+
+def _extra_cell(w: WatchItem) -> Num | None:
+    return (w.td_chance or w.pass_tds) if w.side != "defense" else w.sack_chance
+
+
+def _extra_title(rows: list[WatchItem], side: str | None) -> str | None:
+    if side in EXTRA_COLUMNS and any(_extra_cell(w) is not None for w in rows):
+        return EXTRA_COLUMNS[side]
+    return None
+
+
+def _model_header(extra: str | None = None) -> list[str]:
+    if extra is None:
+        return list(MODEL_HEADER)
+    head, rule = MODEL_HEADER
+    return [
+        head.replace("| Baseline |", f"| Baseline | {extra} |"),
+        rule + "---|",
+    ]
+
+
+def _model_rows(rows: list[WatchItem], extra: str | None = None) -> list[str]:
     return [
         f"| {w.player} ({w.team_name} {w.position}) | vs {w.opponent_name} | "
         f"{_d(w.projection)} | {_d(w.interval)} | {w.baseline.display} | "
-        f"{w.confidence} | {_why(w)} |"
+        + (f"{_d(_extra_cell(w))} | " if extra else "")
+        + f"{w.confidence} | {_why(w)} |"
         for w in rows
     ]
 
@@ -253,9 +280,10 @@ def watch_table(p: Payload) -> str:
             part = [w for w in rows if w.side == side]
             if part:
                 n = len(part)
+                extra = _extra_title(part, side)
                 blocks.append(
                     f"**{title}** ({n} pick{'s' if n != 1 else ''})\n\n"
-                    + "\n".join([*MODEL_HEADER, *_model_rows(part)])
+                    + "\n".join([*_model_header(extra), *_model_rows(part, extra)])
                 )
         return "\n\n".join(blocks)
     lines = [

@@ -150,6 +150,20 @@ Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/particip
 - **Same-day snapshots are overwritten in place**, so "before vs after" comparisons within a day (the Saturday injury update) must read the before state first; the raw snapshot folder only keeps the latest pull of each day.
 - **Newest week per source for freshness** (`ops.summary.freshness`): `max(week)` of `plays`, `player_games`, `snaps`, `injuries`, `depth_charts` for the season, plus `digest.under_hood.source_weeks` (NGS, PFR, FTN). PFR and FTN normally trail by a week on a Tuesday; one week behind isn't stale.
 
+## Quirks found in P08 (checked live 2026-10-04)
+- **Game weather (`games.temp`, `games.wind`) is missing for half of 2022's outdoor games** (96 of 187 have a reading; 150 of 191 in 2023; ~95% in other seasons). Domes and closed roofs carry a single dummy reading at most: treat roof ≠ outdoors/open as "no weather". Outdoor wind's 90th percentile (2011–2025) is 15 mph; 8% of games have ≥ 15 mph, 5% ≤ 32 °F.
+- **`weather_forecasts`** (Open-Meteo) has `temp_f`, `wind_mph`, `gust_mph`, `precip_mm`, `precip_prob`, `forecast_hour_utc`, `pulled_at` for upcoming outdoor games only (domes skipped); DuckDB returns its timestamps in local time.
+- **`snaps.position` has combined labels** (`FB/D`, `T/G`, `CB/R`, ...): take the part before `/` (`features.game_extra.position_group`). Snap counts include playoff games and start in 2013.
+- **Team injury load from snaps** (`features.game_extra.team_injury_load`, Tuesday view): a team averages ~1.5 "regular-equivalents" missing from its last game across OL / skill / front / secondary (0.49 / 0.30 / 0.32 / 0.44), rising from 1.2 (2013) to 1.9 (2021). A starter benched for good looks the same as an injured one in snap counts.
+- **League home margin by season** (non-neutral regular-season games, 3-season trailing mean): 2.4–3.0 points for 2013–2016, 0.57 in 2022, back to 2.2 by 2025.
+- **Event label rates** (player-games in the pool): RB any TD (rushing + receiving; return, passing and defensive TDs excluded) 24.5%; WR/TE any TD 20.9% (2012) falling to 14–15% since 2021; QB ≥ 1 passing TD 77–83%; QB ≥ 1 interception 58% (2012) falling to 49% (2025); CB/S interception 9.8% → 6.9%, pass defended ~31%; EDGE/DL sack credit 15.5–18.8%.
+- **`def_sacks` has half credits:** 0.5 steps; 15.6% of nonzero EDGE/DL player-games are exactly 0.5 and 20.8% carry a half. "Any credit" (> 0) is 16.6% of rows, "≥ 1 full sack" 13.9%.
+- **`pfr_def` coverage:** `def_targets`, `def_completions_allowed`, `def_yards_allowed` (null when he allowed no completion: sum to 0), `def_adot`, `def_ints`; 14 rows without `gsis_id`; 3 rows with completions > targets (errors). A corner with ≥ 50% of snaps has a PFR row 97–99% of the time (safeties 95–97%), so a missing row in a published team-game is 0; team-games with no PFR rows at all: 2023 w12, 2024 w13 and w17, 2025 w13 (and the latest week).
+- **`team_games`** includes playoffs (`season_type = 'REG'`). `passing_yards` is gross of sack yards and equals the sum of the players' `passing_yards` in 100% of team-games (play-by-play `yards_gained` differs: scrambles are rushing in the box score, accepted-penalty yards). `sacks_suffered` = sack plays (100%); `def_sacks` matches the opponent's count in 98.5% (half sacks). Takeaways = opponent interceptions + opponent `fumbles_lost_total` (99.5% vs the defense's own `def_interceptions + fumble_recovery_opp`; offense-only fumbles miss special teams). League takeaways per team-game 1.56 (2012) → 1.16 (2025); passing yards 259 (2015) → 225 (2025). Sacks and takeaways are nearly Poisson (variance 1.29× and 1.07× the mean).
+- **`games.spread_line` is null for far-future weeks;** read upcoming lines through `features.game.current_lines` / `game_features`.
+- **The player feature table (P08)** has CB rows and the `cvg_*` family: ~225k rows × 138 columns; CB/S pool ~3.6–3.9k player-games a season. `player_history` adds `any_td`, `def_int_any`, `pd_any`, `pfr_completions_allowed`.
+- **Polars:** `(col == "x").all()` on an all-null column is `True` (vacuous): `fill_null(False)` first.
+
 ## Recipes
 
 **Open the data:**

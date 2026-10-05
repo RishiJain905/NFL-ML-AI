@@ -1,0 +1,7 @@
+# Optional hand-made coaching seed (documentation/05 -> Q5; decisions-log open question Q06).
+# Copy to config/coaching_seed.csv and add one row per coach, team, season and role.
+# role: OC, DC or ST make a COORDINATOR_OF link; any other role (QB coach, ...) only a
+# WORKED_UNDER link to that team-season's head coach. head_coach is optional: leave it blank
+# to use the head coach from the schedules (2018 on); fill it in for earlier seasons.
+# Example row (remove the leading # to use it): Kevin O'Connell,LA,2021,OC,
+coach,team,season,role,head_coach

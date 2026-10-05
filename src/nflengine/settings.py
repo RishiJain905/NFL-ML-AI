@@ -101,6 +101,8 @@ class AppConfig(BaseModel):
     training: dict[str, Any] = Field(default_factory=dict)
     game_model: dict[str, Any] = Field(default_factory=dict)
     player_model: dict[str, Any] = Field(default_factory=dict)
+    team_model: dict[str, Any] = Field(default_factory=dict)  # team stat totals (P08)
+    consistency: dict[str, Any] = Field(default_factory=dict)  # consistency layer (P08)
     qb: dict[str, Any] = Field(default_factory=dict)
     digest: dict[str, Any] = Field(default_factory=dict)
     ops: dict[str, Any] = Field(default_factory=dict)  # weekly operations (P07)

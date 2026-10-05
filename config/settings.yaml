@@ -88,6 +88,15 @@ game_model:               # game model v0 (P03; documentation/04 -> B)
   sigma_default: 13.5     # margin sd until 400 walk-forward residuals exist
   train_start: 2011       # 2010 ratings have no preseason prior
   burn_in_seasons: 5      # walk-forward seasons before the reported ones (sigma, calibration)
+  version: v0             # the model the weekly run fits: v0 (ridge) | v1 (LightGBM, P08)
+  v1:                     # game model v1 (P08; models/game_model_v1.py): the best of the
+                          # 24-point grid on 2013-2017 (sweep 47vq67gw; every point lost to v0)
+    base: ridge           # boost from v0's ridge prediction | none (trees from the average)
+    num_leaves: 4
+    learning_rate: 0.02
+    n_estimators: 50
+    min_data_in_leaf: 100
+    lambda_l2: 10.0
 
 player_model:             # player model v1 (P06; documentation/04 -> C); LightGBM settings
   num_leaves: 15
@@ -98,6 +107,12 @@ player_model:             # player model v1 (P06; documentation/04 -> C); LightG
   bagging_fraction: 0.8
   lambda_l2: 1.0
   conformal_seasons: 2    # walk-forward seasons the 80% range is calibrated on
+  # the targets the weekly run refits + projects (player_schema.live_targets): the 11 P06
+  # targets + the 12 P08 ones that beat their baselines (all 12, D82; model card player-p08)
+  live_targets: [pass_yds-qb, pass_epa-qb, rush_yds-rb, carries-rb, receptions-rb,
+                 scrim_yds-rb, rec_yds-wrte, targets-wrte, receptions-wrte, pressures-edge,
+                 tackles-lbs, pass_tds-qb, ints-qb, rush_yds-qb, td-rb, td-wrte, sacks-edge,
+                 qb_hits-edge, cov_tgt-cbs, cov_cmp-cbs, cov_yds-cbs, int-cbs, pd-cbs]
   per_target:             # best of the 12-point grid per target, scored on 2017-2018 only (D68)
     pass_yds-qb:     {num_leaves: 7,  min_data_in_leaf: 200, n_estimators: 150}  # sweep rcyuv6pl
     pass_epa-qb:     {num_leaves: 7,  min_data_in_leaf: 200, n_estimators: 150}  # cygm4hbw
@@ -110,6 +125,30 @@ player_model:             # player model v1 (P06; documentation/04 -> C); LightG
     receptions-wrte: {num_leaves: 7,  min_data_in_leaf: 50,  n_estimators: 300}  # lhxih9f7
     pressures-edge:  {num_leaves: 7,  min_data_in_leaf: 200, n_estimators: 150}  # upmglalz (re-run with the label lag; qnn35nz6 picked the same)
     tackles-lbs:     {num_leaves: 15, min_data_in_leaf: 50,  n_estimators: 150}  # uvajbbn7
+    # P08 targets (same grid on 2017-2018; also player_runs.TARGET_DEFAULTS, these win)
+    pass_tds-qb:     {num_leaves: 15, min_data_in_leaf: 200, n_estimators: 150}  # ct2dr946
+    ints-qb:         {num_leaves: 7,  min_data_in_leaf: 200, n_estimators: 300}  # pus3fn5t
+    rush_yds-qb:     {num_leaves: 15, min_data_in_leaf: 50,  n_estimators: 300}  # ud7xp3xt
+    td-rb:           {num_leaves: 4,  min_data_in_leaf: 300, n_estimators: 100}  # zv4j4md1
+    td-wrte:         {num_leaves: 4,  min_data_in_leaf: 100, n_estimators: 100}  # coyymj3b
+    sacks-edge:      {num_leaves: 31, min_data_in_leaf: 50,  n_estimators: 150}  # 1wdr6q3m
+    qb_hits-edge:    {num_leaves: 15, min_data_in_leaf: 50,  n_estimators: 300}  # bu4pv1s8
+    cov_tgt-cbs:     {num_leaves: 7,  min_data_in_leaf: 50,  n_estimators: 300}  # zgwo3kuu
+    cov_cmp-cbs:     {num_leaves: 15, min_data_in_leaf: 200, n_estimators: 150}  # smgtm7m6
+    cov_yds-cbs:     {num_leaves: 7,  min_data_in_leaf: 200, n_estimators: 150}  # y4yt569d
+    int-cbs:         {num_leaves: 4,  min_data_in_leaf: 300, n_estimators: 100}  # eweebi9l
+    pd-cbs:          {num_leaves: 4,  min_data_in_leaf: 300, n_estimators: 100}  # 9figg6pe
+
+team_model:               # team stat totals (P08; models/team_runs.py, documentation/11)
+  # the ship decision: shipped targets are refit + projected by the weekly `player` step
+  # (fail-soft); takeaways didn't beat the league average (model card team-stats-v1)
+  live_targets: [pass_yds-team, rush_yds-team, sacks_made-team, sacks_taken-team]
+
+consistency:              # consistency layer on the weekly player projections (P08)
+  receptions: true        # WR/TE receptions <= targets at every level (P10 / P50 / P90 / mean)
+  rec_yds_anchor: null    # null = log only | team (scale WR/TE receiving yards toward the
+                          # team model's passing yards) | qb
+  strength: 0.5           # share of the way to the anchor when rec_yds_anchor is set
 
 qb: {}                    # QB status feature (features/qb.py QBParams); defaults in code
 

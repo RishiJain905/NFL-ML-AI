@@ -1,8 +1,8 @@
-# Player projections guide (player model v1)
+# Player projections guide (player model v1, plus the P08 targets)
 
-**What this is:** a plain-language guide to the player model: what it predicts, the handful of modelling ideas it rests on (LightGBM, quantile regression, the negative binomial, conformal ranges, SHAP), how one week's projections flow into the digest and the knowledge graph, what files and W&B runs it leaves behind, and how to run and change it. Built in P06.
+**What this is:** a plain-language guide to the player model: what it predicts, the handful of modelling ideas it rests on (LightGBM, quantile regression, the negative binomial, conformal ranges, SHAP), how one week's projections flow into the digest and the knowledge graph, what files and W&B runs it leaves behind, and how to run and change it. Built in P06; P08 added twelve more targets (chance of a touchdown, sacks, interceptions, coverage stats for defensive backs and more), described in §2b and in the [P08 targets model card](../model_cards/player-p08.md).
 
-**Related docs:** the spec is [04 → C. Player model](../04-track1-models.md#c-player-model) and [11 Prediction targets](../11-prediction-targets.md) (targets, baselines, the accuracy scoreboard). The results live in the model card, [player-model-v1](../model_cards/player-model-v1.md). Decisions are in the [decisions log](../10-decisions-log.md) (D64 the model design, D65 count baselines, D66 availability as of Friday, D67 the weekly `player` step). The W&B side is in the [W&B guide](weights-and-biases.md); the graph side in the [knowledge-graph guide](knowledge-graph.md); how the digest's LLM writes about the picks in the [LLM writer guide](llm-digest-writer.md). Agents use the `model-experiment` and `digest-checks` skills.
+**Related docs:** the spec is [04 → C. Player model](../04-track1-models.md#c-player-model) and [11 Prediction targets](../11-prediction-targets.md) (targets, baselines, the accuracy scoreboard). The results live in the model cards, [player-model-v1](../model_cards/player-model-v1.md) (P06) and [player-p08](../model_cards/player-p08.md) (the P08 targets). Decisions are in the [decisions log](../10-decisions-log.md) (D64 the model design, D65 count baselines, D66 availability as of Friday, D67 the weekly `player` step). The W&B side is in the [W&B guide](weights-and-biases.md); the graph side in the [knowledge-graph guide](knowledge-graph.md); how the digest's LLM writes about the picks in the [LLM writer guide](llm-digest-writer.md). Agents use the `model-experiment` and `digest-checks` skills.
 
 ---
 
@@ -36,6 +36,33 @@ One model per target × position group (`models/player_schema.py` → `TARGETS`)
 
 A linebacker can be in two pools (pressures and tackles): he gets both projections. Only games a player actually played count as targets ("scored only when he plays", documentation/11).
 
+## 2b. The P08 targets (backtested, live only once shipped)
+
+Twelve more targets use the same machinery (`phase="p08"` in `TARGETS`). **A P08 target is refit and projected by the weekly run only when it is listed in `config/settings.yaml` → `player_model.live_targets`** (default: the 11 P06 targets), which is how a target ships: it must first clear the pre-registered rule in §7.
+
+| Group | Target (key) | Kind | What it answers |
+|---|---|---|---|
+| QB | passing TDs (`pass_tds-qb`) | event count | expected passing TDs, chance of at least 1 and 2 |
+| QB | interceptions thrown (`ints-qb`) | event count | expected interceptions, chance of at least 1 and 2 |
+| QB | rushing yards (`rush_yds-qb`) | amount | like any yardage target (median and 80% range) |
+| RB | chance of a touchdown (`td-rb`) | probability | calibrated chance of a rushing or receiving TD |
+| WR/TE | chance of a touchdown (`td-wrte`) | probability | the same for receivers |
+| EDGE/DL | sacks (`sacks-edge`) | event count | expected sacks, chance of at least 1 credited sack (a half-sack counts) |
+| EDGE/DL | QB hits (`qb_hits-edge`) | count | like pressures |
+| CB/S | targets, completions allowed in coverage (`cov_tgt-cbs`, `cov_cmp-cbs`) | counts | PFR coverage data, 2018+, a week late |
+| CB/S | yards allowed in coverage (`cov_yds-cbs`) | amount | PFR coverage data, 2018+, a week late |
+| CB/S | chance of an interception (`int-cbs`) | probability | calibrated chance of at least 1 |
+| CB/S | chance of a pass defended (`pd-cbs`) | probability | calibrated chance of at least 1 |
+
+**Three kinds of target** (`Target.kind`):
+- **amount** and **count**: exactly as in P06 (§3).
+- **event count** (a count with `event_probs`): also gets `p_ge1` and `p_ge2`, the chances of at least one and at least two. They come from the same negative binomial; `p_ge1` is then **recalibrated** on the model's own earlier walk-forward values, because a distribution fitted for the mean, the median and the range isn't exactly right about zero (passing TDs: 75% predicted vs 78% seen: a QB's TD count is more regular than a Poisson; sacks 15.5% vs 16.7%; the raw interception chances were too spread out, Platt slope 0.44).
+- **probability** (`prob`): a yes/no event. A LightGBM *binary* model gives a raw probability; a **calibration layer** (Platt scaling: a logistic regression of the real outcome on the raw probability's log-odds, fitted on the model's own earlier walk-forward predictions, never on its own training rows) turns it into the probability shown. There is no range and no median: `p10` / `p50` / `p90` are empty, `mean` = `p_ge1` = the chance, and the baseline is his own rolling rate of the event. While the history is too thin (the first weeks of the burn-in) the raw probability is used.
+
+**CB/S pool:** cornerbacks and safeties with defensive snaps (a safety is in the LB/S pool *and* this one). Their own family of features, `cvg_*` (`features/player_coverage.py`), describes what a back faces: how many passes, how deep, how often completed and for how many yards, for the opposing offense and for his own defense, plus his own defense's pressure rate and pass-defense rating. Only the CB/S models read it, so the P06 models' features are untouched.
+
+**Labels** (`features/player_data.py`): `any_td` = rushing + receiving TDs ≥ 1 (return and passing TDs don't count); `def_int_any` = at least 1 interception; `pd_any` = at least 1 pass defended; `pfr_completions_allowed` from PFR. A half-sack is a credited sack (`def_sacks` 0.5): the "at least one" event for sacks means any credit, because that is what the negative binomial's probability matches (16.6% of EDGE/DL player-games, against 13.9% for a full sack or more).
+
 ## 3. The ideas it rests on (a short primer)
 
 The formulas, worked examples with real week-4 numbers, the `file:line` of every step and the history of every training round are in the [player model card → The math, step by step](../model_cards/player-model-v1.md#the-math-step-by-step-with-worked-examples-from-the-live-2026-week-4-fit). This section is the plain-language version.
@@ -60,8 +87,8 @@ The formulas, worked examples with real week-4 numbers, the `file:line` of every
 curated Parquet (D:) ──► features/player_data.py   player_history: one row per player x game he played
                          features/player.py        features (own_, use_, team_, eff_, opp_, rip_, avail_)
                                                    + baselines (rolling, season mean, role average)
-                    ──► models/player_model.py     LightGBM quantile / Poisson fits, NB ranges,
-                                                   conformal shift, SHAP drivers
+                    ──► models/player_model.py     LightGBM quantile / Poisson / binary fits, NB ranges,
+                                                   conformal shift, calibration layer, SHAP drivers
                     ──► models/player_runs.py      walk-forward backtests, tuning, the weekly fit,
                                                    the scoreboard; assembles PRED_SCHEMA rows
                     ──► runs/<season>/week<NN>/predictions_players.parquet
@@ -82,6 +109,7 @@ curated Parquet (D:) ──► features/player_data.py   player_history: one row
 | `opp_` | opponent | what the opponent allows to this position group (schedule-adjusted), pressure rate vs pressure allowed, blitz rate |
 | `rip_` | ripple effects | usage left open by teammates who are out, a new QB, his history with this week's QB |
 | `avail_` | availability | his injury status and practice participation (the Friday view, D66), games of the last 3 he missed |
+| `cvg_` | coverage context (P08, CB/S models only) | passes per game, depth, completion rate and yards per pass of the offense he faces and of his own defense; his defense's pressure rate and pass-defense rating |
 
 **Who gets a live projection:** players on the team who played in one of its last 3 games and aren't listed Out / Doubtful or on a reserve list in the week's injury snapshot; for QBs, only the expected starter (the game model's QB resolver).
 
@@ -160,6 +188,10 @@ Counts are compared with the baseline's median (D65). All 11 targets beat their 
 
 Realistic bar (documentation/11): beating a good rolling average by 5–15% on player yardage is a solid result; usage counts (targets, carries) should improve most.
 
+**P08 targets on the scoreboard.** Probability targets and event counts add three columns, scored on `p_ge1` against the real "at least one" event: `brier_model` and `brier_baseline` (the average squared miss of the probability; 0 is perfect, and always guessing the base rate scores `rate × (1 − rate)`) and `calibration_ece` (how far, on average, the stated chances are from the real rates: when it says 30%, does it happen 30% of the time?). A probability target has no MAE, range or coverage (those columns stay empty).
+
+**The pre-registered ship rule** (documentation/plans/P08; `player_runs.ship_rule` computes it into every backtest summary as `ship_*` keys, and the lead decides): amounts and counts must beat the baseline's MAE pooled over 2019–2025, in at least 5 of 7 seasons, with 80% range coverage between 0.75 and 0.88; event counts must have a Brier of `p_ge1` below the baseline's pooled and in 5 of 7 seasons, an ECE no higher than max(0.02, the baseline's), and an MAE no worse than the baseline's by more than 0.5%; probability targets the same Brier and ECE conditions. Results: [player-p08 model card](../model_cards/player-p08.md).
+
 ## 8. Files it produces
 
 | File | What |
@@ -169,11 +201,12 @@ Realistic bar (documentation/11): beating a good rolling average by 5–15% on p
 | `runs/<season>/week<NN>/watchlist.parquet` | the picks as published (graded next week) |
 | `runs/<season>/accuracy_scoreboard.parquet` | the season's scoreboard (live + walk-forward rows) |
 | `runs/backtests/player/<target-key>/predictions_players.parquet`, `summary.json` | walk-forward backtest predictions (with actuals) and summary, e.g. `rec_yds-wrte` |
-| `runs/backtests/player/scoreboard.parquet` | backtest scoreboard rows |
+| `runs/backtests/player/scoreboard.parquet` | backtest scoreboard rows (parallel chains upsert it under a lock file) |
+| `runs/backtests/player/<key>_nomarket/` | the research variant without closing-line features (leakage rule 5); never read by the digest |
 | `models/player-model/<season>-w<NN>/` | the week's fitted boosters |
 | `runs/digest-backtests/<season>/week<NN>/predictions_players.parquet` | a backtest digest's copy of that week's backtest projections (outcomes blanked) |
 
-Key `PRED_SCHEMA` columns: `p10` / `p50` / `p90`, `mean`, `baseline`, `baseline_p50`, `baseline_source` (rolling / last_season / role), `outperformance`, `outperf_z`, `role_ok`, `role_change`, `injury_status`, `confidence`, `drivers` (feature, phrase, value, contribution), `model_version`, and `actual` / `played` once the game is played.
+Key `PRED_SCHEMA` columns: `p10` / `p50` / `p90` (empty for probability targets), `mean`, `p_ge1` / `p_ge2` (chances of at least 1 / 2: event counts and probability targets), `baseline`, `baseline_p_ge1`, `baseline_p50`, `baseline_source` (rolling / last_season / role), `outperformance`, `outperf_z`, `role_ok`, `role_change`, `injury_status`, `confidence`, `drivers` (feature, phrase, value, contribution), `model_version`, and `actual` / `played` once the game is played.
 
 ## 9. W&B runs
 
@@ -181,8 +214,8 @@ All in project `nfl-analytics-engine`, group **`track1-player`**, tagged with th
 
 | Job type | Command | What to look at |
 |---|---|---|
-| `backtest` (one run per target) | `nfl backtest player` | `bt/*` lines over the backtest weeks: weekly and cumulative MAE (model vs baseline), improvement %, range coverage; `lgb/curve_<season>` training curves (validation loss should flatten without a growing gap); tables `by_season`, `accuracy_scoreboard`, feature importance, the SHAP summary bar chart, the predictions |
-| `tune` | `nfl tune player` | the sweep's MAE per setting (2017–2018 walk-forward) |
+| `backtest` (one run per target) | `nfl backtest player` | `bt/*` lines over the backtest weeks: weekly and cumulative MAE (model vs baseline), improvement %, range coverage; `lgb/curve_<season>` training curves (validation loss should flatten without a growing gap); tables `by_season`, `accuracy_scoreboard`, feature importance, the SHAP summary bar chart, the predictions. Probability targets and event counts log Brier curves instead of (or next to) MAE (`bt/brier_*`, `bt/cum_brier_*`), a `brier_by_season` chart and a decile `reliability_diagram` (predicted chance vs how often it happened: the points should sit on the diagonal) |
+| `tune` | `nfl tune player` | the sweep's MAE per setting (2017–2018 walk-forward); probability targets: Brier (`tune/brier_model`), with their own grid (`TUNE_GRID_PROB`: smaller trees, bigger leaves, fewer rounds) |
 | `train` (weekly) | `nfl train player` / the weekly `player` step | `projections_main` table, biggest projected jumps, projections per model; artifact `player-model` (type `model`, the boosters, aliased by week; `production` with `--promote`) |
 | `eval` | `nfl scoreboard` / the weekly step | `scoreboard/*` curves per target over the season; the `accuracy_scoreboard` table |
 
@@ -192,7 +225,7 @@ The weekly `player` step writes every projection into Neo4j after the graph buil
 
 `(:Player)-[:HAS_PROJECTION]->(:PlayerProjection)-[:FOR_GAME]->(:Game)`
 
-One node per player × game × target × model version (key `player_id|game_id|rec_yds-wrte|player-model-v1:2026-w05`), with `p10`, `p50`, `p90`, `mean`, `baseline`, `baseline_p50`, `outperformance`, `outperf_z`, `confidence`, `top_drivers` and more. The write is idempotent (MERGE) and fail-soft: if Neo4j is down the step logs it and carries on. Examples for Neo4j Browser:
+One node per player × game × target × model version (key `player_id|game_id|rec_yds-wrte|player-model-v1:2026-w05`), with `p10`, `p50`, `p90`, `mean`, `p_ge1`, `p_ge2`, `baseline`, `baseline_p50`, `baseline_p_ge1` (the P08 ones only when set), `outperformance`, `outperf_z`, `confidence`, `top_drivers` and more. The write is idempotent (MERGE) and fail-soft: if Neo4j is down the step logs it and carries on. Examples for Neo4j Browser:
 
 ```cypher
 // this week's biggest projected jumps (main stats)
@@ -212,8 +245,8 @@ RETURN pp.week, pp.p50, pp.p10, pp.p90, q.name, t.season, t.targets ORDER BY pp.
 |---|---|
 | Build the feature table | `uv run nfl features player` |
 | Backtest one target (or `all`) | `uv run nfl backtest player --target rec_yds --seasons 2019-2025` (`--group WR/TE`, `--smoke` for a throwaway run) |
-| Tune | `uv run nfl tune player --target rec_yds` → copy the best settings into `player_model.per_target` |
-| Project a week | `uv run nfl train player --season 2026 --week 5` (prints the biggest projected jumps) |
+| Tune | `uv run nfl tune player --target rec_yds` → copy the best settings into `player_model.per_target` (P08 targets have defaults in `player_runs.TARGET_DEFAULTS`; `per_target` wins) |
+| Project a week | `uv run nfl train player --season 2026 --week 5` (prints the biggest projected jumps; refits `live_targets` only) |
 | Score a played week | `uv run nfl scoreboard --season 2026 --week 4` (the weekly step re-scores every earlier week by itself) |
 | The whole weekly cycle | `uv run nfl weekly run --season 2026 --week 5` (the `player` step: score week N−1, refit and project week N, write the graph) |
 | A digest from backtest projections | `uv run nfl digest --season 2025 --week 8 --backtest --llm placeholder --no-wandb` |
@@ -224,7 +257,9 @@ A 🧑 run passes `--launched-by rishi` (agents: `--launched-by agent`).
 
 - **A new feature:** add it in `features/player*.py` under a family prefix (it's picked up automatically), add a leakage test (a row may only see earlier games), and add its phrase to `features/descriptions.yaml` (no digits: a test enforces it; phrases name what the feature measures, the driver's sign and size come with it, and a phrase with a betting word is dropped by the digest).
 - **Model settings:** `config/settings.yaml` → `player_model` (global) and `per_target` (from a tuning sweep). Tune only on 2017–2018; re-run the backtests and compare on the scoreboard before shipping.
-- **A new target:** add a `Target` to `TARGETS` (column, kind, label, unit) and a pool if needed; backtest it; it reaches the digest only if it's the group's `main` target.
+- **A new target:** add a `Target` to `TARGETS` (column, kind, label, unit; `event_probs` for a count whose "at least one" matters, `phase`) and a pool if needed; backtest it (the summary ends with the ship rule); to ship it add its key to `player_model.live_targets`. It reaches the digest tables only through the P08 columns (TD chance, sack chance, passing TDs) or if it is the group's `main` target.
+- **A feature for one group only:** give it its own prefix and register the prefix in `player_model.GROUP_PREFIXES`; a feature under a shared prefix changes every model's feature set (and so every P06 projection).
+- **The calibration layer:** `player_model.calibration` (`platt` | `isotonic` | `none`) and `calibration_seasons` (3). Platt was chosen over isotonic on the 2017–2018 burn-in seasons only.
 - **The watch-list rule:** `models/player_watch.py`. Check any change on 2019–2020 with `watchlist_backtest`, then confirm on 2021–2025 without changing it again; report the hit rate next to the base rate.
 - **What the digest shows:** `digest/players.py` (items, notes, look-back, highlights), `digest/render.py` (tables), `digest/prompt/` (rules 21–22). New numbers go through `digest/format.py`.
 - **Never re-run a past live week** to "improve" it: the report card grades the projections saved before kickoff.
@@ -238,4 +273,4 @@ A 🧑 run passes `--launched-by rishi` (agents: `--launched-by agent`).
 - **Deep offensive picks can be small yardage.** The defensive list has a volume floor (§5); the offensive list doesn't, because low-yardage picks hit as often as the others. A pick like 13 projected receiving yards (a 3-yard baseline) can appear late in the Offense table.
 - Backtest rows only include games the player played, so a pick who sits out never appears there; live hit rates will run a little lower.
 - Pressures depend on PFR, which publishes about a week late: last week's pressures may not be scorable on Tuesday.
-- Not yet modelled (P08): touchdown, sack and interception chances, coverage stats for corners and safeties, team totals, and a consistency layer (receptions ≤ targets, receivers' yards ≈ QB yards).
+- Backtested in P08 ([card](../model_cards/player-p08.md)), live only once shipped: touchdown, sack and interception chances, coverage stats for corners and safeties, passing TDs and interceptions, QB rushing yards, QB hits. Still open: a consistency layer (receptions ≤ targets, receivers' yards ≈ QB yards), goal-line usage as a touchdown feature, a clean CB / safety split.

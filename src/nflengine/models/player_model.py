@@ -13,9 +13,21 @@ One model per target x position group (`player_schema.TARGETS`):
   `1 - tail` quantiles (whole numbers), with `tail` (0.10-0.25) picked on the same history
   so the range holds ~80% of outcomes: whole-number quantiles at exactly 0.1 / 0.9 cover
   more than 80% (the smoke run: 88% for tackles).
-- **Drivers:** LightGBM's built-in SHAP values (`pred_contrib`) of the P50 / Poisson model;
-  the top 3 by size, in target units (Poisson contributions are on the log scale and are
-  multiplied by the mean, a first-order conversion).
+- **Event probabilities** (P08, counts with `event_probs`: pass TDs, interceptions, sacks):
+  the negative binomial's `1 - NB.cdf(0)` at the model's mean and the fitted dispersion,
+  recalibrated like a probability target (Platt on its own earlier walk-forward values) =
+  `p_ge1`; `p_ge2 = 1 - NB.cdf(1)` (uncalibrated, capped at `p_ge1`). The baseline's `p_ge1` is
+  the same function at the baseline mean, so model and baseline differ only in the mean.
+- **Yes / no targets** (P08, kind `prob`: a touchdown, an interception, a pass defended): a
+  LightGBM binary model, then a **calibration layer** (Platt scaling by default, isotonic as
+  an option) fitted on the model's own earlier walk-forward raw probabilities (`history`,
+  the last `calibration_seasons` seasons), never in-sample. While the history is too thin
+  (`MIN_CAL_ROWS` rows / `MIN_CAL_EVENTS` events: the burn-in) the raw probability is used.
+  `mean` = `p_ge1` = the calibrated P(event); `p10` / `p50` / `p90` stay null.
+- **Drivers:** LightGBM's built-in SHAP values (`pred_contrib`) of the P50 / Poisson / binary
+  model; the top 3 by size, in target units (Poisson contributions are on the log scale and
+  are multiplied by the mean; binary ones are on the log-odds scale and are multiplied by
+  p (1 - p), both first-order conversions).
 
 Sample weights: current season / last season / older (D28, `training.sample_weights`).
 Hyperparameters come from `settings.yaml` `player_model` (tuned on 2017-2018 walk-forward,
@@ -33,11 +45,14 @@ import lightgbm as lgb
 import numpy as np
 import polars as pl
 from scipy import stats
+from scipy.special import expit, logit
 
 from nflengine.models.backtest import SampleWeights
 from nflengine.models.player_schema import Target
 
 FEATURE_PREFIXES = ("own_", "use_", "team_", "rip_", "avail_", "eff_", "opp_", "pos_")
+# feature families only some groups use: adding them to every target would change the P06 models
+GROUP_PREFIXES = {"CB/S": ("cvg_",)}
 EXTRA_FEATURES = ("week",)
 QUANTILES = (0.1, 0.5, 0.9)
 COVERAGE = 0.8
@@ -45,6 +60,10 @@ MIN_HISTORY = 300  # walk-forward rows needed before the range / dispersion come
 MAX_DISPERSION = 1e4  # r above this = Poisson
 TAILS = (0.10, 0.125, 0.15, 0.175, 0.20, 0.225, 0.25)  # count-range tail levels tried
 TOP_DRIVERS = 3
+CALIBRATIONS = ("none", "platt", "isotonic")
+MIN_CAL_ROWS = 1000  # walk-forward rows before a calibration layer is fitted (else raw)
+MIN_CAL_EVENTS = 40  # ... and events (and non-events)
+CAL_EPS = 1e-4  # calibrated probabilities stay inside [eps, 1 - eps]
 
 
 @dataclass(frozen=True)
@@ -60,7 +79,13 @@ class PlayerModelConfig:
     seed: int = 7
     num_threads: int = 4
     conformal_seasons: int = 2
+    calibration: str = "platt"  # prob targets: none | platt | isotonic
+    calibration_seasons: int = 3  # walk-forward seasons the calibration layer is fitted on
     weights: SampleWeights = field(default_factory=SampleWeights)
+
+    def __post_init__(self) -> None:
+        if self.calibration not in CALIBRATIONS:
+            raise ValueError(f"calibration must be one of {CALIBRATIONS}, not {self.calibration!r}")
 
     @classmethod
     def from_config(cls, cfg: Mapping[str, Any] | None = None, **overrides: Any):
@@ -97,9 +122,12 @@ class PlayerModelConfig:
         return d
 
 
-def feature_columns(frame: pl.DataFrame) -> list[str]:
-    """The model's features: every family column (prefixes) plus `week`, sorted."""
-    cols = [c for c in frame.columns if c.startswith(FEATURE_PREFIXES)]
+def feature_columns(frame: pl.DataFrame, target: Target | None = None) -> list[str]:
+    """The model's features: every family column (prefixes) plus `week`, sorted. A `target`
+    in a group with its own family (`GROUP_PREFIXES`: CB/S -> `cvg_`) adds that family; every
+    other target (and `None`) gets the shared families only."""
+    prefixes = FEATURE_PREFIXES + (GROUP_PREFIXES.get(target.group, ()) if target else ())
+    cols = [c for c in frame.columns if c.startswith(prefixes)]
     return sorted(cols) + [c for c in EXTRA_FEATURES if c in frame.columns]
 
 
@@ -159,6 +187,80 @@ def conformal_shift(
     return float(np.quantile(e, level))
 
 
+def count_cdf(k: int, mu: np.ndarray, r: float) -> np.ndarray:
+    """P(count <= k) under NB(mean mu, dispersion r), or Poisson for large r."""
+    mu = np.clip(np.asarray(mu, dtype=float), 1e-6, None)
+    if r >= MAX_DISPERSION:
+        return stats.poisson.cdf(k, mu)
+    return stats.nbinom.cdf(k, r, r / (r + mu))
+
+
+def event_probs(mu: np.ndarray, r: float) -> tuple[np.ndarray, np.ndarray]:
+    """(P(>= 1), P(>= 2)) of a count with mean `mu` and dispersion `r` (P08 event counts)."""
+    return 1.0 - count_cdf(0, mu, r), 1.0 - count_cdf(1, mu, r)
+
+
+@dataclass
+class Calibrator:
+    """A monotone map from a raw classifier probability to a calibrated one.
+
+    `platt`: `expit(slope * logit(p) + intercept)`; `isotonic`: a fitted step function;
+    `none`: the identity (burn-in, or too few events to fit on)."""
+
+    kind: str = "none"
+    slope: float = 1.0
+    intercept: float = 0.0
+    iso: Any = None
+    n: int = 0  # rows it was fitted on
+
+    def __call__(self, p: np.ndarray) -> np.ndarray:
+        p = np.clip(np.asarray(p, dtype=float), CAL_EPS, 1 - CAL_EPS)
+        if self.kind == "platt":
+            return np.clip(expit(self.slope * logit(p) + self.intercept), CAL_EPS, 1 - CAL_EPS)
+        if self.kind == "isotonic" and self.iso is not None:
+            return np.clip(self.iso.predict(p), CAL_EPS, 1 - CAL_EPS)
+        return p
+
+
+def _platt_fit(p: np.ndarray, y: np.ndarray) -> tuple[float, float]:
+    """Logistic regression of y on logit(p) (Newton steps; a tiny ridge keeps it stable)."""
+    x = np.column_stack([logit(np.clip(p, CAL_EPS, 1 - CAL_EPS)), np.ones(p.size)])
+    beta = np.array([1.0, 0.0])
+    for _ in range(50):
+        q = expit(x @ beta)
+        grad = x.T @ (y - q)
+        hess = (x * (q * (1 - q) + 1e-9)[:, None]).T @ x + 1e-6 * np.eye(2)
+        step = np.linalg.solve(hess, grad)
+        beta = beta + step
+        if np.abs(step).max() < 1e-8:
+            break
+    return float(beta[0]), float(beta[1])
+
+
+def fit_calibrator(p_raw: np.ndarray, y: np.ndarray, kind: str = "platt") -> Calibrator:
+    """Fit `kind` on earlier walk-forward raw probabilities `p_raw` and their 0/1 outcomes.
+    Returns the identity when there are too few rows or events (`MIN_CAL_ROWS`,
+    `MIN_CAL_EVENTS`): the burn-in uses raw probabilities, never an in-sample fit."""
+    ok = np.isfinite(p_raw) & np.isfinite(y)
+    p, y = p_raw[ok], y[ok]
+    events = float(y.sum())
+    if (
+        kind == "none"
+        or p.size < MIN_CAL_ROWS
+        or events < MIN_CAL_EVENTS
+        or p.size - events < MIN_CAL_EVENTS
+    ):
+        return Calibrator()
+    if kind == "platt":
+        a, b = _platt_fit(p, y)
+        return Calibrator("platt", slope=a, intercept=b, n=int(p.size))
+    from sklearn.isotonic import IsotonicRegression
+
+    iso = IsotonicRegression(y_min=CAL_EPS, y_max=1 - CAL_EPS, out_of_bounds="clip")
+    iso.fit(np.clip(p, CAL_EPS, 1 - CAL_EPS), y)
+    return Calibrator("isotonic", iso=iso, n=int(p.size))
+
+
 # ---- one fit ---------------------------------------------------------------------------------
 
 
@@ -166,13 +268,14 @@ def conformal_shift(
 class FittedPlayerModel:
     target: Target
     features: list[str]
-    boosters: dict[str, lgb.Booster]  # amounts: q10/q50/q90; counts: mean
+    boosters: dict[str, lgb.Booster]  # amounts: q10/q50/q90; counts and prob: mean
     scale: float  # typical baseline miss (z of outperformance)
     n_train: int
     trained_through: tuple[int, int] | None
     shift: float = 0.0  # conformal shift (amounts)
     dispersion: float = MAX_DISPERSION  # NB r (counts)
     tail: float = 0.10  # count-range tail level (P10 / P90 for an exact distribution)
+    calibrator: Calibrator = field(default_factory=Calibrator)  # prob targets
 
     def raw(self, frame: pl.DataFrame) -> dict[str, np.ndarray]:
         x = _x(frame, self.features)
@@ -188,6 +291,8 @@ class FittedPlayerModel:
 
     def predict(self, frame: pl.DataFrame) -> pl.DataFrame:
         r = self.raw(frame)
+        n = frame.height
+        nan = np.full(n, np.nan)
         if self.target.kind == "amount":
             p10 = np.minimum(r["p10_raw"] - self.shift, r["p50"])
             p90 = np.maximum(r["p90_raw"] + self.shift, r["p50"])
@@ -196,21 +301,51 @@ class FittedPlayerModel:
                 "p50": r["p50"],
                 "p90": p90,
                 "mean": r["p50"],
+                "p_ge1": nan,
+                "p_ge2": nan,
                 "_p10_raw": r["p10_raw"],
                 "_p90_raw": r["p90_raw"],
             }
+        elif self.target.kind == "prob":
+            p = self.calibrator(r["mean"])
+            cols = {
+                "p10": nan,
+                "p50": nan,
+                "p90": nan,
+                "mean": p,
+                "p_ge1": p,
+                "p_ge2": nan,
+                "_p_raw": r["mean"],
+            }
         else:
             q = count_quantiles(r["mean"], self.dispersion, (self.tail, 0.5, 1 - self.tail))
-            cols = {"p10": q[:, 0], "p50": q[:, 1], "p90": q[:, 2], "mean": r["mean"]}
+            raw1, raw2 = (
+                event_probs(r["mean"], self.dispersion) if self.target.event_probs else (nan, nan)
+            )
+            ge1 = self.calibrator(raw1) if self.target.event_probs else nan
+            cols = {
+                "p10": q[:, 0],
+                "p50": q[:, 1],
+                "p90": q[:, 2],
+                "mean": r["mean"],
+                "p_ge1": ge1,
+                "p_ge2": np.minimum(raw2, ge1),  # never above P(>= 1) once that is recalibrated
+                "_p_raw": raw1,  # the negative binomial's own P(>= 1), what the layer is fitted on
+            }
         return pl.DataFrame({k: np.asarray(v, dtype=float) for k, v in cols.items()})
 
     def contributions(self, frame: pl.DataFrame) -> np.ndarray:
-        """SHAP values (rows x features) in target units (no bias column)."""
+        """SHAP values (rows x features) in target units (no bias column): counts are
+        multiplied by the mean (log scale -> counts), probability targets by p (1 - p)
+        (log-odds -> probability), both first-order conversions."""
         main = self.boosters["q50" if self.target.kind == "amount" else "mean"]
-        c = main.predict(_x(frame, self.features), pred_contrib=True)[:, :-1]
+        x = _x(frame, self.features)
+        c = main.predict(x, pred_contrib=True)[:, :-1]
         if self.target.kind == "count":
-            mu = main.predict(_x(frame, self.features))
-            c = c * mu[:, None]
+            c = c * main.predict(x)[:, None]
+        elif self.target.kind == "prob":
+            p = self.calibrator(main.predict(x))
+            c = c * (p * (1 - p))[:, None]
         return c
 
 
@@ -267,6 +402,8 @@ def fit_player_model(
         for q in (0.5,) if main_only else QUANTILES:
             k = f"q{int(q * 100):02d}"
             boosters[k] = train_one(config.lgb_params("quantile", q), k)
+    elif target.kind == "prob":
+        boosters["mean"] = train_one(config.lgb_params("binary"), "mean")
     else:
         boosters["mean"] = train_one(config.lgb_params("poisson"), "mean")
     tt = None
@@ -275,6 +412,17 @@ def fit_player_model(
         tt = (int(last["season"]), int(last["week"]))
     fit = FittedPlayerModel(target, feats, boosters, _scale(train), train.height, tt)
 
+    if target.kind == "prob":
+        # calibration on the model's own earlier walk-forward raw probabilities; none in the
+        # burn-in (never fitted on the training rows themselves)
+        h = _recent_history(history, train, config.calibration_seasons, "_p_raw", MIN_CAL_ROWS)
+        if h is not None:
+            fit.calibrator = fit_calibrator(
+                h["_p_raw"].to_numpy().astype(float),
+                h["y"].to_numpy().astype(float),
+                config.calibration,
+            )
+        return fit
     h = _recent_history(history, train, config.conformal_seasons)
     if target.kind == "amount":
         if h is not None:
@@ -288,6 +436,18 @@ def fit_player_model(
             fit.tail = count_tail(hy, hm, fit.dispersion)
         else:  # in-sample fallback for the first weeks (burn-in only)
             fit.dispersion = nb_dispersion(y, boosters["mean"].predict(x))
+        if target.event_probs:
+            # the count distribution fitted for the mean, median and range isn't exactly right
+            # about zero (passing TDs 0.75 predicted vs 0.78 seen: a QB's TD count is more
+            # regular than a Poisson; sacks 0.155 vs 0.167), so P(>= 1) is recalibrated on its
+            # own earlier walk-forward values; identity in the burn-in
+            hc = _recent_history(history, train, config.calibration_seasons, "_p_raw", MIN_CAL_ROWS)
+            if hc is not None:
+                fit.calibrator = fit_calibrator(
+                    hc["_p_raw"].to_numpy().astype(float),
+                    (hc["y"].to_numpy().astype(float) >= target.event_min).astype(float),
+                    config.calibration,
+                )
     return fit
 
 
@@ -309,15 +469,26 @@ def count_tail(y: np.ndarray, mu: np.ndarray, r: float, coverage: float = COVERA
 
 
 def _recent_history(
-    history: pl.DataFrame | None, train: pl.DataFrame, seasons: int
+    history: pl.DataFrame | None,
+    train: pl.DataFrame,
+    seasons: int,
+    need: str | None = None,
+    min_rows: int = MIN_HISTORY,
 ) -> pl.DataFrame | None:
+    """The last `seasons` seasons of earlier walk-forward predictions that have an outcome
+    (and the column `need`, when given); None when there are fewer than `min_rows`."""
     if history is None or history.is_empty() or "y" not in history.columns:
+        return None
+    if need is not None and need not in history.columns:
         return None
     if not train.height:
         return None
     first = int(train["season"].max()) - seasons + 1
-    h = history.filter(pl.col("y").is_not_null() & (pl.col("season") >= first))
-    return h if h.height >= MIN_HISTORY else None
+    keep = pl.col("y").is_not_null() & (pl.col("season") >= first)
+    if need is not None:
+        keep = keep & pl.col(need).is_not_null()
+    h = history.filter(keep)
+    return h if h.height >= min_rows else None
 
 
 # ---- harness model ---------------------------------------------------------------------------
@@ -366,13 +537,14 @@ class PlayerWeekModel:
             "baseline",
             pl.col("y"),
         ).hstack(pred)
-        out = out.with_columns(baseline_p50(out["baseline"], self.target, fit.dispersion))
+        out = out.with_columns(
+            baseline_p50(out["baseline"], self.target, fit.dispersion),
+            baseline_p_ge1(out["baseline"], self.target, fit.dispersion, fit.calibrator),
+        )
         out = out.with_columns(
             pl.lit(fit.scale).alias("scale"),
             pl.lit(fit.n_train).cast(pl.Int32).alias("n_train"),
-            pl.lit(fit.shift if self.target.kind == "amount" else fit.dispersion).alias(
-                "range_param"
-            ),
+            pl.lit(self._range_param(fit), dtype=pl.Float64).alias("range_param"),
             pl.lit(fit.tail if self.target.kind == "count" else None, dtype=pl.Float64).alias(
                 "range_tail"
             ),
@@ -381,20 +553,55 @@ class PlayerWeekModel:
             out = out.with_columns(pl.Series("_contrib", list(fit.contributions(test))))
         return out
 
+    def _range_param(self, fit: FittedPlayerModel) -> float | None:
+        """What the run logs as `bt/range_param`: the conformal shift (amounts), the NB
+        dispersion (counts), the Platt slope (prob; 1 = no recalibration, null for the
+        identity and isotonic)."""
+        if self.target.kind == "amount":
+            return fit.shift
+        if self.target.kind == "prob":
+            return fit.calibrator.slope if fit.calibrator.kind == "platt" else None
+        return fit.dispersion
+
 
 def baseline_p50(baseline: pl.Series, target: Target, dispersion: float) -> pl.Series:
     """The baseline as the same kind of projection as P50 (D65): a count's P50 is a
     negative-binomial median, and a median beats any mean on MAE for skewed, zero-heavy
     counts (pressures: 16% "better" than the rolling mean, 3% better than its median), so
-    counts are scored against the median at the baseline mean, with the same dispersion."""
+    counts are scored against the median at the baseline mean, with the same dispersion.
+    A probability target has no P50: null."""
     if target.kind == "amount":
         return baseline.alias("baseline_p50")
+    if target.kind == "prob":
+        return pl.Series("baseline_p50", np.full(baseline.len(), np.nan)).fill_nan(None)
     b = baseline.to_numpy().astype(float)
     ok = np.isfinite(b)
     med = np.full(b.shape, np.nan)
     if ok.any():
         med[ok] = count_quantiles(np.clip(b[ok], 1e-6, None), dispersion, (0.5,))[:, 0]
     return pl.Series("baseline_p50", med, dtype=pl.Float64).fill_nan(None)
+
+
+def baseline_p_ge1(
+    baseline: pl.Series,
+    target: Target,
+    dispersion: float,
+    calibrator: Calibrator | None = None,
+) -> pl.Series:
+    """The baseline's P(event), the bar Brier is scored against (P08): an event count's
+    P(>= 1) from the negative binomial at the baseline mean, through the same dispersion and
+    calibration layer as the model's (so the model and its baseline differ only in the mean);
+    a probability target's baseline already is the player's rolling rate of the 0/1 label.
+    Null for the other targets."""
+    b = baseline.to_numpy().astype(float)
+    out = np.full(b.shape, np.nan)
+    ok = np.isfinite(b)
+    if target.kind == "prob":
+        out[ok] = np.clip(b[ok], 0.0, 1.0)
+    elif target.kind == "count" and target.event_probs and ok.any():
+        p = event_probs(np.clip(b[ok], 1e-6, None), dispersion)[0]
+        out[ok] = calibrator(p) if calibrator is not None else p
+    return pl.Series("baseline_p_ge1", out, dtype=pl.Float64).fill_nan(None)
 
 
 def top_drivers(

@@ -47,6 +47,8 @@ uv run nfl backtest game --variant model-only --seasons 2018-2025   # walk-forwa
 uv run nfl backtest game --variant market --seasons 2018-2025
 uv run nfl backtest game-weights   # W&B sweep over the current-season sample weight (P03)
 uv run nfl train game --season 2026 --week N   # weekly fit -> runs/<season>/week<NN>/predictions_games.parquet (P03)
+uv run nfl tune game                            # game model v1: W&B grid sweep scored on 2013-2017 only (P08)
+uv run nfl backtest game --version v1 --variant model-only   # v1 (LightGBM) vs v0 on the same games (P08; not promoted, D79)
 
 uv run nfl features player          # features/player_features: one row per player-game, as of its week (P06)
 uv run nfl backtest player --target rec_yds   # walk-forward 2019-2025 vs the rolling baseline, live W&B (P06)
@@ -54,6 +56,11 @@ uv run nfl backtest player --target all       # every target x position group (1
 uv run nfl tune player --target rec_yds       # W&B grid sweep, scored on 2017-2018 only (P06)
 uv run nfl train player --season 2026 --week N   # weekly refit -> runs/<season>/week<NN>/predictions_players.parquet
 uv run nfl scoreboard --season 2026 --week N     # score a played week's projections -> accuracy scoreboard
+uv run nfl backtest player --target td --group RB   # P08 targets too (TDs, INTs, sacks, CB/S coverage ...)
+uv run nfl backtest team --target all            # team stat totals vs their baselines (P08)
+uv run nfl tune team --target pass_yds           # team grid, scored on 2017-2018 only (P08)
+uv run nfl train team --season 2026 --week N     # shipped team targets -> predictions_teams.parquet (the weekly player step does this)
+uv run nfl consistency                           # receptions vs targets, receivers vs QB vs team yards on the backtests (P08)
 
 uv run nfl weekly run --auto                    # THE weekly command (P07): calendar picks the week; exit 3 = not ready yet
 uv run nfl weekly run --auto --dry-run          # show the calendar plan, run nothing

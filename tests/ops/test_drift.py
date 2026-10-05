@@ -640,3 +640,56 @@ def test_count_episodes():
     assert drift.count_episodes([]) == 0
     assert drift.count_episodes([7, 8, 9, 12, 13, 17]) == 3
     assert drift.count_episodes([9, 7, 8]) == 1
+
+
+# ---- P08: the chances (Sol review) --------------------------------------------------------------
+
+
+def prob_rows(season: int, weeks: range, group: str, model: float, base: float) -> list[dict]:
+    """A probability target's scoreboard rows: Brier only, MAE null (P08)."""
+    return [
+        {
+            "season": season,
+            "week": w,
+            "target": "td",
+            "position_group": group,
+            "n_scored": 300,
+            "mae_model": None,
+            "mae_baseline": None,
+            "brier_model": model,
+            "brier_baseline": base,
+            "mode": "backtest",
+        }
+        for w in weeks
+    ]
+
+
+def test_probability_targets_get_their_own_brier_signal(tmp_path):
+    games = save_preds(tmp_path, 2026, range(1, 9), 8, p_model=0.6, p_elo=0.6)
+    qb = [
+        {**r, "brier_model": None, "brier_baseline": None}
+        for r in sb_rows(2026, range(1, 9), "QB", 9, 10)
+    ]
+    cbs_rows = prob_rows(2026, range(1, 9), "CB/S", 0.08, 0.07)
+    rb_rows = prob_rows(2026, range(1, 9), "RB", 0.15, 0.17)
+    sb = pl.DataFrame([*qb, *cbs_rows, *rb_rows])
+    got = by_name(
+        drift.evaluate_drift(2026, 9, run_root=tmp_path, games=games, scoreboard=sb, cfg=CFG)
+    )
+    # the MAE signal never sees MAE-less rows: QB healthy, no CB/S MAE signal at all
+    assert got["player_vs_baseline", "QB"].status == "ok"
+    assert ("player_vs_baseline", "CB/S") not in got
+    # the Brier twin: CB/S chances behind the rolling rate in 3 windows in a row -> alert
+    cbs = got["player_prob_vs_baseline", "CB/S"]
+    assert cbs.status == "alert" and cbs.value < 0 and "Brier score on its chances" in cbs.detail
+    assert got["player_prob_vs_baseline", "RB"].status == "ok"
+    titles = [a.title for a in drift.drift_alerts(list(got.values()), 2026, 9, cfg=CFG)]
+    assert any("CB/S chances" in t for t in titles)
+
+
+def test_brier_scoreboard_needs_the_columns():
+    sb = scoreboard(sb_rows(2026, range(1, 5), "QB", 9, 10))  # a P06-era file: no Brier columns
+    assert drift.prepare_scoreboard(sb, 2026, 5, "brier").is_empty()
+    assert drift.improvement_pct(
+        pl.DataFrame(prob_rows(2026, range(1, 3), "RB", 0.15, 0.20)), "brier"
+    ) == pytest.approx(25.0)

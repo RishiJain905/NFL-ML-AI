@@ -14,8 +14,10 @@ Turns query-library rows into digest items and picks the week's few:
    skipped (novelty); a player is the subject of one item at most.
 4. **Pick**: the top 1 for *Matchup / risk to watch* (injury ripple, QB change; a trend
    mismatch if neither exists), the top 1-2 for *Non-obvious insights* (revenge, common
-   opponents, trend mismatch, coach reunion, unit mismatch, special teams), from different
-   games, preferring two different kinds. QB changes rank at `QB_RISK_WEIGHT` of their
+   opponents, trend mismatch, coach reunion, unit mismatch, special teams, and from P08
+   former teammates, style matchups, officiating crews, the coaching tree and the GDS
+   stories: a passing-network hub out, a usage comparison), from different games,
+   preferring two different kinds. QB changes rank at `QB_RISK_WEIGHT` of their
    strength for the prose slot: every QB change is already flagged in the game table, so a
    strong non-QB story should win the section (Rishi, after P05).
 5. **More from the graph**: the strong stories that didn't fit the two prose sections
@@ -59,6 +61,14 @@ SECTION_TYPES = {
         "coach_reunion",
         "unit_mismatch",
         "special_teams",
+        # P08 (graph/insights_advanced.py)
+        "former_teammates",
+        "style_matchup",
+        "play_action",
+        "officiating",
+        "coaching_tree",
+        "network_hub",
+        "usage_comp",
     ),
 }
 QUERY_OF = {
@@ -70,11 +80,25 @@ QUERY_OF = {
     "coach_reunion": "q5_coach_reunion",
     "unit_mismatch": "q11_unit_mismatch",
     "special_teams": "q12_special_teams",
+    "former_teammates": "q6_former_teammates",
+    "style_matchup": "q7_style_matchup",
+    "play_action": "q7_play_action",
+    "officiating": "q9_officiating",
+    "coaching_tree": "q5_coaching_tree",
+    "network_hub": "q10_network_hub",
+    "usage_comp": "q10_usage_comp",
 }
 # library queries whose rows are data for code-written digest parts, not insights
 DATA_QUERIES = ("q0_starters_out",)
 # people roles that make a player the subject of an item (used once per digest)
-SUBJECT_ROLES = ("out", "former player", "expected starter", "head coach")
+SUBJECT_ROLES = (
+    "out",
+    "former player",
+    "expected starter",
+    "head coach",
+    "former teammate",  # P08 Q6: the QB and the receiver
+    "usage comparison",  # P08 Q10: the player whose usage is compared
+)
 
 
 @dataclass
@@ -514,6 +538,10 @@ CONVERTERS: dict[str, Callable[[dict[str, Any], int], GraphInsight | None]] = {
 from nflengine.graph.insights_extra import CONVERTERS as _EXTRA_CONVERTERS  # noqa: E402
 
 CONVERTERS.update(_EXTRA_CONVERTERS)
+# the P08 queries (former teammates, style matchups, officiating, coaching tree, GDS)
+from nflengine.graph.insights_advanced import CONVERTERS as _ADVANCED_CONVERTERS  # noqa: E402
+
+CONVERTERS.update(_ADVANCED_CONVERTERS)
 
 
 # ---- candidates and selection --------------------------------------------------------------------
@@ -523,8 +551,13 @@ def candidates(
     results: dict[str, list[dict[str, Any]]],
     season: int,
     games: dict[str, GameInfo] | None = None,
+    errors: dict[str, str] | None = None,
 ) -> list[GraphInsight]:
-    """Every query row as a payload item (with its code-made matchup when the game is known)."""
+    """Every query row as a payload item (with its code-made matchup when the game is known).
+
+    A row a converter can't turn into an item (an unexpected null, a new edge case) is
+    skipped and its query named in `errors` (type name only): one odd row must never take
+    the whole graph, and so every graph section of the digest, down with it (P08)."""
     games = games or {}
     out: list[GraphInsight] = []
     for name, rows in results.items():
@@ -532,7 +565,12 @@ def candidates(
         if conv is None:
             continue
         for r in rows:
-            ins = conv(r, season)
+            try:
+                ins = conv(r, season)
+            except Exception as e:  # noqa: BLE001
+                if errors is not None:
+                    errors.setdefault(name, type(e).__name__)
+                continue
             if ins is None:
                 continue
             g = games.get(ins.game_id)

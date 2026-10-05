@@ -6,6 +6,8 @@
 
 **Code:** `features/player_data.py` (history), `features/player.py` (rows, `own_*` / `use_*` / `team_*` / `rip_*` / `avail_*`, baselines), `features/player_efficiency.py` (`eff_*`), `features/player_opponent.py` (`opp_*`), `models/player_model.py` (the LightGBM models, ranges, SHAP), `models/player_schema.py` (targets and pools), `models/player_runs.py` (backtest, tuning, weekly fit, scoreboard) · **Tables:** `features/player_features.parquet` (`nfl features player`), `runs/backtests/player/<target>-<group>/` (`nfl backtest player`), `runs/<season>/week<NN>/predictions_players.parquet` (`nfl train player`)
 
+**P08 additions (not covered below):** passing TDs and interceptions as event counts (chance of at least 1 and 2) and rushing yards, in the [P08 targets card](player-p08.md): TDs +3.4% MAE and +5.5% Brier over the baseline (the team's market-implied points is the top driver), interceptions +5.5% MAE but a chance only 0.8% better than the base rate, rushing yards +2.0%.
+
 ## What it is
 
 Two models for the quarterback who is expected to start a game, one per number:

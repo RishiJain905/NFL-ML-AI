@@ -25,6 +25,19 @@ plus the live-run rules of `features.qb.live_starters`:
   weeks < W).
 - **Expected QBs** (week-W Game nodes): the Tuesday rule from `game_features`; a live run
   adds `live_starters` (schedule, depth chart, injury report at T).
+- **Officials (P08):** crews of completed games strictly before (S, W). Week-W crews only
+  in a live run and only if the snapshot has them (nflverse publishes a crew after its
+  game, weeks late: on 2026-10-04 the table had 2026 week 1 only); a backtest never sees a
+  week-W crew, because no Tuesday run could have.
+- **FTN play action (P08, `PLAYED_IN.pa_rate`):** plays strictly before (S, W); a backtest
+  also drops week W-1 of S (FTN is about a week late on a Tuesday, like PFR).
+- **QB style (P08, `APPEARED_IN.scrambles` / `air_yards` / `air_att`) and usage profiles
+  (P08, `UsageProfile`):** visible plays only (strictly before (S, W)); profiles are
+  regular season.
+- **Coaching seed (P08, optional `config/coaching_seed.csv`):** rows with season <= S
+  (a staff is known before its season starts).
+- **GDS results (P08, `PASS_CENTRALITY`, `SIMILAR_TO`):** computed in Neo4j from the
+  loaded, already as-of relationships (`graph/gds.py`), so they inherit these rules.
 
 Relationship frames have columns `s` (start key), `e` (end key) and the properties.
 """
@@ -60,6 +73,7 @@ NODE_KEYS = {
     "TeamWeek": "key",
     "GamePrediction": "key",
     "PublishedInsight": "key",
+    "UsageProfile": "key",
 }
 # relationship type -> (start label, end label)
 REL_ENDS = {
@@ -78,6 +92,10 @@ REL_ENDS = {
     "HAS_WEEK": ("Team", "TeamWeek"),
     "NEXT": ("TeamWeek", "TeamWeek"),
     "HAS_PREDICTION": ("Game", "GamePrediction"),
+    # P08: the optional coaching seed and the usage profiles behind player similarity
+    "COORDINATOR_OF": ("Coach", "Team"),
+    "WORKED_UNDER": ("Coach", "Coach"),
+    "HAS_PROFILE": ("Player", "UsageProfile"),
 }
 # write order (plan P05): nodes, then relationships
 NODE_ORDER = (
@@ -90,6 +108,7 @@ NODE_ORDER = (
     "TeamWeek",
     "GamePrediction",
     "PublishedInsight",
+    "UsageProfile",
 )
 REL_ORDER = tuple(REL_ENDS)
 
@@ -223,6 +242,10 @@ class GraphInputs:
     team_weeks: pl.DataFrame
     predictions: pl.DataFrame
     published: pl.DataFrame
+    # P08: FTN charting (game_id, play_id, season, week, is_play_action) and the optional
+    # hand-made coaching seed (graph/tables_extra.py)
+    ftn: pl.DataFrame = field(default_factory=pl.DataFrame)
+    coaching_seed: pl.DataFrame = field(default_factory=pl.DataFrame)
 
 
 PLAY_COLS = [
@@ -250,6 +273,11 @@ PLAY_COLS = [
     "receiver_player_id",
     "passer_id",
     "qb_epa",
+    # P08: QB style and usage profiles (graph/tables_extra.py)
+    "air_yards",
+    "yardline_100",
+    "rusher_player_id",
+    "rushing_yards",
 ]
 
 
@@ -259,10 +287,13 @@ def load_inputs(
     *,
     predictions_path: Path | None = None,
     published_path: Path | None = None,
+    coaching_seed_path: Path | None = None,
     log: Callable[[str], None] = print,
 ) -> GraphInputs:
-    """Read every curated table the graph needs, restricted to the key's window."""
+    """Read every curated table the graph needs, restricted to the key's window (plus the
+    optional coaching seed, `config/coaching_seed.csv` unless `coaching_seed_path`)."""
     from nflengine.features.venues import game_travel, load_venues
+    from nflengine.graph.tables_extra import read_coaching_seed
 
     games_all = pl.read_parquet(paths.curated / "games.parquet")
     games = games_all.filter(
@@ -323,6 +354,27 @@ def load_inputs(
             if published_path is not None and published_path.exists()
             else pl.DataFrame()
         ),
+        ftn=ftn_inputs(paths, key),
+        coaching_seed=read_coaching_seed(coaching_seed_path, log=log),
+    )
+
+
+def ftn_inputs(paths: DataPaths, key: GraphKey) -> pl.DataFrame:
+    """FTN play-action flags per play in the graph's seasons (the as-of rules are applied by
+    `tables_extra.visible_ftn`)."""
+    lf = _scan(paths, "ftn_plays")
+    if lf is None:
+        return pl.DataFrame()
+    return (
+        lf.filter(pl.col("season").is_between(key.start_season, key.season))
+        .select(
+            pl.col("nflverse_game_id").alias("game_id"),
+            pl.col("nflverse_play_id").cast(pl.Float64).alias("play_id"),
+            pl.col("season").cast(pl.Int32),
+            pl.col("week").cast(pl.Int32),
+            "is_play_action",
+        )
+        .collect()
     )
 
 
@@ -946,15 +998,18 @@ def threw_to(inp: GraphInputs, key: GraphKey) -> pl.DataFrame:
 
 def officiated(inp: GraphInputs, key: GraphKey) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Official nodes + OFFICIATED (role). `officials.game_id` is the old GSIS-style id:
-    it maps to `games.old_game_id`."""
+    it maps to `games.old_game_id`. Crews of completed games before the key; a live run also
+    takes week-W crews when the snapshot has them (P08, Q9), a backtest never does: nflverse
+    publishes a crew after the game, so no Tuesday run could have known it."""
     o = inp.officials
     if o.is_empty():
         return pl.DataFrame(schema={"official_id": pl.String, "name": pl.String}), pl.DataFrame(
             schema={"s": pl.String, "e": pl.String, "role": pl.String}
         )
-    gmap = inp.games.filter(key.before() & pl.col("completed").fill_null(False)).select(
-        pl.col("old_game_id").alias("ogid"), "game_id"
-    )
+    seen = key.before() & pl.col("completed").fill_null(False)
+    if key.mode == "live":
+        seen = seen | ((pl.col("season") == key.season) & (pl.col("week") == key.week))
+    gmap = inp.games.filter(seen).select(pl.col("old_game_id").alias("ogid"), "game_id")
     rows = (
         o.filter(pl.col("official_id").is_not_null())
         .rename({"game_id": "ogid"})
@@ -1174,11 +1229,16 @@ def published_nodes(inp: GraphInputs, key: GraphKey) -> pl.DataFrame:
 
 def build_tables(inp: GraphInputs, key: GraphKey) -> GraphTables:
     """All node and relationship frames for one as-of key (pure: no Neo4j)."""
+    from nflengine.graph import tables_extra as X
+
     gt = GraphTables(key)
     teams = team_nodes(inp)
     games = game_nodes(inp, key)
     starters = qb_game_stats(inp, key)
     appear = appeared_in(inp, key, starters)
+    style = X.qb_style_stats(inp.plays)
+    if style.height:
+        appear = appear.join(style.rename({"pid": "s", "game_id": "e"}), on=["s", "e"], how="left")
     pf = played_for(inp, key, appear)
     thr = threw_to(inp, key)
     inj = injury_reports(inp, key)
@@ -1201,6 +1261,16 @@ def build_tables(inp: GraphInputs, key: GraphKey) -> GraphTables:
         ]
     )
     players = player_nodes(inp, person_ids, scramble_rates(inp.plays), key)
+    profiles, has_profile = X.usage_profiles(inp, key, players)
+    seed_coaches, coord, under = X.coaching_seed_frames(inp, key, hc)
+    if seed_coaches.height:
+        coaches = pl.concat(
+            [coaches, seed_coaches.join(coaches.select("coach_id"), on="coach_id", how="anti")]
+        ).sort("coach_id")
+    played = played_in(inp, key)
+    pa = X.play_action_rates(inp, key)
+    if pa.height:
+        played = played.join(pa.rename({"team_id": "s", "game_id": "e"}), on=["s", "e"], how="left")
     venues = venue_nodes(inp, games)
     at = _ends(
         inp.venues.join(games.select("game_id"), on="game_id").filter(
@@ -1220,13 +1290,14 @@ def build_tables(inp: GraphInputs, key: GraphKey) -> GraphTables:
         "TeamWeek": tw,
         "GamePrediction": preds,
         "PublishedInsight": published_nodes(inp, key),
+        "UsageProfile": profiles,
     }
     keys = {label: df[NODE_KEYS[label]] for label, df in gt.nodes.items() if df.height}
     empty = pl.Series("k", [], pl.String)
     raw = {
         "PLAYED_FOR": pf,
         "APPEARED_IN": appear,
-        "PLAYED_IN": played_in(inp, key),
+        "PLAYED_IN": played,
         "AT": at,
         "HEAD_COACH_OF": hc,
         "COACHED_IN": ci,
@@ -1239,6 +1310,9 @@ def build_tables(inp: GraphInputs, key: GraphKey) -> GraphTables:
         "HAS_WEEK": has_week,
         "NEXT": nxt,
         "HAS_PREDICTION": has_pred,
+        "COORDINATOR_OF": coord,
+        "WORKED_UNDER": under,
+        "HAS_PROFILE": has_profile,
     }
     for name, df in raw.items():
         start, end = REL_ENDS[name]

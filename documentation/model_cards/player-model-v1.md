@@ -1,6 +1,6 @@
 # Model card: player model v1 (P06)
 
-The overview card for all 11 player models. Per-family details (pools, settings, top drivers, football sense checks): [QB](player-qb.md) · [RB](player-rb.md) · [WR/TE](player-wrte.md) · [defense: EDGE/DL + LB/S](player-defense.md). A plain-language walkthrough of how projections reach the digest: [player projections guide](../guides/player-projections.md). Decisions: D64–D69.
+The overview card for the 11 P06 player models (P08 added twelve more targets: touchdown, sack and interception chances, QB TDs, coverage for defensive backs; see [player-p08](player-p08.md)). Per-family details (pools, settings, top drivers, football sense checks): [QB](player-qb.md) · [RB](player-rb.md) · [WR/TE](player-wrte.md) · [defense: EDGE/DL + LB/S](player-defense.md). A plain-language walkthrough of how projections reach the digest: [player projections guide](../guides/player-projections.md). Decisions: D64–D69.
 
 ## What it is
 

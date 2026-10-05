@@ -199,6 +199,11 @@ PLAYS_SCHEMA = {
     "receiver_player_id": S,
     "passer_id": S,
     "qb_epa": F,
+    # P08: QB style and usage profiles (null unless a test sets them)
+    "air_yards": F,
+    "yardline_100": F,
+    "rusher_player_id": S,
+    "rushing_yards": F,
 }
 TEAM_GAMES_SCHEMA = {"game_id": S, "team": S, "penalties": F, "penalty_yards": F}
 OFFICIALS_SCHEMA = {"game_id": S, "official_id": I64, "official_name": S, "position": S}
@@ -1017,10 +1022,12 @@ class FakeDriver:
 
     def __init__(self, respond=None, fail: Exception | None = None) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.session_configs: list[dict[str, Any]] = []
         self.respond = respond or (lambda query, params: [])
         self.fail = fail
 
-    def session(self) -> FakeSession:
+    def session(self, **config: Any) -> FakeSession:
+        self.session_configs.append(config)
         if self.fail is not None:
             raise self.fail
         return FakeSession(self)

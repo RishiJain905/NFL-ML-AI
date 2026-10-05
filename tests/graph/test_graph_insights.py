@@ -958,7 +958,12 @@ def test_a_player_is_the_subject_of_one_item_at_most() -> None:
 
 
 def test_subject_roles_are_out_former_player_expected_starter_and_head_coach() -> None:
-    assert gi.SUBJECT_ROLES == ("out", "former player", "expected starter", "head coach")
+    assert gi.SUBJECT_ROLES[:4] == ("out", "former player", "expected starter", "head coach")
+    # P08: Q6's QB and receiver, Q10's compared player (facts.py keeps the same list)
+    assert gi.SUBJECT_ROLES[4:] == ("former teammate", "usage comparison")
+    from nflengine.digest.facts import GRAPH_SUBJECT_ROLES
+
+    assert GRAPH_SUBJECT_ROLES == gi.SUBJECT_ROLES
     cands = [
         mk("qb", "qb_change", 0.9, "g1", people=(("Q", "expected starter"), ("W", "receiver"))),
         mk("rev-q", "revenge", 0.8, "g2", people=(("Q", "former player"),)),

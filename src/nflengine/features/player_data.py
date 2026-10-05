@@ -22,6 +22,9 @@ Conventions:
   attempts, then id). Only main-QB games are QB targets.
 - **Pressures** come from PFR (2018+); a defender who played with no PFR row had none,
   but a team-game PFR hasn't published yet stays null (not scorable yet).
+- **P08 labels:** `any_td` (a rushing or receiving TD), `def_int_any` (an interception),
+  `pd_any` (a pass defended), all 0.0 / 1.0, and `pfr_completions_allowed` (PFR coverage:
+  zero-filled like the other PFR columns, null for a team-game PFR hasn't published).
 - **One row per (player, week):** rows without a player id are dropped, and a traded
   player listed by both teams in one week keeps the row where he played the most snaps.
 - `games.kickoff_utc` is converted to UTC (DuckDB returns it in the machine's time zone).
@@ -532,12 +535,21 @@ def player_history(inp: PlayerInputs) -> pl.DataFrame:
         "def_missed_tackles": "pfr_missed_tackles",
         "def_tackles_combined": "pfr_tackles",
         "def_targets": "pfr_targets_allowed",
+        "def_completions_allowed": "pfr_completions_allowed",
         "def_yards_allowed": "pfr_yards_allowed",
     }
+    have = {c: n for c, n in pfr_cols.items() if c in pfr.columns}  # an older table may lack one
     pfr_rows = (
         pfr.group_by(pl.col("gsis_id").alias("player_id"), "game_id")
-        .agg([pl.col(c).sum().alias(n) for c, n in pfr_cols.items()])
-        .with_columns(pl.lit(True).alias("_pfr_row"))
+        .agg([pl.col(c).sum().alias(n) for c, n in have.items()])
+        .with_columns(
+            pl.lit(True).alias("_pfr_row"),
+            *[
+                pl.lit(None, dtype=pl.Float64).alias(n)
+                for c, n in pfr_cols.items()
+                if c not in have
+            ],
+        )
     )
     pfr_games = pfr.select("game_id", "team").unique().with_columns(pl.lit(True).alias("_pfr_game"))
     h = h.join(pfr_rows, on=["player_id", "game_id"], how="left").join(
@@ -545,7 +557,7 @@ def player_history(inp: PlayerInputs) -> pl.DataFrame:
     )
     zero_if_game = [
         pl.when(pl.col("_pfr_game")).then(pl.col(n).fill_null(0)).otherwise(pl.col(n)).alias(n)
-        for n in pfr_cols.values()
+        for n in have.values()  # a column the table lacks stays null, not a made-up zero
     ]
     h = h.with_columns(zero_if_game)
 
@@ -597,6 +609,11 @@ def player_history(inp: PlayerInputs) -> pl.DataFrame:
         .alias("played_def"),
         (pl.col("rushing_yards") + pl.col("receiving_yards")).alias("scrimmage_yards"),
         (pl.col("def_tackles_solo") + pl.col("def_tackle_assists")).alias("tackles"),
+        # P08 yes / no labels (probability targets): scored a rushing or receiving TD, made an
+        # interception, defended a pass
+        ((pl.col("rushing_tds") + pl.col("receiving_tds")) >= 1).cast(pl.Float64).alias("any_td"),
+        (pl.col("def_interceptions") >= 1).cast(pl.Float64).alias("def_int_any"),
+        (pl.col("def_pass_defended") >= 1).cast(pl.Float64).alias("pd_any"),
         pl.when(pl.col("dropbacks") > 0)
         .then(pl.col("qb_epa_sum") / pl.col("dropbacks"))
         .otherwise(None)

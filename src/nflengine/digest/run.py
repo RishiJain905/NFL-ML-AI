@@ -238,11 +238,13 @@ def materialize_backtest_player_predictions(
     exactly as it does live. An earlier week's copy older than the walk-forward files (the
     backtests were re-run, e.g. after tuning) is rewritten and its list rebuilt, so a
     look-back never grades picks from superseded projections. [] when there are no player
-    backtests (heuristic fallback)."""
-    from nflengine.models.player_schema import TARGETS, conform
+    backtests (heuristic fallback). P08: shipped P08 targets (`live_targets`) come along too,
+    so a backtest digest shows the same extra columns (TD / sack chance) as a live one."""
+    from nflengine.models.player_schema import conform, live_targets
 
     base = ctx.paths.runs / "backtests" / "player"
-    files = [p for t in TARGETS if t.main and (p := base / t.key / PLAYER_PRED_FILE).exists()]
+    wanted = [t for t in live_targets() if t.main or t.phase == "p08"]
+    files = [p for t in wanted if (p := base / t.key / PLAYER_PRED_FILE).exists()]
     if not files:
         return []
     upto = (pl.col("season") == ctx.season) & (pl.col("week") <= ctx.week)

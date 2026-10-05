@@ -276,10 +276,10 @@ The digest never prints the line or market numbers (D03). `market_prob` / `sprea
 
 ## Known biases and limits
 
-- **Home field since 2020** is over-estimated by about 2 points of win probability (see Calibration). Follow-up: a trailing home-field feature (P08/P10).
+- **Home field since 2020** is over-estimated by about 2 points of win probability (see Calibration). Follow-up: a trailing home-field feature (P08/P10). *P08 tried it (`home_edge_trailing`, the league's home margin over the previous 3 seasons) in v1: it added nothing; v0's walk-forward misses for home teams average −0.95 to +0.72 points per season (2013–2025), so the 3× current-season weight already follows the decline.*
 - **Closing-line optimism.** Historical market features are closing lines, which already know late injury news. Live Tuesday runs use earlier lines, so the market variant's live accuracy will be somewhat worse than 0.2102. Model-only uses no market data and has no such bias.
 - **Tuesday QB information.** Backtests use only what a Tuesday run knows. Live runs use the schedule's projected starter, which is better, so live model-only numbers should be a little better than backtested (toward the listed-starter oracle's 0.2183).
-- **Weather and injuries beyond the QB** aren't in v0 (P08).
+- **Weather and injuries beyond the QB** aren't in v0. P08 built both (Tuesday-view injury load, coarse weather) for v1; neither improved win probability (v1 card → "Why it didn't win"). Wind does lower totals.
 - **Small, noisy data.** About 280 games per season; differences under ~0.002 Brier are noise. Elo was slightly better in 3 seasons.
 - **Training starts in 2011** because 2010's ratings have no preseason prior.
 
@@ -288,3 +288,4 @@ The digest never prints the line or market numbers (D03). `market_prob` / `sprea
 - **Hyperparameters are fixed for the 2026 season** (D17). Retune before 2027 (P10).
 - **Weekly fits:** W&B artifact `game-model:<season>-w<NN>`. The `production` alias was set on `2026-w04` (v1, after the review fixes) at P03 close (D51). From P07, the weekly pipeline moves it each week.
 - **Promote a new configuration** (LightGBM in P08) only if it beats this one walk-forward; that is a ✋ checkpoint.
+- **P08 (D79): v0 stays in production.** The LightGBM v1 ([its card](game-model-v1.md)), with injury load, weather and a trailing home edge, scored 0.2193 vs 0.2199 model-only on 2018–2025 (−0.0005, 95% interval −0.0012 to +0.0002) with worse calibration, and lost to v0 at every setting on the 2013–2017 tuning window, so the rule written before the runs kept v0. `game_model.version: v0` in `settings.yaml` selects it.

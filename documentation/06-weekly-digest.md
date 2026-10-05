@@ -295,3 +295,10 @@ Rishi asked for more players: *Players to watch* now holds **10 offense** (QB, R
 
 **Run records.** Every `nfl weekly run` now also writes `run_summary.json`, a `pipeline_history.parquet` row and a `weekly-pipeline` / `pipeline` W&B run, and evaluates the drift checks; alerts (failed step, not ready after Wednesday 18:00 ET, degraded step, checks failed after regeneration, drift) print at the end of the run and go out as W&B alerts (D76). The digest itself is unchanged by P07.
 
+
+## As built in P08: new player numbers in the tables, the scorecard kept comparable
+
+- **Players to watch** (D82): the Offense table gains a code-written **TD chance** column (the RB / WR/TE pick's chance of a touchdown; a QB row shows his expected passing TDs) and the Defense table a **Sack chance** column (picks in the EDGE/DL pool; "–" for a safety). They appear only when the week's projections include those targets, are never in the payload JSON or the LLM input (`exclude=True` fields), and need no fact check. With only P06 targets the tables are byte-identical to before. The picks themselves are unchanged: P08 targets are never a group's main stat.
+- **Report card:** the scorecard's `player_mae_vs_baseline` stays on the 11 P06 targets, so the season series is comparable before and after week 5; the P08 targets (and the team stat totals, `position_group = "TEAM"`, which the player highlights ignore) have their own scoreboard rows. Highlights skip probability targets (no MAE).
+- **Graph sections:** the P08 query types (former teammates, style matchups, officiating crews, coaching trees, the GDS passing-network hub and usage comparisons) compete for *Matchup / risk*, *Non-obvious* and "More from the graph" with the P05 ones (doc 05 "As built in P08").
+- **Placeholder writer:** a last name is used only when it's unique among **all** players in the payload (the entity check's view), not only the writer's own picks.

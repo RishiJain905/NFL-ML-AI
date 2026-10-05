@@ -12,6 +12,17 @@ Golden weeks (each asserts the expected entity appears):
   by Tuesday of week 7 he is on a reserve list and missed the last game.
 - **backup-QB start (Q3):** 2023 week 13: Jake Browning starts for the Bengals after Joe
   Burrow's wrist injury (Burrow started 10 games).
+
+P08 (advanced graph and GDS):
+- **passing-network hub out (Q10, GDS PageRank):** 2023 week 7: Jefferson is the center of
+  the Vikings' network; without him T.J. Hockenson leads it. **Usage comparison (Q10, GDS
+  KNN):** the same week, rookie Puka Nacua's usage is closest to Stefon Diggs's 2020.
+- **former teammates (Q6):** 2024 week 14, Falcons at Vikings: Kirk Cousins faces Justin
+  Jefferson (600+ targets for the Vikings, 2020-2023). The same build checks a scrambling QB
+  (Q7, Jalen Hurts vs the Panthers), FTN's week lag, the coaching tree from a test seed
+  (Q5: O'Connell and Morris both worked under McVay), the GDS outputs, and the referee query
+  (Q9) with that game's crew added as a Saturday run would have it (Alex Kemp).
+- GDS errors on the real server are fail-soft.
 """
 
 from __future__ import annotations
@@ -124,6 +135,26 @@ def test_golden_injury_ripple_jefferson_2023_w7(driver, paths) -> None:
     assert r["n_without"] >= 1 and r["backup"]  # someone stepped in when he missed games
 
 
+def test_golden_network_hub_and_usage_comp_2023_w7(driver, paths) -> None:
+    """GDS stories on the week-7 graph of the Jefferson golden test (rebuilt if needed)."""
+    from nflengine.graph.queries import run_query
+
+    if _LOADED["key"] != (2023, 7):
+        _build(driver, paths, 2023, 7)
+    hub = run_query(driver, "q10_network_hub", 2023, 7)
+    assert hub.error is None and hub.seconds < 2.0
+    hit = [r for r in hub.rows if r["hub"] == "Justin Jefferson"]
+    assert hit, [r["hub"] for r in hub.rows]
+    r = hit[0]
+    assert (r["team"], r["out_source"], r["next"]) == ("MIN", "reserve", "T.J. Hockenson")
+    assert r["next_share_without"] > r["next_share"] and r["next_rank"] == 2
+    comp = run_query(driver, "q10_usage_comp", 2023, 7)
+    assert comp.error is None and comp.seconds < 2.0
+    puka = [r for r in comp.rows if r["player"] == "Puka Nacua"]
+    assert puka and puka[0]["other"] == "Stefon Diggs" and puka[0]["other_season"] == 2020
+    assert puka[0]["young"] is True and puka[0]["other_yds_rank"] == 1
+
+
 def test_golden_backup_qb_browning_2023_w13(driver, paths) -> None:
     data, res = _build(driver, paths, 2023, 13)
     assert not res.mismatches
@@ -135,6 +166,138 @@ def test_golden_backup_qb_browning_2023_w13(driver, paths) -> None:
     assert r["r_starts"] >= 9
     names = {w["name"] for w in r["receivers"]}
     assert "Ja'Marr Chase" in names
+
+
+SEED_ROWS = """coach,team,season,role,head_coach
+Kevin O'Connell,LA,2020,OC,
+Kevin O'Connell,LA,2021,OC,
+Raheem Morris,LA,2021,DC,
+Raheem Morris,LA,2022,DC,
+Raheem Morris,LA,2023,DC,
+Test Coordinator,ATL,2024,OC,
+Test Coordinator,MIN,2023,QB coach,
+"""
+
+
+def test_golden_p08_2024_w14(driver, paths, tmp_path, monkeypatch) -> None:
+    """Q6 Cousins vs Jefferson, Q7, FTN's lag, the Q5 tree from a test seed, GDS outputs, Q9."""
+    from nflengine.graph import tables_extra
+    from nflengine.graph.queries import run_query
+
+    seed = tmp_path / "coaching_seed.csv"
+    seed.write_text(SEED_ROWS, encoding="utf-8")
+    monkeypatch.setattr(tables_extra, "seed_path", lambda: seed)
+    data, res = _build(driver, paths, 2024, 14)
+    assert not res.mismatches and data["gds"]["status"] == "ok", data["gds"]
+    game = "2024_14_ATL_MIN"
+
+    # Q6: Kirk Cousins (ATL) faces Justin Jefferson (MIN)
+    hit = [
+        r
+        for r in _rows(data, "q6_former_teammates")
+        if (r["qb"], r["receiver"]) == ("Kirk Cousins", "Justin Jefferson")
+    ]
+    assert hit, [(r["qb"], r["receiver"]) for r in _rows(data, "q6_former_teammates")]
+    r = hit[0]
+    assert (r["game_id"], r["team"], r["opponent"]) == (game, "ATL", "MIN")
+    assert r["targets"] >= 500 and r["teams_together"] == ["MIN"]
+    assert set(r["seasons"]) == {2020, 2021, 2022, 2023}
+    assert any(
+        c["insight_id"] == f"former_teammates:{r['qb_id']}:{r['receiver_id']}"
+        for c in data["candidates"]
+    )
+
+    # Q7: a scrambling QB, with samples and league numbers
+    q7 = _rows(data, "q7_style_matchup")
+    assert any(x["qb"] == "Jalen Hurts" and x["style"] == "scramble" for x in q7), q7
+    for x in q7 + _rows(data, "q7_play_action"):
+        assert x["n_style"] >= 4 and x["n_other"] >= 8 and abs(x["gap"]) >= 0.05
+        assert x["lg_n_style"] > 100 and 0 <= x["strength"] <= 1
+
+    with driver.session() as s:
+        # FTN is a week late on a Tuesday: week 13 has no play-action rate, week 12 has
+        pa = s.run(
+            "MATCH (:Team)-[p:PLAYED_IN]->(g:Game {season: 2024}) WHERE g.week IN [12, 13] "
+            "RETURN g.week AS week, count(p.pa_rate) AS n ORDER BY week"
+        ).data()
+        # GDS: a team's weighted degrees (undirected: each target counts at both ends) add up
+        # to twice its visible THREW_TO targets
+        deg = s.run(
+            "MATCH (:Player)-[c:PASS_CENTRALITY {season: 2024}]->(t:Team {team_id: 'MIN'}) "
+            "RETURN sum(c.degree) AS d"
+        ).single()["d"]
+        thr = s.run(
+            "MATCH ()-[x:THREW_TO {season: 2024}]->() WHERE x.team_id = 'MIN' "
+            "RETURN sum(x.targets) AS n"
+        ).single()["n"]
+        hub = s.run(
+            "MATCH (p:Player)-[c:PASS_CENTRALITY {season: 2024, rank: 1}]->"
+            "(:Team {team_id: 'MIN'}) RETURN p.name AS name"
+        ).single()["name"]
+        sim = s.run(
+            "MATCH (:Player)-[x:SIMILAR_TO {season: 2024}]->(:Player) "
+            "RETURN count(x) AS n, min(x.other_season) AS lo, max(x.other_season) AS hi"
+        ).single()
+    by_week = {x["week"]: x["n"] for x in pa}
+    assert by_week[12] > 0 and by_week[13] == 0, pa
+    assert deg == pytest.approx(2 * thr) and hub == "Justin Jefferson"
+    assert sim["n"] > 300 and sim["lo"] >= 2018 and sim["hi"] <= 2023  # past seasons only
+
+    # Q5 coaching tree from the test seed: both head coaches worked under Sean McVay; the
+    # test coordinator (ATL) worked under O'Connell (MIN)
+    tree = [x for x in _rows(data, "q5_coaching_tree") if x["game_id"] == game]
+    kinds = {x["kind"]: x for x in tree}
+    assert set(kinds) == {"head_coach_tree", "coordinator_vs_boss"}, tree
+    ht = kinds["head_coach_tree"]
+    assert {ht["coach"], ht["other"]} == {"Kevin O'Connell", "Raheem Morris"}
+    # two shortest paths exist: through Sean McVay (both worked under him) and through the
+    # test coordinator (under O'Connell in 2023, under Morris now); shortestPath picks one
+    mids = {st["to"] for st in ht["steps"]} | {st["from"] for st in ht["steps"]}
+    assert len(ht["steps"]) == 2 and mids & {"Sean McVay", "Test Coordinator"}, ht["steps"]
+    cb = kinds["coordinator_vs_boss"]
+    assert (cb["coach"], cb["other"], cb["role"]) == ("Test Coordinator", "Kevin O'Connell", "OC")
+
+    # Q9: a backtest never has the week's crew; add it as a run that had it would, then the
+    # query finds the referee and his history (gaps forced to 0 to always fire)
+    assert run_query(driver, "q9_officiating", 2024, 14).rows == []
+    with driver.session() as s:
+        s.run(
+            "MATCH (o:Official {official_id: '689'}), (g:Game {game_id: $g}) "
+            "CREATE (o)-[:OFFICIATED {role: 'Referee'}]->(g)",
+            g=game,
+        ).consume()
+    q9 = run_query(driver, "q9_officiating", 2024, 14, min_pen_gap=0.0, min_split_gap=0.0)
+    assert q9.error is None and q9.seconds < 2.0
+    ref = [x for x in q9.rows if x["game_id"] == game]
+    assert ref and ref[0]["referee"] == "Alex Kemp" and ref[0]["ref_games"] >= 10
+    assert ref[0]["strength"] <= 0.5 and ref[0]["first_season"] >= 2022
+
+
+def test_gds_errors_on_the_real_server_are_fail_soft(driver, paths, monkeypatch) -> None:
+    """A GDS call the server rejects: the job is `failed` with a status code only, the other
+    job still runs, no projection is left behind, and the library still answers."""
+    from nflengine.graph import gds
+    from nflengine.graph.queries import run_query
+
+    if _LOADED["key"] is None:
+        _build(driver, paths, 2024, 14)
+
+    def broken(drv, key):
+        with drv.session() as s:
+            s.run("CALL gds.pageRank.stream('nfl-does-not-exist', {})").consume()
+        return {}
+
+    monkeypatch.setattr(gds, "JOBS", {"broken": broken, "similarity": gds.player_similarity})
+    key = _key(paths, 2024, 14)
+    res = gds.run_gds_jobs(driver, key, log=lambda m: None)
+    assert res.status == "partial"
+    assert res.jobs["broken"]["status"] == "failed"
+    assert res.jobs["broken"]["error"].startswith("ClientError: Neo.ClientError")
+    assert res.jobs["similarity"]["status"] == "ok"
+    with driver.session() as s:
+        left = s.run("CALL gds.graph.list() YIELD graphName RETURN count(*) AS n").single()["n"]
+    assert left == 0
+    assert run_query(driver, "q10_usage_comp", 2024, 14).error is None
 
 
 def test_backtest_graph_has_no_future_results(driver, paths) -> None:
@@ -156,8 +319,17 @@ def test_backtest_graph_has_no_future_results(driver, paths) -> None:
         late = s.run(
             "MATCH ()-[t:THREW_TO {season: 2024}]->() RETURN sum(t.targets) AS n"
         ).single()["n"]
+        # P08: no week-7 crew in a Tuesday graph; usage profiles only from before week 7
+        crews = s.run(
+            "MATCH (:Official)-[o:OFFICIATED]->(g:Game {season: 2024}) WHERE g.week >= 7 "
+            "RETURN count(o) AS n"
+        ).single()["n"]
+        games_2024 = s.run(
+            "MATCH (u:UsageProfile {season: 2024}) RETURN max(u.games) AS n"
+        ).single()["n"]
         tw = s.run("MATCH (tw:TeamWeek {season: 2024}) RETURN max(tw.week) AS w").single()["w"]
     assert late > 0 and tw == 7
+    assert crews == 0 and games_2024 <= 6
 
 
 # ---- the live week: load test, repeatability, performance ---------------------------------

@@ -273,6 +273,7 @@ def _model_versions(run_dir: Path) -> dict[str, Any]:
     for name, file in (
         ("game", "predictions_games.parquet"),
         ("player", "predictions_players.parquet"),
+        ("team", "predictions_teams.parquet"),  # P08 team stat totals
     ):
         p = run_dir / file
         if p.exists():
@@ -282,6 +283,21 @@ def _model_versions(run_dir: Path) -> dict[str, Any]:
             except Exception:
                 out[name] = None
     return out
+
+
+CONSISTENCY_FILE = "consistency.json"  # written by the weekly player step (P08)
+
+
+def _consistency(run_dir: Path) -> dict[str, Any] | None:
+    """The week's `inconsistency/*` numbers (`models.consistency.apply_consistency`)."""
+    p = run_dir / CONSISTENCY_FILE
+    if not p.exists():
+        return None
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def build_summary(
@@ -359,6 +375,7 @@ def build_summary(
         "ingest": _ingest(paths) if steps.get("ingest", {}).get("this_run") else None,
         "quality": _quality(paths) if steps.get("curate", {}).get("this_run") else None,
         "models": _model_versions(run_dir) if run_dir is not None else {},
+        "consistency": _consistency(run_dir) if run_dir is not None else None,
         "digest": _digest(run_dir, bool(digest_ran)) if run_dir is not None else None,
         "drift": [s.as_dict() for s in (drift or [])],
         "alerts": [
@@ -493,6 +510,9 @@ def log_pipeline_run(
                     "graph_status": d.get("graph_status"),
                 }
             )
+        for k, v in ((summary.get("consistency") or {}).get("summary") or {}).items():
+            if isinstance(v, int | float) and not isinstance(v, bool):  # P08 quality signal
+                flat[f"consistency/{str(k).split('/', 1)[-1]}"] = v
         for s in summary["drift"]:
             key = s["name"] + (f"/{s['group']}" if s.get("group") else "")
             flat[f"drift/{key}"] = s["status"]
@@ -586,3 +606,12 @@ def _use_artifacts(run, summary: dict[str, Any], log: Callable[[str], None]) -> 
             run.use_artifact(f"{name}:{alias}")
         except Exception:
             log(f"[yellow]lineage: {name}:{alias} not found[/]")
+    # P08: the team stat fit runs inside the player step and is fail-soft; link it when the
+    # week's team projections exist
+    if (summary.get("models") or {}).get("team") and (summary["steps"].get("player") or {}).get(
+        "status"
+    ) in ("ok", "degraded"):
+        try:
+            run.use_artifact(f"team-model:{alias}")
+        except Exception:
+            log(f"[yellow]lineage: team-model:{alias} not found[/]")

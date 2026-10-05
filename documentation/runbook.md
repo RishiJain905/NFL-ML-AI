@@ -65,6 +65,8 @@ uv run nfl weekly run --season 2026 --week 5 --from-step game
 
 Steps, in order: `ingest`, `ready`, `curate`, `ratings`, `game`, `graph`, `player`, `digest`. Every step is idempotent, so re-running an earlier one is safe; games that already kicked off keep their earlier predictions (D55).
 
+**Since P08** the `player` step refits 23 player targets (the 11 P06 ones plus TDs, interceptions, QB rushing, sacks, QB hits and CB/S coverage, D82), then the shipped team stat totals into `predictions_teams.parquet` (D80), then the consistency layer (receptions ≤ targets; the yards gaps go to `consistency.json`, D81). The team fit and the consistency layer never degrade the step: a failure shows as "team fit skipped (…)" / "consistency skipped (…)" in its detail line. The game step still fits v0 (`game_model.version`; v1 evaluated, not promoted, D79).
+
 ### Re-publish only the digest
 
 After a prompt or check fix, or to change the writer:
@@ -167,6 +169,7 @@ Doc 08's drift signals (`src/nflengine/ops/drift.py`, thresholds in `config/sett
 | `game model behind Elo for 3 weeks` | The model's game-weighted Brier over the last 4 graded weeks is worse than Elo's, in 3 windows in a row | Look for a data or feature problem: a QB change the features missed, stale ratings, a source that stopped updating (`nfl data-status`). Single weeks swing (0.17–0.32 Brier); the season line on the dashboard matters more |
 | `game probabilities poorly calibrated (ECE x)` | The season's ECE is above both 0.05 and the 90th percentile of what a perfectly calibrated model shows on the same number of games (about 0.16 after 5 weeks, 0.08 by week 18) | Check calibration on the walk-forward backtest (`uv run nfl backtest game`) before switching `game_model.calibration` to `platt` or `isotonic` (v0 has no calibration layer, D48). Look at the dashboard's calibration curve: which probability band is off? |
 | `<group> projections behind the baseline for 3 weeks` | That position group's projections missed by more than the rolling baseline's over the last 4 scored weeks, 3 windows in a row | Check feature freshness (snap counts, NGS and PFR lag a week) and role changes in that group (`player-projections` guide); compare with the accuracy scoreboard run (`scoreboard-S-wNN`) |
+| `<group> chances (TD, sack, interception ...) behind the baseline for 3 weeks` (P08, D85) | The group's chances (TD, sack, interception, pass defended; passing TDs / interceptions ≥ 1) scored worse on Brier than the players' rolling rates over the last 4 scored weeks, 3 windows in a row (never happened in 2019–2025) | Look at the target's reliability diagram on its walk-forward backtest (P08 player targets card) and the `scoreboard/brier_skill_*` curves; check the group's feature freshness |
 | `stale data source` | A dataset's newest snapshot is more than 7 days old, or a weekly source is more than one week behind | `uv run nfl data-status`; re-ingest (`--from-step ingest`); if the source itself is down, the digest footer already says so |
 | `digest checks failing (x% of recent runs)` | More than 20% of the last 4 digests went out with the ⚠️ banner | Look at those weeks' `checks.json`; revisit the prompt or check rules (`digest-checks` skill) |
 

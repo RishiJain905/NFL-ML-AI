@@ -7,6 +7,8 @@
 **Code:** `features/player_data.py` (history), `features/player.py` (rows, `own_*` / `use_*` / `team_*` / `rip_*` / `avail_*`, baselines), `features/player_efficiency.py` (`eff_*`), `features/player_opponent.py` (`opp_*`), `models/player_model.py` (the LightGBM models, ranges, SHAP), `models/player_schema.py` (targets and pools), `models/player_runs.py` (backtest, tuning, weekly fit, scoreboard) · **Tables:** `features/player_features.parquet` (`nfl features player`), `runs/backtests/player/<target>-<group>/` (`nfl backtest player`), `runs/<season>/week<NN>/predictions_players.parquet` (`nfl train player`)
 
 
+**P08 additions (not covered below):** sacks (expected and the chance of a credited sack), QB hits, and the CB/S coverage models (targets, completions and yards allowed, chance of an interception or a pass defended), in the [P08 targets card](player-p08.md): sacks Brier +6.0% over the baseline and 10% below the base-rate score; QB hits +2.7% MAE; coverage +4.4% to +9.7% MAE; interception and pass-defended chances +8.5% and +8.8% Brier.
+
 ## What it is
 
 Two count models for defensive players:

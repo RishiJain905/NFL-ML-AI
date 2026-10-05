@@ -20,6 +20,21 @@ All runs go to group `track1-player`, tagged with the position group:
   `models/player-model/<season>-w<NN>/` and logs the W&B artifact `player-model`.
 - **scoreboard** (job_type `eval`): scores a played week's saved pre-kickoff projections
   and appends the `accuracy_scoreboard` rows (documentation/11).
+
+P08 adds the new targets (`player_schema.TARGETS`, phase `p08`) to the same machinery:
+- **probability targets** (a touchdown, an interception, a pass defended) log Brier of the
+  calibrated probability against the player's rolling rate (`bt/brier_*`, `bt/cum_brier_*`),
+  a by-season Brier chart and a decile reliability diagram (`reliability_diagram`); they have
+  no MAE, range or coverage;
+- **event counts** (pass TDs, interceptions, sacks) log both: MAE as before, plus the same
+  Brier / reliability for P(at least one);
+- every backtest summary ends with the **ship rule** (`ship_rule`, keys `ship_*`), the
+  pre-registered bar a P08 target must clear (documentation/plans/P08): it only reports,
+  the lead decides what ships;
+- `TARGET_DEFAULTS` holds per-target tree settings tuned on 2017-2018 (`settings.yaml`
+  `player_model.per_target` wins over them);
+- `build_player_data(targets=...)` builds only the rows and feature families those targets
+  need, so the weekly run of the P06 targets builds exactly the P06 table.
 """
 
 from __future__ import annotations
@@ -39,8 +54,10 @@ import yaml
 from nflengine.features import player as PF
 from nflengine.features.asof import AsOf, last_asof_week
 from nflengine.features.player_data import PlayerInputs, load_inputs, player_history
+from nflengine.models import metrics as M
 from nflengine.models.backtest import SampleWeights, walk_forward, week_keys
 from nflengine.models.player_model import (
+    GROUP_PREFIXES,
     PlayerModelConfig,
     PlayerWeekModel,
     add_position_flags,
@@ -53,9 +70,10 @@ from nflengine.models.player_schema import (
     GROUP_SLUG,
     PRED_SCHEMA,
     SCOREBOARD_SCHEMA,
-    TARGETS,
     Target,
     conform,
+    event_expr,
+    live_targets,
     score_predictions,
 )
 from nflengine.paths import DataPaths, ensure_data_root
@@ -77,6 +95,23 @@ DESCRIPTIONS = Path(__file__).resolve().parents[1] / "features" / "descriptions.
 ROLE_SNAP = 0.5  # documentation/04: a real role = snap share >= 50% over the last 2 games
 ROLE_CHANGE_TGT = 0.15  # target share left open (`open_tgt`) that counts as a role change
 ROLE_CHANGE_CAR = 0.25
+# P08 per-target settings that live in code until the ship decision moves them to
+# `settings.yaml` (`player_model.per_target`, which wins over these); filled from the 2017-2018
+# tuning grid (documentation/model_cards/player-p08.md)
+TARGET_DEFAULTS: dict[str, dict[str, Any]] = {
+    "pass_tds-qb": {"num_leaves": 15, "min_data_in_leaf": 200, "n_estimators": 150},  # ct2dr946
+    "ints-qb": {"num_leaves": 7, "min_data_in_leaf": 200, "n_estimators": 300},  # pus3fn5t
+    "rush_yds-qb": {"num_leaves": 15, "min_data_in_leaf": 50, "n_estimators": 300},  # ud7xp3xt
+    "td-rb": {"num_leaves": 4, "min_data_in_leaf": 300, "n_estimators": 100},  # zv4j4md1
+    "td-wrte": {"num_leaves": 4, "min_data_in_leaf": 100, "n_estimators": 100},  # coyymj3b
+    "sacks-edge": {"num_leaves": 31, "min_data_in_leaf": 50, "n_estimators": 150},  # 1wdr6q3m
+    "qb_hits-edge": {"num_leaves": 15, "min_data_in_leaf": 50, "n_estimators": 300},  # bu4pv1s8
+    "cov_tgt-cbs": {"num_leaves": 7, "min_data_in_leaf": 50, "n_estimators": 300},  # zgwo3kuu
+    "cov_cmp-cbs": {"num_leaves": 15, "min_data_in_leaf": 200, "n_estimators": 150},  # smgtm7m6
+    "cov_yds-cbs": {"num_leaves": 7, "min_data_in_leaf": 200, "n_estimators": 150},  # y4yt569d
+    "int-cbs": {"num_leaves": 4, "min_data_in_leaf": 300, "n_estimators": 100},  # eweebi9l
+    "pd-cbs": {"num_leaves": 4, "min_data_in_leaf": 300, "n_estimators": 100},  # 9figg6pe
+}
 
 
 def model_config(target: Target | None = None, **overrides: Any) -> PlayerModelConfig:
@@ -85,6 +120,9 @@ def model_config(target: Target | None = None, **overrides: Any) -> PlayerModelC
     pm = dict(cfg.player_model or {})
     per = (pm.pop("per_target", None) or {}).get(target.key, {}) if target else {}
     pm.pop("per_target", None)
+    pm.pop("live_targets", None)  # which targets run weekly, not a model setting
+    if target and target.key in TARGET_DEFAULTS:
+        per = {**TARGET_DEFAULTS[target.key], **per}
     weights = SampleWeights.from_config(cfg.training.get("sample_weights"))
     if overrides.get("weights") is not None:
         weights = overrides.pop("weights")
@@ -158,13 +196,20 @@ def build_player_data(
     live_key: AsOf | None = None,
     run_date: dt.date | None = None,
     log: Callable[[str], None] = print,
+    targets: Sequence[Target] | None = None,
 ) -> PlayerData:
     """Inputs, history and every shared feature for history rows (+ the live week's
-    expected players when `live_key` is set)."""
+    expected players when `live_key` is set).
+
+    `targets`: build rows and features only for what these targets need (the weekly run
+    passes its live targets, so a P06-only run builds no CB rows and no `cvg_*` family and
+    produces exactly the P06 table); `None` (`nfl features player`) builds everything."""
     paths = paths or ensure_data_root()
     inp = load_inputs(paths, log=log)
     hist = player_history(inp)
-    rows = PF.history_rows(hist)
+    pgroups = PF.target_pgroups(targets) if targets is not None else None
+    coverage = targets is None or any(t.group == "CB/S" for t in targets)
+    rows = PF.history_rows(hist, pgroups)
     ctx, eq = game_context_frames(paths, inp, live_key, run_date, log)
     if live_key is not None:
         qbs = eq.join(
@@ -173,11 +218,13 @@ def build_player_data(
             ).select("game_id"),
             on="game_id",
         ).select("team", "qb_id")
-        up = PF.upcoming_rows(inp, hist, live_key.season, live_key.week, qbs)
+        up = PF.upcoming_rows(inp, hist, live_key.season, live_key.week, qbs, pgroups=pgroups)
         rows = pl.concat([rows.join(up, on=["player_id", "game_id"], how="anti"), up])
         log(f"live rows for {live_key}: {up.height} players")
     log("building player features ...")
-    feats = PF.build_features(inp, hist, rows, context=ctx, expected_qbs=eq, log=log)
+    feats = PF.build_features(
+        inp, hist, rows, context=ctx, expected_qbs=eq, log=log, coverage=coverage
+    )
     return PlayerData(inp, hist, feats, live_key)
 
 
@@ -195,6 +242,14 @@ def write_feature_table(feats: pl.DataFrame, paths: DataPaths | None = None) -> 
 
 def target_data(data: PlayerData, target: Target) -> pl.DataFrame:
     return add_position_flags(PF.target_frame(data.feats, data.hist, target))
+
+
+def target_features(frame: pl.DataFrame, target: Target) -> list[str]:
+    """The model features of one target: the shared families, plus its group's own family
+    (CB/S: `cvg_*`). A group without one gets exactly what `feature_columns(frame)` gives."""
+    if target.group in GROUP_PREFIXES:
+        return feature_columns(frame, target)
+    return feature_columns(frame)
 
 
 # ---- assembling prediction rows ---------------------------------------------------------------
@@ -263,8 +318,10 @@ def assemble(
         vac, change = off_tgt, off_tgt >= ROLE_CHANGE_TGT
     else:
         vac, change = pl.lit(0.0), pl.lit(False)
-    proj = pl.col("mean") if target.kind == "count" else pl.col("p50")
-    width = pl.col("p90") - pl.col("p10")
+    proj = pl.col("p50") if target.kind == "amount" else pl.col("mean")
+    # a probability target has no range: it never reads as "wide" (its confidence rests on
+    # his history alone)
+    width = pl.lit(0.0) if target.kind == "prob" else pl.col("p90") - pl.col("p10")
     p = p.with_columns(
         pl.lit(target.group).alias("group"),
         pl.lit(target.name).alias("target"),
@@ -293,6 +350,11 @@ def assemble(
     )
     # range width relative to the projection's own size (a 0-4 pressure range for a 2.5
     # mean is normal; comparing raw widths flagged every real pass rusher as low confidence)
+    if target.kind == "prob":  # a null range from the model's NaN, a flat zero here
+        p = p.with_columns(pl.col(c).fill_nan(None) for c in ("p10", "p50", "p90", "baseline_p50"))
+    p = p.with_columns(
+        pl.col(c).fill_nan(None) for c in ("p_ge1", "p_ge2", "baseline_p_ge1") if c in p.columns
+    )
     rel = width / pl.max_horizontal(proj.abs(), pl.col("scale"))
     med = p.group_by("season", "week").agg(rel.median().alias("_rmed"))
     p = p.join(med, on=["season", "week"], how="left").with_columns(
@@ -322,8 +384,46 @@ def assemble(
 # ---- scoring ---------------------------------------------------------------------------------
 
 
+EVENT_KEYS = ["season", "week", "target", "group"]
+
+
+def _event_rows(preds: pl.DataFrame) -> pl.DataFrame:
+    """Scored rows that carry an event probability and its baseline (probability targets;
+    counts with `event_probs`), with `_ev` = did the "P(>= 1)" event happen (1.0 / 0.0)."""
+    if "p_ge1" not in preds.columns or "baseline_p_ge1" not in preds.columns:
+        return preds.clear().with_columns(pl.lit(None, pl.Float64).alias("_ev"))
+    return preds.filter(
+        pl.col("played").fill_null(False)
+        & pl.col("actual").is_not_null()
+        & pl.col("p_ge1").is_not_null()
+        & pl.col("baseline_p_ge1").is_not_null()
+    ).with_columns(event_expr().alias("_ev"))
+
+
+def _event_metrics(preds: pl.DataFrame) -> pl.DataFrame:
+    """Brier and ECE of `p_ge1` and of `baseline_p_ge1` per (season, week, target, group)."""
+    schema = {
+        **{"season": pl.Int32, "week": pl.Int32, "target": pl.String, "group": pl.String},
+        **dict.fromkeys(("brier_model", "brier_baseline", "calibration_ece"), pl.Float64),
+    }
+    rows = []
+    for keys, part in _event_rows(preds).group_by(EVENT_KEYS, maintain_order=True):
+        rows.append(
+            {
+                **dict(zip(EVENT_KEYS, keys, strict=True)),
+                "brier_model": M.brier(part["p_ge1"], part["_ev"]),
+                "brier_baseline": M.brier(part["baseline_p_ge1"], part["_ev"]),
+                "calibration_ece": M.ece(part["p_ge1"], part["_ev"]),
+            }
+        )
+    return pl.DataFrame(rows, schema=schema)
+
+
 def scoreboard_rows(preds: pl.DataFrame, mode: str) -> pl.DataFrame:
-    """One `SCOREBOARD_SCHEMA` row per (season, week, target, group) from scored rows."""
+    """One `SCOREBOARD_SCHEMA` row per (season, week, target, group) from scored rows.
+    Probability targets and event counts also get `brier_model` / `brier_baseline` /
+    `calibration_ece` (of `p_ge1` against the "at least one" event); a probability target's
+    MAE and coverage columns stay null."""
     if preds.is_empty():
         return pl.DataFrame(schema=SCOREBOARD_SCHEMA)
     played = pl.col("played").fill_null(False) & pl.col("actual").is_not_null()
@@ -340,6 +440,9 @@ def scoreboard_rows(preds: pl.DataFrame, mode: str) -> pl.DataFrame:
         err_b.filter(played & pl.col("baseline").is_not_null()).mean().alias("mae_baseline"),
         inside.filter(played).mean().alias("coverage_80"),
     )
+    ev = _event_metrics(preds)
+    if ev.height:
+        g = g.join(ev, on=EVENT_KEYS, how="left")
     return (
         g.with_columns(
             (100 * (pl.col("mae_baseline") - pl.col("mae_model")) / pl.col("mae_baseline")).alias(
@@ -362,21 +465,92 @@ def scoreboard_rows(preds: pl.DataFrame, mode: str) -> pl.DataFrame:
 
 
 def upsert_scoreboard(path: Path, rows: pl.DataFrame) -> pl.DataFrame:
-    """Replace the rows with the same (season, week, target, group, mode); keep the rest."""
+    """Replace the rows with the same (season, week, target, group, mode); keep the rest.
+
+    Parallel backtest chains and the weekly player and team fits all upsert into shared
+    scoreboard files, so the read-modify-write runs under an OS lock (`ops.lock.file_lock`:
+    released by the OS if the holder dies, never taken from a live holder) and the file is
+    replaced atomically (an interrupted write never leaves a truncated file; Sol review)."""
+    from nflengine.ops.lock import file_lock, write_parquet_atomic
+
     key = ["season", "week", "target", "position_group", "mode"]
-    old = pl.read_parquet(path) if path.exists() else pl.DataFrame(schema=SCOREBOARD_SCHEMA)
-    if rows.height:
-        old = old.join(rows.select(key), on=key, how="anti")
-    out = pl.concat([old.cast(SCOREBOARD_SCHEMA), rows.cast(SCOREBOARD_SCHEMA)]).sort(  # type: ignore[arg-type]
-        "season", "week", "target", "position_group"
-    )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    out.write_parquet(path)
+    with file_lock(path):
+        old = pl.read_parquet(path) if path.exists() else pl.DataFrame(schema=SCOREBOARD_SCHEMA)
+        if rows.height:
+            old = old.join(rows.select(key), on=key, how="anti")
+        out = pl.concat([old.cast(SCOREBOARD_SCHEMA), rows.cast(SCOREBOARD_SCHEMA)]).sort(  # type: ignore[arg-type]
+            "season", "week", "target", "position_group"
+        )
+        write_parquet_atomic(out, path)
+    return out
+
+
+def _quantile_bins(p: np.ndarray, y: np.ndarray, n_bins: int = 10) -> pl.DataFrame:
+    """Reliability bins with (about) equal counts: rare events (an interception: 7%) sit in
+    the first equal-width bin or two, which hides the shape; deciles of the predicted
+    probability show it. Columns: bin, n, mean_prob, mean_outcome."""
+    ok = np.isfinite(p) & np.isfinite(y)
+    p, y = p[ok], y[ok]
+    schema = {"bin": pl.Int32, "n": pl.Int64, "mean_prob": pl.Float64, "mean_outcome": pl.Float64}
+    if not p.size:
+        return pl.DataFrame(schema=schema)
+    order = np.argsort(p, kind="stable")
+    rows = []
+    for b, idx in enumerate(np.array_split(order, min(n_bins, p.size))):
+        if idx.size:
+            rows.append((b, int(idx.size), float(p[idx].mean()), float(y[idx].mean())))
+    return pl.DataFrame(rows, schema=schema, orient="row")
+
+
+def ece_quantile(p: np.ndarray, y: np.ndarray, n_bins: int = 10) -> float:
+    """Expected calibration error over `_quantile_bins`."""
+    t = _quantile_bins(p, y, n_bins)
+    if t.is_empty():
+        return float("nan")
+    w = t["n"].to_numpy() / t["n"].sum()
+    return float(np.sum(w * np.abs(t["mean_prob"].to_numpy() - t["mean_outcome"].to_numpy())))
+
+
+def event_summary(r: pl.DataFrame) -> dict[str, float]:
+    """Pooled metrics of the "at least one" event (probability targets; counts with
+    `event_probs`) over scored rows: the base rate, Brier and ECE of the model's `p_ge1` and of
+    the baseline's, Brier of the constant base rate (climatology) and the model's log loss.
+    Empty when the rows carry no event probability."""
+    e = _event_rows(r)
+    if e.is_empty():
+        return {}
+    p, pb = e["p_ge1"].to_numpy(), e["baseline_p_ge1"].to_numpy()
+    ev = e["_ev"].to_numpy()
+    rate = float(ev.mean())
+    bm, bb = M.brier(p, ev), M.brier(pb, ev)
+    zero = pb < 0.005  # a rolling rate of exactly zero: the baseline says "never"
+    out = {
+        "event_n": float(e.height),
+        "event_rate": rate,
+        "event_mean_p": float(p.mean()),
+        "event_mean_p_baseline": float(pb.mean()),
+        "brier_model": bm,
+        "brier_baseline": bb,
+        "brier_improvement_pct": 100 * (bb - bm) / bb,
+        "brier_climatology": rate * (1 - rate),
+        "log_loss_model": M.log_loss(p, ev),
+        "ece_model": M.ece(p, ev),
+        "ece_baseline": M.ece(pb, ev),
+        "ece_q10_model": ece_quantile(p, ev),
+        "ece_q10_baseline": ece_quantile(pb, ev),
+        "baseline_zero_share": float(zero.mean()),
+    }
+    if zero.any():
+        out["baseline_zero_event_rate"] = float(ev[zero].mean())
     return out
 
 
 def summarize(preds: pl.DataFrame) -> dict[str, float]:
-    """Pooled metrics over scored rows (model vs every baseline on the same rows)."""
+    """Pooled metrics over scored rows (model vs every baseline on the same rows).
+
+    Amounts and counts: MAE against the baseline (a median for counts, D65), range coverage.
+    Probability targets: no MAE or coverage (they have no P50 or range). Both kinds add the
+    event metrics (`event_summary`) when the rows carry an event probability."""
     r = preds.filter(
         pl.col("played").fill_null(False)
         & pl.col("actual").is_not_null()
@@ -384,28 +558,34 @@ def summarize(preds: pl.DataFrame) -> dict[str, float]:
     )
     if r.is_empty():
         return {"n_scored": 0.0}
-    y = r["actual"]
-    mae = lambda c: float((y - r[c]).abs().mean())  # noqa: E731
-    out = {
-        "n_scored": float(r.height),
-        "mae_model": mae("p50"),
-        "mae_baseline": mae("baseline_p50"),
-        "mae_baseline_mean": mae("baseline"),  # the raw rolling mean (D65: not the bar)
-        "coverage_80": float(((y >= r["p10"]) & (y <= r["p90"])).mean()),
-    }
-    sm = r.filter(pl.col("baseline_season_mean").is_not_null())
-    if sm.height:
-        out["mae_season_mean_same_rows"] = float(
-            (sm["actual"] - sm["baseline_season_mean"]).abs().mean()
+    is_prob = "kind" in r.columns and bool((r["kind"] == "prob").fill_null(False).all())
+    out = {"n_scored": float(r.height)}
+    if not is_prob:
+        y = r["actual"]
+        mae = lambda c: float((y - r[c]).abs().mean())  # noqa: E731
+        out.update(
+            {
+                "mae_model": mae("p50"),
+                "mae_baseline": mae("baseline_p50"),
+                "mae_baseline_mean": mae("baseline"),  # the raw rolling mean (D65: not the bar)
+                "coverage_80": float(((y >= r["p10"]) & (y <= r["p90"])).mean()),
+            }
         )
-        out["mae_model_season_mean_rows"] = float((sm["actual"] - sm["p50"]).abs().mean())
-    out["improvement_pct"] = 100 * (out["mae_baseline"] - out["mae_model"]) / out["mae_baseline"]
-    if "mae_season_mean_same_rows" in out:
-        out["improvement_vs_season_mean_pct"] = (
-            100
-            * (out["mae_season_mean_same_rows"] - out["mae_model_season_mean_rows"])
-            / out["mae_season_mean_same_rows"]
+        sm = r.filter(pl.col("baseline_season_mean").is_not_null())
+        if sm.height:
+            out["mae_season_mean_same_rows"] = float(
+                (sm["actual"] - sm["baseline_season_mean"]).abs().mean()
+            )
+            out["mae_model_season_mean_rows"] = float((sm["actual"] - sm["p50"]).abs().mean())
+        out["improvement_pct"] = (
+            100 * (out["mae_baseline"] - out["mae_model"]) / out["mae_baseline"]
         )
+        if "mae_season_mean_same_rows" in out:
+            out["improvement_vs_season_mean_pct"] = (
+                100
+                * (out["mae_season_mean_same_rows"] - out["mae_model_season_mean_rows"])
+                / out["mae_season_mean_same_rows"]
+            )
     actual_out = (r["actual"] - r["baseline"]).to_numpy()
     pred_out = r["outperformance"].to_numpy()
     ok = np.isfinite(actual_out) & np.isfinite(pred_out)
@@ -416,6 +596,7 @@ def summarize(preds: pl.DataFrame) -> dict[str, float]:
     out["share_role_baseline"] = (
         float((r["baseline_source"] == "role").mean()) if "baseline_source" in r.columns else 0.0
     )
+    out.update(event_summary(r))
     return out
 
 
@@ -430,17 +611,39 @@ def by_season(preds: pl.DataFrame) -> pl.DataFrame:
 
 
 class LiveLogger:
-    """`walk_forward` on_week callback: per-week + cumulative curves for reported weeks."""
+    """`walk_forward` on_week callback: per-week + cumulative curves for reported weeks.
 
-    def __init__(self, run, report: Sequence[int], to_rows: Callable[[pl.DataFrame], pl.DataFrame]):
+    Amounts and counts log MAE (model vs the baseline's median), improvement and range
+    coverage; probability targets log Brier (model vs the baseline's rate) and its cumulative
+    curves; counts with `event_probs` log both."""
+
+    def __init__(
+        self,
+        run,
+        report: Sequence[int],
+        to_rows: Callable[[pl.DataFrame], pl.DataFrame],
+        target: Target | None = None,
+    ):
         self.run = run
         self.report = set(report)
         self.to_rows = to_rows
+        self.target = target
         self.step = 0
         self.done: list[pl.DataFrame] = []
         if run is not None:
             run.define_metric("bt/step")
             run.define_metric("bt/*", step_metric="bt/step")
+
+    def _event(self, df: pl.DataFrame) -> tuple[float, float] | None:
+        """(Brier of p_ge1, Brier of the baseline's) over rows that have both, or None."""
+        t = self.target
+        if t is None or not (t.kind == "prob" or t.event_probs):
+            return None
+        e = df.filter(pl.col("p_ge1").is_not_null() & pl.col("baseline_p_ge1").is_not_null())
+        if e.is_empty():
+            return None
+        ev = (e["y"] >= (0.5 if t.kind == "prob" else t.event_min)).cast(pl.Float64)
+        return M.brier(e["p_ge1"], ev), M.brier(e["baseline_p_ge1"], ev)
 
     def __call__(self, key: AsOf, out: pl.DataFrame) -> None:
         if key.season not in self.report:
@@ -451,30 +654,50 @@ class LiveLogger:
         self.done.append(r)
         cum = pl.concat(self.done)
         self.step += 1
-
-        def m(df: pl.DataFrame, col: str) -> float:
-            return float((df["y"] - df[col]).abs().mean())
-
-        def cov(df: pl.DataFrame) -> float:
-            return float(((df["y"] >= df["p10"]) & (df["y"] <= df["p90"])).mean())
-
-        wm, wb = m(r, "p50"), m(r, "baseline_p50")
-        cm, cb = m(cum, "p50"), m(cum, "baseline_p50")
-        log = {
+        log: dict[str, float] = {
             "bt/step": self.step,
             "bt/season": key.season,
             "bt/week": key.week,
             "bt/n": r.height,
-            "bt/mae_model": wm,
-            "bt/mae_baseline": wb,
-            "bt/improvement_pct": 100 * (wb - wm) / wb if wb else 0.0,
-            "bt/coverage_80": cov(r),
-            "bt/cum_mae_model": cm,
-            "bt/cum_mae_baseline": cb,
-            "bt/cum_improvement_pct": 100 * (cb - cm) / cb if cb else 0.0,
-            "bt/cum_coverage_80": cov(cum),
-            "bt/range_param": float(r["range_param"][0]),
         }
+        if self.target is None or self.target.kind != "prob":
+
+            def m(df: pl.DataFrame, col: str) -> float:
+                return float((df["y"] - df[col]).abs().mean())
+
+            def cov(df: pl.DataFrame) -> float:
+                return float(((df["y"] >= df["p10"]) & (df["y"] <= df["p90"])).mean())
+
+            wm, wb = m(r, "p50"), m(r, "baseline_p50")
+            cm, cb = m(cum, "p50"), m(cum, "baseline_p50")
+            log.update(
+                {
+                    "bt/mae_model": wm,
+                    "bt/mae_baseline": wb,
+                    "bt/improvement_pct": 100 * (wb - wm) / wb if wb else 0.0,
+                    "bt/coverage_80": cov(r),
+                    "bt/cum_mae_model": cm,
+                    "bt/cum_mae_baseline": cb,
+                    "bt/cum_improvement_pct": 100 * (cb - cm) / cb if cb else 0.0,
+                    "bt/cum_coverage_80": cov(cum),
+                }
+            )
+        week_ev, cum_ev = self._event(r), self._event(cum)
+        if week_ev and cum_ev:
+            log.update(
+                {
+                    "bt/brier_model": week_ev[0],
+                    "bt/brier_baseline": week_ev[1],
+                    "bt/cum_brier_model": cum_ev[0],
+                    "bt/cum_brier_baseline": cum_ev[1],
+                    "bt/cum_brier_improvement_pct": (
+                        100 * (cum_ev[1] - cum_ev[0]) / cum_ev[1] if cum_ev[1] else 0.0
+                    ),
+                }
+            )
+        rp = r["range_param"][0] if "range_param" in r.columns else None
+        if rp is not None and np.isfinite(rp):
+            log["bt/range_param"] = float(rp)
         if self.run is not None:
             self.run.log(log)
 
@@ -546,7 +769,7 @@ def run_backtest(
     label = backtest_label(target, no_market=no_market, **overrides)
     config = model_config(target, num_threads=num_threads, **overrides)
     frame = target_data(data, target)
-    feats = feature_columns(frame)
+    feats = target_features(frame, target)
     if no_market:
         feats = [f for f in feats if not f.startswith(MARKET_PREFIX)]
     fhash = feature_hash(feats)
@@ -574,18 +797,19 @@ def run_backtest(
             "backtest",
             config=cfg,
             tags=[
-                "p06",
+                target.phase,
                 "player",
                 f"group:{GROUP_SLUG[target.group]}",
                 f"target:{target.name}",
                 *tags,
+                *(["no-market"] if no_market and "no-market" not in tags else []),
             ],
             launched_by=launched_by,
             name=f"backtest-{label}",
         )
     try:
         model = PlayerWeekModel(target, feats, config, explain=True)
-        logger = LiveLogger(run, report_seasons, lambda df: df)
+        logger = LiveLogger(run, report_seasons, lambda df: df, target=target)
         created = tuesdays(data.inp.games)
         if run is not None:
             for s in report_seasons:
@@ -628,28 +852,17 @@ def run_backtest(
             phrases=load_phrases(),
             features=feats,
         )
-        raw = (
-            out.select(
-                "season",
-                "week",
-                "player_id",
-                "game_id",
-                "_p10_raw",
-                "_p90_raw",
-                "range_param",
-                "scale",
-            )
-            if target.kind == "amount"
-            else out.select("season", "week", "player_id", "game_id", "range_param", "scale")
-        )
+        extra = {"amount": ["_p10_raw", "_p90_raw"]}.get(target.kind, [])
+        if target.kind == "prob" or target.event_probs:
+            extra = ["_p_raw"]
+        raw = out.select("season", "week", "player_id", "game_id", *extra, "range_param", "scale")
         reported = preds.filter(pl.col("season").is_in(list(report_seasons)))
         summary = summarize(reported)
+        summary.update(uncalibrated_event_metrics(target, out, report_seasons))
         per = by_season(reported)
         if per.height:
-            summary["seasons_beating_baseline"] = float(
-                (per["mae_model"] < per["mae_baseline"]).sum()
-            )
-            summary["seasons"] = float(per.height)
+            summary.update(season_wins(target, per))
+        summary.update(ship_rule(target, summary))
         board = scoreboard_rows(reported, "backtest")
         if run is not None:
             run.summary.update(summary)
@@ -679,6 +892,121 @@ def run_backtest(
     return BacktestResult(preds, summary, url, saved)
 
 
+SHIP_MIN_SEASONS = 5  # of the 7 reported: the P08 ship rule (documentation/plans/P08)
+SHIP_COVERAGE = (0.75, 0.88)  # the 80% range must hold between these
+SHIP_ECE_FLOOR = 0.02  # ECE may be up to max(this, the baseline's)
+SHIP_MAE_SLACK_PCT = 0.5  # event counts: MAE may be worse than the baseline's by this much
+
+
+def uncalibrated_event_metrics(
+    target: Target, out: pl.DataFrame, report_seasons: Sequence[int]
+) -> dict[str, float]:
+    """Brier and ECE of the probability *before* the calibration layer (a classifier's raw
+    output; a count's negative-binomial P(>= 1)), on the reported rows that have an outcome:
+    what the layer is worth (`brier_raw` vs `brier_model`)."""
+    if "_p_raw" not in out.columns or not (target.kind == "prob" or target.event_probs):
+        return {}
+    e = out.filter(
+        pl.col("season").is_in(list(report_seasons))
+        & pl.col("y").is_not_null()
+        & pl.col("baseline").is_not_null()
+        & pl.col("_p_raw").is_not_null()
+        & ~pl.col("_p_raw").is_nan()
+    )
+    if e.is_empty():
+        return {}
+    ev = (e["y"] >= (0.5 if target.kind == "prob" else target.event_min)).cast(pl.Float64)
+    return {
+        "brier_raw": M.brier(e["_p_raw"], ev),
+        "ece_raw": M.ece(e["_p_raw"], ev),
+        "event_mean_p_raw": float(e["_p_raw"].mean()),
+    }
+
+
+def season_wins(target: Target, per: pl.DataFrame) -> dict[str, float]:
+    """In how many reported seasons the model beat its baseline: on MAE (amounts, counts) or,
+    for probability targets, on Brier; event counts also get the Brier count."""
+    out = {"seasons": float(per.height)}
+    if target.kind != "prob":
+        out["seasons_beating_baseline"] = float((per["mae_model"] < per["mae_baseline"]).sum())
+    has_brier = "brier_model" in per.columns and "brier_baseline" in per.columns
+    if has_brier and (target.kind == "prob" or target.event_probs):
+        wins = float((per["brier_model"] < per["brier_baseline"]).sum())
+        out["seasons_beating_brier"] = wins
+        if target.kind == "prob":
+            out["seasons_beating_baseline"] = wins
+    return out
+
+
+def ship_rule(target: Target, summary: dict[str, float]) -> dict[str, float]:
+    """The P08 pre-registered ship rule over a backtest's pooled summary (1.0 = met):
+    - amounts / counts: pooled MAE below the baseline's (counts: its median, D65), better in
+      >= 5 seasons, 80% range coverage within 0.75-0.88;
+    - event counts: Brier of `p_ge1` below the baseline's pooled and in >= 5 seasons,
+      ECE <= max(0.02, the baseline's), MAE not worse than the baseline's by more than 0.5%;
+    - probability targets: Brier below the baseline's pooled and in >= 5 seasons,
+      ECE <= max(0.02, the baseline's).
+    Returns each criterion as `ship_<name>` and the overall `ship_pass`; the lead makes the
+    final call."""
+    g = summary.get
+    checks: dict[str, bool] = {}
+    if target.kind != "prob":
+        if target.event_probs:
+            checks["mae_not_worse"] = g("improvement_pct", -1e9) >= -SHIP_MAE_SLACK_PCT
+        else:
+            checks["mae_better"] = g("mae_model", float("inf")) < g("mae_baseline", 0.0)
+            checks["seasons"] = g("seasons_beating_baseline", 0.0) >= SHIP_MIN_SEASONS
+            lo, hi = SHIP_COVERAGE
+            checks["coverage"] = lo <= g("coverage_80", -1.0) <= hi
+    if target.kind == "prob" or target.event_probs:
+        checks["brier_better"] = g("brier_model", float("inf")) < g("brier_baseline", 0.0)
+        checks["brier_seasons"] = g("seasons_beating_brier", 0.0) >= SHIP_MIN_SEASONS
+        checks["ece"] = g("ece_model", float("inf")) <= max(SHIP_ECE_FLOOR, g("ece_baseline", 0.0))
+    out = {f"ship_{k}": float(v) for k, v in checks.items()}
+    out["ship_pass"] = float(all(checks.values()))
+    return out
+
+
+def backtest_table_row(target: Target, s: dict[str, float]) -> list[str]:
+    """The six cells `nfl backtest player` prints per target: key, rows scored, model metric,
+    baseline metric, improvement and the range coverage. Amounts and counts show MAE;
+    probability targets show Brier of the calibrated probability and the ECE instead of the
+    range (they have none)."""
+    n = f"{int(s.get('n_scored', 0)):,}"
+    nan = float("nan")
+    if target.kind == "prob":
+        return [
+            target.key,
+            n,
+            f"Brier {s.get('brier_model', nan):.4f}",
+            f"Brier {s.get('brier_baseline', nan):.4f}",
+            f"{s.get('brier_improvement_pct', nan):+.1f}%",
+            f"ECE {s.get('ece_model', nan):.3f}",
+        ]
+    return [
+        target.key,
+        n,
+        f"{s.get('mae_model', nan):.3f}",
+        f"{s.get('mae_baseline', nan):.3f}",
+        f"{s.get('improvement_pct', nan):+.1f}%",
+        f"{100 * s.get('coverage_80', nan):.0f}%",
+    ]
+
+
+def reliability_tables(reported: pl.DataFrame) -> pl.DataFrame:
+    """Decile reliability bins of the model's `p_ge1` and of the baseline's, one table with a
+    `predictor` column (`model` / `rolling baseline`); empty without event probabilities."""
+    e = _event_rows(reported)
+    if e.is_empty():
+        return pl.DataFrame()
+    ev = e["_ev"].to_numpy()
+    parts = [
+        _quantile_bins(e[col].to_numpy(), ev).with_columns(pl.lit(name).alias("predictor"))
+        for col, name in (("p_ge1", "model"), ("baseline_p_ge1", "rolling baseline"))
+    ]
+    return pl.concat(parts)
+
+
 def _final_logs(run, reported, per, board, model, feats, out, target, frame, config, report):
     import wandb
 
@@ -686,13 +1014,34 @@ def _final_logs(run, reported, per, board, model, feats, out, target, frame, con
         "by_season": wandb.Table(dataframe=per.to_pandas()),
         "accuracy_scoreboard": wandb.Table(dataframe=board.to_pandas()),
     }
-    if per.height:
+    if per.height and target.kind != "prob":
         tables["mae_by_season"] = wandb.plot.line_series(
             xs=per["season"].to_list(),
             ys=[per["mae_model"].to_list(), per["mae_baseline"].to_list()],
             keys=["model", "rolling baseline"],
             title=f"{target.label} ({target.group}): MAE by season (lower is better)",
             xname="season",
+        )
+    if per.height and "brier_model" in per.columns:
+        tables["brier_by_season"] = wandb.plot.line_series(
+            xs=per["season"].to_list(),
+            ys=[per["brier_model"].to_list(), per["brier_baseline"].to_list()],
+            keys=["model", "rolling baseline"],
+            title=f"{target.label} ({target.group}): Brier of P(at least one) by season "
+            "(lower is better)",
+            xname="season",
+        )
+    rel = reliability_tables(reported)
+    if rel.height:
+        m = rel.filter(pl.col("predictor") == "model")
+        tables["reliability_table"] = wandb.Table(dataframe=rel.to_pandas())
+        tables["reliability_diagram"] = wandb.plot.line_series(
+            xs=[float(x) for x in m["mean_prob"]],
+            ys=[list(m["mean_outcome"]), list(m["mean_prob"])],
+            keys=["model: how often it happened", "perfect calibration"],
+            title=f"Reliability, {target.label} ({target.group}): actual rate vs predicted "
+            "probability (deciles)",
+            xname="predicted probability",
         )
     fit = model.last
     if fit is not None:
@@ -737,15 +1086,16 @@ def _final_logs(run, reported, per, board, model, feats, out, target, frame, con
             f"before {s - 1}",
             xname="boosting round",
         )
+    shown = ["p_ge1"] if target.kind == "prob" else ["p10", "p50", "p90"]
+    if target.kind == "count" and target.event_probs:
+        shown.append("p_ge1")
     sample = reported.filter(pl.col("season") == max(report)).select(
         "season",
         "week",
         "player",
         "team",
         "opponent",
-        "p10",
-        "p50",
-        "p90",
+        *shown,
         "baseline",
         "actual",
         "confidence",
@@ -780,6 +1130,13 @@ TUNE_GRID = {
     "min_data_in_leaf": [50, 200],
     "n_estimators": [150, 300],
 }
+# yes / no targets (a touchdown 15-25%, an interception 8%): smaller trees, bigger leaves and
+# fewer rounds, because a rare event leaves little to split on and the boosting overfits it
+TUNE_GRID_PROB = {
+    "num_leaves": [4, 8, 16],
+    "min_data_in_leaf": [100, 300],
+    "n_estimators": [100, 250],
+}
 
 
 def tune_objective(
@@ -791,6 +1148,7 @@ def tune_objective(
     lab = frame.filter(pl.col("y").is_not_null())
     keys = [k for k in week_keys(lab, TUNE_SEASONS) if k.week % 2 == 1]
     errs, base = [], []
+    is_prob = target.kind == "prob"
     for k in keys:
         train = lab.filter(
             (pl.col("season") < k.season)
@@ -807,6 +1165,11 @@ def tune_objective(
         fit = fit_player_model(train, w, target, feats, config, main_only=True)
         main = fit.boosters["q50" if target.kind == "amount" else "mean"]
         pred = main.predict(test.select([pl.col(c).cast(pl.Float64) for c in feats]).to_numpy())
+        if is_prob:  # squared error of the raw probability (no history to calibrate on)
+            y = test["y"].to_numpy()
+            errs.append((y - pred) ** 2)
+            base.append((y - test["baseline"].to_numpy().astype(float)) ** 2)
+            continue
         if target.kind == "count":  # score the NB median, as the backtest does
             from nflengine.models.player_model import count_quantiles, nb_dispersion
 
@@ -824,6 +1187,13 @@ def tune_objective(
         base.append(np.abs(test["y"].to_numpy() - bm.to_numpy().astype(float)))
     e, b = np.concatenate(errs), np.concatenate(base)
     ok = np.isfinite(b)
+    if is_prob:
+        return {
+            "tune/brier_model": float(e[ok].mean()),
+            "tune/brier_baseline": float(b[ok].mean()),
+            "tune/improvement_pct": float(100 * (b[ok].mean() - e[ok].mean()) / b[ok].mean()),
+            "tune/n": float(e.size),
+        }
     return {
         "tune/mae_model": float(e.mean()),
         "tune/mae_baseline": float(b[ok].mean()),
@@ -840,13 +1210,15 @@ def run_tune(
     log: Callable[[str], None] = print,
     num_threads: int | None = None,
 ) -> pl.DataFrame:
-    """W&B grid sweep for one target (`TUNE_GRID`), scored on `TUNE_SEASONS`."""
+    """W&B grid sweep for one target (`TUNE_GRID`; `TUNE_GRID_PROB` for yes / no targets),
+    scored on `TUNE_SEASONS` (MAE; probability targets: Brier)."""
     from nflengine.tracking import run_sweep
 
     data = data or load_saved_data(log=log)
     frame = target_data(data, target)
-    feats = feature_columns(frame)
-    grid = grid or TUNE_GRID
+    feats = target_features(frame, target)
+    grid = grid or (TUNE_GRID_PROB if target.kind == "prob" else TUNE_GRID)
+    metric = "tune/brier_model" if target.kind == "prob" else "tune/mae_model"
     results: list[dict[str, Any]] = []
 
     def one() -> None:
@@ -860,7 +1232,7 @@ def run_tune(
                 "feature_hash": feature_hash(feats),
             },
             tags=[
-                "p06",
+                target.phase,
                 "player",
                 "sweep",
                 f"group:{GROUP_SLUG[target.group]}",
@@ -875,21 +1247,18 @@ def run_tune(
             run.log(res)
             run.summary.update(res)
             results.append({**params, **res})
-            log(
-                f"{target.key} {params}: {res['tune/mae_model']:.4f} "
-                f"({res['tune/improvement_pct']:+.2f}%)"
-            )
+            log(f"{target.key} {params}: {res[metric]:.4f} ({res['tune/improvement_pct']:+.2f}%)")
         finally:
             run.finish()
 
     sweep = {
         "name": f"tune-{target.key}",
         "method": "grid",
-        "metric": {"name": "tune/mae_model", "goal": "minimize"},
+        "metric": {"name": metric, "goal": "minimize"},
         "parameters": {k: {"values": v} for k, v in grid.items()},
     }
     sweep_id = run_sweep(sweep, one)
-    out = pl.DataFrame(results).sort("tune/mae_model")
+    out = pl.DataFrame(results).sort(metric)
     log(f"sweep {sweep_id}: best {out.row(0, named=True) if out.height else None}")
     return out.with_columns(pl.lit(sweep_id).alias("sweep_id"), pl.lit(target.key).alias("key"))
 
@@ -906,6 +1275,8 @@ def _seed_history(paths: DataPaths, target: Target, season: int) -> pl.DataFrame
     cols = ["season", "week", "player_id", "game_id", "p10", "p50", "p90", "mean", "actual"]
     if target.kind == "amount":
         cols += ["_p10_raw", "_p90_raw"]
+    if target.kind == "prob" or target.event_probs:
+        cols += ["_p_raw"]  # the calibration layer is fitted on raw probabilities
     return p.select([c for c in cols if c in p.columns]).rename({"actual": "y"})
 
 
@@ -916,11 +1287,12 @@ def run_train(
     promote: bool = False,
     log: Callable[[str], None] = print,
     run_date: dt.date | None = None,
-    targets: Sequence[Target] = TARGETS,
+    targets: Sequence[Target] | None = None,
     use_wandb: bool = True,
     output: str = "main",
 ) -> dict[str, Any]:
-    """Weekly production fit: predict every target for week N of `season`.
+    """Weekly production fit: predict every live target (`player_schema.live_targets`:
+    the P06 targets plus any shipped P08 one) for week N of `season`.
 
     `output="update"` (the Saturday injury update, P07) writes
     `predictions_players_update.parquet` next to the main file and nothing else: no model
@@ -933,6 +1305,7 @@ def run_train(
     if output == "update" and promote:
         raise ValueError("an injury update never promotes a model")
     update = output == "update"
+    targets = tuple(targets) if targets is not None else live_targets()
     paths = ensure_data_root()
     games = pl.read_parquet(paths.curated / "games.parquet")
     latest = last_asof_week(games, season)
@@ -943,7 +1316,7 @@ def run_train(
         raise ValueError(f"week {week} of {season} isn't predictable yet (latest {latest})")
     key = AsOf(season, week)
     now = dt.datetime.now(dt.UTC).replace(microsecond=0)
-    data = build_player_data(paths, live_key=key, run_date=run_date, log=log)
+    data = build_player_data(paths, live_key=key, run_date=run_date, log=log, targets=targets)
     phrases = load_phrases()
     tag = f"{season}-w{week:02d}"
     version = f"{FAMILY}-{MODEL_VERSION}:{tag}"
@@ -957,7 +1330,7 @@ def run_train(
         frame = frame.filter(
             (pl.col("season") < season) | ((pl.col("season") == season) & (pl.col("week") <= week))
         )
-        feats = feature_columns(frame)
+        feats = target_features(frame, target)
         config = model_config(target)
         model = PlayerWeekModel(target, feats, config, explain=True)
         keys = [AsOf(season, w) for w in range(1, week + 1)]
@@ -1015,7 +1388,7 @@ def run_train(
             "feature_hash": fhash,
             "n_train": fit.n_train,
             "trained_through": tt,
-            "range_param": fit.shift if target.kind == "amount" else fit.dispersion,
+            "range_param": model._range_param(fit),
             "scale": fit.scale,
             "config": config.as_dict(),
         }
@@ -1044,9 +1417,11 @@ def run_train(
     preds, kept = keep_started_players(preds, pred_path, now)
     if kept:
         log(f"kept the saved projections of {kept} game(s) that already kicked off")
+    from nflengine.ops.lock import write_parquet_atomic
+
     if update:
         out_path = run_dir / UPDATE_PRED_FILE
-        preds.write_parquet(out_path, compression="zstd")
+        write_parquet_atomic(preds, out_path, compression="zstd")
         log(f"update projections -> {out_path} ({preds.height} rows)")
         return {
             "predictions": out_path,
@@ -1056,14 +1431,15 @@ def run_train(
             "aliases": [],
             "kept": kept,
         }
-    preds.write_parquet(pred_path, compression="zstd")
+    # atomic: an interrupted re-run never loses the saved rows of games already kicked off
+    write_parquet_atomic(preds, pred_path, compression="zstd")
     from nflengine.models.player_schema import write_status
 
     write_status(run_dir, "ok", f"{preds.height} projections")
     if walk:
         wf = pl.concat(walk, how="vertical_relaxed")
-        wf.write_parquet(
-            paths.runs / str(season) / "player_walkforward.parquet", compression="zstd"
+        write_parquet_atomic(
+            wf, paths.runs / str(season) / "player_walkforward.parquet", compression="zstd"
         )
         upsert_scoreboard(
             paths.runs / str(season) / SCOREBOARD_FILE, scoreboard_rows(wf, "backtest")
@@ -1266,6 +1642,9 @@ def log_scoreboard(season: int, week: int, board: pl.DataFrame, launched_by: str
                     point[f"scoreboard/improvement_{k}"] = float(r["improvement_pct"])
                 if r["coverage_80"] is not None:
                     point[f"scoreboard/coverage_{k}"] = float(r["coverage_80"])
+                bm, bb = r.get("brier_model"), r.get("brier_baseline")
+                if bm is not None and bb:  # P08: Brier skill vs the rolling baseline, %
+                    point[f"scoreboard/brier_skill_{k}"] = 100 * (float(bb) - float(bm)) / float(bb)
             run.log(point)
         run.log({"accuracy_scoreboard": wandb.Table(dataframe=board.to_pandas())})
         return run.url

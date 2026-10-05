@@ -29,6 +29,10 @@ already (the (season, week) row is built from earlier weeks).
 - `avail_*` availability (`availability_features`): his own injury-report status and
   practice participation for the week (the Friday view, D64), games of the team's last 3
   he missed, and whether he missed the last one.
+- `cvg_*` coverage context (`player_coverage.coverage_features`, P08): the passing volume
+  and depth of the offense a defensive back faces and of his own defense. Only the CB/S
+  models use it (`models.player_model.GROUP_PREFIXES`); a weekly run that projects no CB/S
+  target doesn't build it.
 
 **Baselines** (documentation/11, `baselines`): *player rolling* = 0.5 x last 4 + 0.5 x
 season to date, pulled toward last season's per-game mean with `K_LAST` pseudo-games
@@ -51,7 +55,7 @@ from nflengine.features.player_data import (
     team_play_totals,
     tkey,
 )
-from nflengine.models.player_schema import GROUP_PGROUPS, Target, pool_expr
+from nflengine.models.player_schema import GROUP_PGROUPS, TARGETS, Target, pool_expr
 
 ROW_COLS = [
     "player_id",
@@ -95,11 +99,19 @@ def _side_snap() -> pl.Expr:
 # ---- rows -----------------------------------------------------------------------------------
 
 
-def history_rows(hist: pl.DataFrame) -> pl.DataFrame:
-    """Prediction rows for every game a pool-eligible player took part in."""
+def target_pgroups(targets: Sequence[Target] | None = None) -> list[str]:
+    """The position groups whose rows `targets` need (`None`: every target's)."""
+    return sorted({p for t in (targets or TARGETS) for p in GROUP_PGROUPS[t.group]})
+
+
+def history_rows(hist: pl.DataFrame, pgroups: Sequence[str] | None = None) -> pl.DataFrame:
+    """Prediction rows for every game a pool-eligible player took part in (`pgroups`: only
+    these position groups, e.g. a weekly run that projects P06 targets builds no CB rows;
+    default every pool group)."""
     return (
         hist.filter(
-            pl.col("pgroup").is_in(POOL_PGROUPS) & (pl.col("played_off") | pl.col("played_def"))
+            pl.col("pgroup").is_in(list(pgroups) if pgroups is not None else POOL_PGROUPS)
+            & (pl.col("played_off") | pl.col("played_def"))
         )
         .select(ROW_COLS)
         .unique(["player_id", "game_id"], keep="first")
@@ -131,6 +143,7 @@ def upcoming_rows(
     expected_qbs: pl.DataFrame,
     *,
     drop_unavailable: bool = True,
+    pgroups: Sequence[str] | None = None,
 ) -> pl.DataFrame:
     """Rows for the players expected to play in week `week` of `season` (live).
 
@@ -140,8 +153,11 @@ def upcoming_rows(
     share >= `RETURN_SNAP`: back from IR), he
     isn't gone from the week's roster (cut, traded ...) and isn't listed Out / Doubtful /
     reserve (`drop_unavailable`).
-    QBs: only `expected_qbs` (`team`, `qb_id`), the P03 expected starters.
+    QBs: only `expected_qbs` (`team`, `qb_id`), the P03 expected starters. `pgroups`: only
+    these position groups (default every pool group; QBs only if `QB` is among them).
     """
+    groups = list(pgroups) if pgroups is not None else POOL_PGROUPS
+    non_qb = [p for p in groups if p != "QB"]
     tg = team_games(inp.games)
     t_now = (season - 2000) * 22 + week
     slate = tg.filter(
@@ -166,7 +182,7 @@ def upcoming_rows(
     )
     cand = (
         latest.join(active.select("player_id", "team").unique(), on=["player_id", "team"])
-        .filter(pl.col("pgroup").is_in([p for p in POOL_PGROUPS if p != "QB"]))
+        .filter(pl.col("pgroup").is_in(non_qb))
         .join(slate.select("team", "game_id", "opponent", "home", "kickoff_utc"), on="team")
     )
     roster = inp.rosters.filter((pl.col("season") == season) & (pl.col("week") == week))
@@ -193,7 +209,7 @@ def upcoming_rows(
         back = (
             latest.join(act, on=["player_id", "team"])
             .join(regular, on=["player_id", "team"])
-            .filter(pl.col("pgroup").is_in([p for p in POOL_PGROUPS if p != "QB"]))
+            .filter(pl.col("pgroup").is_in(non_qb))
             .join(slate.select("team", "game_id", "opponent", "home", "kickoff_utc"), on="team")
             .join(cand.select("player_id"), on="player_id", how="anti")
         )
@@ -213,6 +229,8 @@ def upcoming_rows(
     if drop_unavailable:
         out = unavailable(inp, season, week)
         cand = cand.filter(~pl.col("player_id").is_in(list(out)))
+    if "QB" not in groups:
+        expected_qbs = expected_qbs.clear()
     qbs = (
         expected_qbs.rename({"qb_id": "player_id"})
         .join(slate.select("team", "game_id", "opponent", "home", "kickoff_utc"), on="team")
@@ -757,8 +775,13 @@ def ripple_features(
     ).unique(["game_id", "team", "_mate"], keep="first")
     j = base
     for v, pre in ((vm, "rip_vacated"), (vo, "rip_out"), (union, "open")):
-        tot = v.group_by("game_id", "team").agg(
-            pl.col(f"{pre}_tgt").sum(), pl.col(f"{pre}_car").sum()
+        # sorted by teammate before summing: float accumulation follows row order, which the
+        # joins above don't fix (two identical builds differed at 1e-16, and adding rows of
+        # other position groups moved it too)
+        tot = (
+            v.sort("game_id", "team", "_mate")
+            .group_by("game_id", "team", maintain_order=True)
+            .agg(pl.col(f"{pre}_tgt").sum(), pl.col(f"{pre}_car").sum())
         )
         own = v.rename({"_mate": "player_id"}).select(
             "game_id",
@@ -914,11 +937,14 @@ def build_features(
     context: pl.DataFrame | None = None,
     expected_qbs: pl.DataFrame | None = None,
     log: Callable[[str], None] = print,
+    coverage: bool = True,
 ) -> pl.DataFrame:
     """Rows + every shared feature family (not the per-target `own_*`, see
-    `target_frame`)."""
+    `target_frame`). `coverage` adds the `cvg_*` family (P08, used only by the CB/S models);
+    a weekly run that projects no CB/S target leaves it out."""
     import time
 
+    from nflengine.features.player_coverage import coverage_features
     from nflengine.features.player_efficiency import efficiency_features
     from nflengine.features.player_opponent import opponent_features
 
@@ -931,6 +957,8 @@ def build_features(
         ("efficiency", lambda: efficiency_features(inp, hist, rows)),
         ("opponent", lambda: opponent_features(inp, hist, rows)),
     ]
+    if coverage:
+        fams.append(("coverage", lambda: coverage_features(inp, hist, rows)))
     for name, fn in fams:
         t0 = time.time()
         f = fn()

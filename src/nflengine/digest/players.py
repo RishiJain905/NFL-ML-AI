@@ -35,7 +35,7 @@ from nflengine.digest.build import matchup
 from nflengine.digest.checks import banned_terms
 from nflengine.digest.names import nickname
 from nflengine.digest.payload import LookbackItem, SideTally, WatchItem
-from nflengine.models.player_schema import TARGETS, conform, score_predictions
+from nflengine.models.player_schema import P06_KEYS, TARGET_BY_KEY, conform, score_predictions
 from nflengine.models.player_watch import (
     N_DEFENSE,
     N_OFFENSE,
@@ -55,9 +55,15 @@ COVERAGE_OK = (0.72, 0.88)  # P06 exit criterion for the P10-P90 range
 THIN_SEASON_GAMES = 3  # a rolling baseline from fewer games this season gets a note
 MIN_DRIVER_SHARE = 0.2  # a driver is shown only if it is >= 20% of the gap to baseline
 NO_DRIVER = "no single factor stands out"
-LATE_TARGETS = ("pressures",)  # PFR stats arrive a week late (features lag them, D44)
+# PFR stats arrive a week late (features lag them, D44)
+LATE_TARGETS = ("pressures", "cov_tgt", "cov_cmp", "cov_yds")
 CONFIDENCES = ("low", "medium", "high")
-_SHARED_LABELS = {t.label for t in TARGETS if sum(u.label == t.label for u in TARGETS) > 1}
+# labels two P06 position groups share ("receptions": RB and WR/TE): named with their group in
+# the report card. P08 targets add shared labels of their own ("rushing yards": QB and RB;
+# "chance of a touchdown"), found from the rows being summarised (`_shared_labels`), so a
+# week with only P06 projections reads exactly as it always did
+_P06 = [TARGET_BY_KEY[k] for k in P06_KEYS]
+_SHARED_LABELS = {t.label for t in _P06 if sum(u.label == t.label for u in _P06) > 1}
 
 
 # ---- this week's picks ------------------------------------------------------------------------
@@ -149,10 +155,30 @@ def _role_note(r: dict) -> str | None:
     return "a bigger role this week: a regular teammate in his position group is out"
 
 
-def build_model_watch(rows: pl.DataFrame) -> list[WatchItem]:
-    """Payload items from `select_watchlist` / `tough_spots` rows (source `model`)."""
+def pick_chances(preds: pl.DataFrame | None) -> dict[tuple[str, str], dict[str, float]]:
+    """Per (player, game), what the shipped P08 targets say about him, from the week's
+    projections: `td` (chance of a touchdown, RB and WR/TE), `sacks` (chance of at least one
+    sack, EDGE/DL) and `pass_tds` (expected passing TDs, QB). Empty when the week has none of
+    those targets (the P06-only digest)."""
+    if preds is None or preds.is_empty():
+        return {}
+    want = preds.filter(pl.col("target").is_in(["td", "sacks", "pass_tds"]))
+    out: dict[tuple[str, str], dict[str, float]] = {}
+    for r in want.iter_rows(named=True):
+        value = r["mean"] if r["target"] == "pass_tds" else r["p_ge1"]
+        if _num_ok(value):
+            out.setdefault((r["player_id"], r["game_id"]), {})[r["target"]] = float(value)
+    return out
+
+
+def build_model_watch(
+    rows: pl.DataFrame, chances: dict[tuple[str, str], dict[str, float]] | None = None
+) -> list[WatchItem]:
+    """Payload items from `select_watchlist` / `tough_spots` rows (source `model`).
+    `chances` (`pick_chances`) adds the table-only P08 numbers to the picks it covers."""
     out = []
     for r in rows.iter_rows(named=True):
+        mine = (chances or {}).get((r["player_id"], r["game_id"]), {})
         label, unit = r["target_label"], r["unit"] or "yards"
         mid, base = center(r), float(r["baseline"])
         diff = r["outperformance"] if _num_ok(r.get("outperformance")) else mid - base
@@ -187,6 +213,11 @@ def build_model_watch(rows: pl.DataFrame) -> list[WatchItem]:
                 source="model",
                 drivers=drivers,
                 driver_note=None if drivers else NO_DRIVER,
+                td_chance=F.pct(mine["td"]) if "td" in mine else None,
+                pass_tds=(
+                    F.stat(mine["pass_tds"], "passing TDs", "count") if "pass_tds" in mine else None
+                ),
+                sack_chance=F.pct(mine["sacks"]) if "sacks" in mine else None,
             )
         )
     return out
@@ -252,7 +283,7 @@ def model_watch(
     tough = tough_spots(preds, sizes.tough, run_time=run_time, exclude=picks["player_id"].to_list())
     return PlayerWatch(
         stamp_model_watch(picks, run_time),
-        build_model_watch(picks),
+        build_model_watch(picks, pick_chances(preds)),
         build_model_watch(tough),
         model_version(preds),
     )
@@ -474,14 +505,37 @@ def side_tallies(scored: pl.DataFrame) -> list[SideTally]:
 
 
 def read_scoreboards(paths: DataPaths, season: int) -> tuple[pl.DataFrame | None, ...]:
-    """(live season scoreboard, backtest scoreboard); None where the file doesn't exist."""
+    """(live season scoreboard, backtest scoreboard); None where the file doesn't exist or
+    can't be read (the highlights are bookkeeping: an unreadable file must never stop the
+    digest; P08 Sol review)."""
     live = paths.runs / str(season) / LIVE_SCOREBOARD
     back = paths.runs.joinpath(*BACKTEST_SCOREBOARD)
-    return tuple(pl.read_parquet(p) if p.exists() else None for p in (live, back))
+
+    def read(p: Path) -> pl.DataFrame | None:
+        if not p.exists():
+            return None
+        try:
+            return pl.read_parquet(p)
+        except Exception:  # noqa: BLE001 - a truncated or locked file: no highlights
+            return None
+
+    return (read(live), read(back))
 
 
-def _name(label: str, group: str) -> str:
-    return f"{label} ({group})" if label in _SHARED_LABELS else label
+def _shared_labels(agg: pl.DataFrame) -> set[str]:
+    """`_SHARED_LABELS` plus any label several position groups of `agg` carry (P08 targets)."""
+    if agg.is_empty():
+        return set(_SHARED_LABELS)
+    per = agg.group_by("target_label").agg(pl.col("position_group").n_unique().alias("_n"))
+    return _SHARED_LABELS | set(per.filter(pl.col("_n") > 1)["target_label"].to_list())
+
+
+def _name(label: str, group: str, shared: set[str] | None = None) -> str:
+    return (
+        f"{label} ({group})"
+        if label in (shared if shared is not None else _SHARED_LABELS)
+        else label
+    )
 
 
 def _aggregate(sb: pl.DataFrame) -> pl.DataFrame:
@@ -489,7 +543,9 @@ def _aggregate(sb: pl.DataFrame) -> pl.DataFrame:
     P10-P90 coverage."""
     n = pl.col("n_scored").cast(pl.Float64)
     agg = (
-        sb.filter(pl.col("n_scored").fill_null(0) > 0)
+        # probability targets have no MAE (their Brier scores live in the scoreboard); an
+        # MAE-less row would make a 0 / 0 improvement
+        sb.filter((pl.col("n_scored").fill_null(0) > 0) & pl.col("mae_model").is_not_null())
         .group_by("target", "position_group", "target_label")
         .agg(
             n.sum().alias("n"),
@@ -511,14 +567,15 @@ def _highlight_lines(agg: pl.DataFrame, scope: str) -> list[str]:
     if agg.is_empty():
         return []
     rows = agg.to_dicts()
+    shared = _shared_labels(agg)
     best, weak = rows[0], rows[-1]
     lines = []
     shown = F.pct(abs(best["improvement"]) / 100)
     if best["improvement"] > 0 and shown.display != "0%":
-        name = _name(best["target_label"], best["position_group"])
+        name = _name(best["target_label"], best["position_group"], shared)
         lines.append(f"{name} projections beat the rolling baseline by {shown.display} {scope}")
     if weak is not best or not lines:
-        name = _name(weak["target_label"], weak["position_group"])
+        name = _name(weak["target_label"], weak["position_group"], shared)
         gap = F.pct(abs(weak["improvement"]) / 100)
         if gap.display == "0%":
             lines.append(f"{name}: about even with the rolling baseline, not yet better {scope}")
@@ -534,7 +591,7 @@ def _highlight_lines(agg: pl.DataFrame, scope: str) -> list[str]:
     lo, hi = COVERAGE_OK
     if not lo <= off["coverage"] <= hi:
         word = "narrow" if off["coverage"] < lo else "wide"
-        name = _name(off["target_label"], off["position_group"])
+        name = _name(off["target_label"], off["position_group"], shared)
         lines.append(
             f"{name} ranges are too {word}: {F.pct(off['coverage']).display} of results fell "
             f"inside the 80% range {scope}"
@@ -553,6 +610,8 @@ def _seasons(df: pl.DataFrame) -> str:
 def _mode_rows(sb: pl.DataFrame | None, mode: str) -> pl.DataFrame:
     if sb is None or sb.is_empty():
         return pl.DataFrame()
+    if "position_group" in sb.columns:  # P08 team stat rows share the file: players only here
+        sb = sb.filter(pl.col("position_group") != "TEAM")
     return sb.filter(pl.col("mode") == mode) if "mode" in sb.columns else sb
 
 
@@ -596,11 +655,20 @@ def week_improvement(
     """The scorecard's `player_mae_vs_baseline` for a graded week: the n-weighted mean of the
     scoreboard's `improvement_pct` over that week's targets (positive = the model's MAE is
     lower than the rolling baseline's). Only rows of `mode`: the live season file also holds
-    walk-forward re-runs of earlier weeks (`mode == "backtest"`), never quoted as live."""
+    walk-forward re-runs of earlier weeks (`mode == "backtest"`), never quoted as live. Only
+    the 11 P06 targets: the season's series stays comparable week to week now that P08
+    targets (from 2026 week 5) are scored too; they have their own scoreboard rows."""
+    from nflengine.models.player_schema import TARGETS
+
     sb = _mode_rows(sb, mode)
     if sb.is_empty():
         return None
-    w = sb.filter(
+    p06 = pl.DataFrame(
+        [(t.name, t.group) for t in TARGETS if t.phase == "p06"],
+        schema={"target": pl.String, "position_group": pl.String},
+        orient="row",
+    )
+    w = sb.join(p06, on=["target", "position_group"], how="semi").filter(
         (pl.col("season") == season)
         & (pl.col("week") == week)
         & pl.col("improvement_pct").is_not_null()

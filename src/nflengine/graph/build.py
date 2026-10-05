@@ -1,8 +1,10 @@
 """`nfl graph build`: the weekly knowledge-graph rebuild (documentation/05; plan P05).
 
 wipe -> schema -> load (nodes, relationships, model outputs, the published-insight log)
--> count check -> query library -> candidates + selection -> `graph_results.json` in the
-run folder. Counts and timings go to W&B (group `track1-graph`, job `build`).
+-> count check -> GDS jobs (P08, `graph/gds.py`: PageRank / degree on each team's passing
+network, KNN player similarity; fail-soft) -> query library -> candidates + selection ->
+`graph_results.json` in the run folder. Counts and timings go to W&B (group
+`track1-graph`, job `build`).
 
 The build is **as of** the run: a live run sees what exists now; a backtest week sees what
 its Tuesday saw (`graph/tables.py` has the visibility rules), so a backtest digest's graph
@@ -26,6 +28,7 @@ import polars as pl
 from nflengine.graph import insights as I
 from nflengine.graph import load as L
 from nflengine.graph.client import GraphCountMismatch, safe_error
+from nflengine.graph.gds import GdsResult, run_gds_jobs
 from nflengine.graph.published import log_path, recent_from_graph
 from nflengine.graph.queries import LIBRARY, QueryResult, run_library
 from nflengine.graph.tables import GraphKey, build_tables, load_inputs
@@ -50,6 +53,7 @@ class GraphBuildResult:
     selection: I.Selection | None = None
     error: str | None = None
     url: str | None = None
+    gds: GdsResult | None = None
 
     @property
     def summary(self) -> str:
@@ -161,6 +165,12 @@ def build_graph(
         log(f"[red]graph count mismatches: {mismatches}[/]")
         raise GraphCountMismatch(sorted(mismatches))
 
+    # GDS jobs (doc 05's build order: after the load, before the queries); fail-soft
+    t0 = time.perf_counter()
+    gds = run_gds_jobs(driver, key, log=log)
+    timings["gds_s"] = time.perf_counter() - t0
+    log(f"graph: {gds.summary}")
+
     t0 = time.perf_counter()
     queries = run_library(driver, key.season, key.week)
     timings["queries_s"] = time.perf_counter() - t0
@@ -170,7 +180,12 @@ def build_graph(
         log(f"  {name}: {len(q.rows)} rows in {q.seconds:.2f} s{flag}{err}")
 
     games = game_infos(inp.games, key.season, key.week)
-    cands = I.candidates({n: q.rows for n, q in queries.items()}, key.season, games)
+    conv_errors: dict[str, str] = {}
+    cands = I.candidates(
+        {n: q.rows for n, q in queries.items()}, key.season, games, errors=conv_errors
+    )
+    for name, err in conv_errors.items():
+        log(f"  [yellow]{name}: rows skipped by the converter ({err})[/]")
     recent = recent_from_graph(driver, key.season, key.week)
     sel = I.select(
         cands,
@@ -192,6 +207,8 @@ def build_graph(
         "expected_counts": expected,
         "count_mismatches": {k: list(v) for k, v in mismatches.items()},
         "dropped_rels": tables.dropped,
+        "gds": gds.to_dict(),
+        "converter_errors": conv_errors,
         "timings": {
             **{k: round(v, 2) for k, v in timings.items()},
             **{f"{k}_s": round(v, 2) for k, v in per_table.items()},
@@ -214,6 +231,7 @@ def build_graph(
         timings=timings,
         queries=queries,
         selection=sel,
+        gds=gds,
     )
     return data, res
 
@@ -341,6 +359,22 @@ def _step_logger(run) -> Callable[[str, float, int], None]:
     return on_step
 
 
+def _gds_tables(res: GraphBuildResult) -> dict[str, Any]:
+    """`gds_hubs`: each team's passing-network hub (top receiver by PageRank share)."""
+    import wandb
+
+    job = (res.gds.jobs if res.gds else {}).get("pass_network") or {}
+    hubs = job.get("hubs") or {}
+    if not hubs:
+        return {}
+    return {
+        "gds_hubs": wandb.Table(
+            columns=["team", "hub", "pagerank_share"],
+            data=[[t, h.get("hub"), h.get("share")] for t, h in sorted(hubs.items())],
+        )
+    }
+
+
 def _log_wandb(run, data: dict[str, Any], res: GraphBuildResult) -> str | None:
     import wandb
 
@@ -357,6 +391,12 @@ def _log_wandb(run, data: dict[str, Any], res: GraphBuildResult) -> str | None:
     summary["insights/candidates"] = len(data.get("candidates", []))
     summary["insights/picked"] = len(sel.picked) if sel else 0
     summary["insights/skipped_novelty"] = len((sel.skipped if sel else {}).get("novelty", []))
+    if res.gds is not None:  # P08: GDS jobs
+        summary["gds/status"] = res.gds.status
+        summary["gds/seconds"] = round(res.gds.seconds, 2)
+        for name, job in res.gds.jobs.items():
+            summary[f"gds/{name}/seconds"] = job.get("seconds", 0.0)
+            summary[f"gds/{name}/written"] = job.get("written", 0)
     run.summary.update(summary)
     counts = wandb.Table(
         columns=["kind", "name", "count"],
@@ -388,6 +428,7 @@ def _log_wandb(run, data: dict[str, Any], res: GraphBuildResult) -> str | None:
             "query_seconds": wandb.plot.bar(qt, "query", "seconds", title="Query time (s)"),
             "insights_picked": picked,
             "insight_candidates": cands,
+            **_gds_tables(res),
         }
     )
     # the build's record as an artifact (P06 reads Q2 / Q3 rows from it as features), like the

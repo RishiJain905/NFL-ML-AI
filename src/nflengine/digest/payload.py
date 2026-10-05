@@ -283,6 +283,13 @@ class WatchItem(Model):
     # his group)"; only drivers >= 20% of the gap to baseline, same direction first
     drivers: list[str] = Field(default_factory=list)
     driver_note: str | None = None  # "no single factor stands out" when no driver qualifies
+    # P08, only when a shipped target projects the pick: his chance of a touchdown (RB / WR /
+    # TE), expected passing TDs (QB), his chance of a sack (EDGE / DL). Table columns only:
+    # `exclude=True` keeps them out of the saved payload and the LLM input (the prose never
+    # sees these numbers, so the fact checks have nothing to bind)
+    td_chance: Num | None = Field(default=None, exclude=True)
+    pass_tds: Num | None = Field(default=None, exclude=True)
+    sack_chance: Num | None = Field(default=None, exclude=True)
 
 
 # ---- later phases -----------------------------------------------------------------------------
@@ -318,6 +325,14 @@ class GraphInsight(Model):
         "coach_reunion",
         "unit_mismatch",
         "special_teams",
+        # P08 (graph/insights_advanced.py)
+        "former_teammates",
+        "style_matchup",
+        "play_action",
+        "officiating",
+        "coaching_tree",
+        "network_hub",
+        "usage_comp",
     ]
     section: Literal["matchup_risk", "non_obvious", "more"]  # more = a code-written one-liner
     strength: float

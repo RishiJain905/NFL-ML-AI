@@ -327,6 +327,7 @@ def make_world(
                                     "def_missed_tackles": n(0, 3),
                                     "def_tackles_combined": n(1, 9),
                                     "def_targets": n(0, 4),
+                                    "def_completions_allowed": n(0, 3),
                                     "def_yards_allowed": n(0, 40),
                                 }
                             )
@@ -440,6 +441,7 @@ def make_world(
                         "def_missed_tackles",
                         "def_tackles_combined",
                         "def_targets",
+                        "def_completions_allowed",
                         "def_yards_allowed",
                     ),
                     pl.Float64,
