@@ -2,13 +2,13 @@
 
 A personal ML system that produces a weekly NFL digest during the season. It shows game win probabilities and predicted scores, team trends, a look back at last week's tracking stats, projections for offensive and defensive players, and insights from a knowledge graph. It tracks its own accuracy every week. A separate research track models player movement on the NFL Big Data Bowl tracking data.
 
-Last updated: 2026-10-04 (P07: weekly operations, runbook).
+Last updated: 2026-10-05 (P10: season operations, rehearsals, playoffs).
 
 ## Start here
 
 - **Building something?** Go to **[plans/README.md](plans/README.md)** (how the phases work) and **[plans/PROGRESS.md](plans/PROGRESS.md)** (where the build currently stands).
 - **Want to understand the design?** Read the docs below in order.
-- **Running the weekly digest?** Use the **[runbook](runbook.md)**: the weekly commands, exit codes, what each alert means, how to rerun, resume, roll back or simulate a week.
+- **Running the weekly digest?** Use the **[runbook](runbook.md)**: the weekly commands, exit codes, what each alert means, how to rerun, resume, roll back, simulate or rehearse a week, the playoffs, the end of the season and the pre-season checklist.
 
 ## Design documents
 
@@ -37,6 +37,7 @@ One guide per major technology or component, written for a reader who's new to i
 | [Weights & Biases](guides/weights-and-biases.md) | Every W&B run, chart, table and artifact, step by step through the weekly run and the research runs, what to check each week, and the **2026 Season Dashboard** chart by chart (what each shows, whether higher or lower is better, normal ranges) |
 | [The LLM digest writer](guides/llm-digest-writer.md) | What the LLM does and doesn't do, the prompt, the checks it must pass, cost and latency, how to switch the model or provider safely, and the P09 re-check on today's digest |
 | [Player projections](guides/player-projections.md) | The player model (P06): LightGBM, quantile ranges, count distributions, SHAP drivers in a few minutes; how projections become the watch list, tough spots, the look-back and the accuracy scoreboard; files, W&B runs, commands, how to change it safely; P08: chances of a TD / sack / interception (calibrated), QB TDs and interceptions, CB/S coverage |
+| [Season operations](guides/season-operations.md) | The season beyond one week (P10): the 2026–27 calendar, the Tuesday season log, **rehearsals** (the live steps on any week in a sandbox), what playoff weeks do, the season review, roster churn, the pre-season checklist, Big Data Bowl 2027 |
 | [Weekly operations](guides/weekly-operations.md) | How the weekly run is operated (P07, manual-first): the calendar (which week, the deadline, special weeks), `nfl weekly run --auto` and its exit codes, the lock, Neo4j start-up, the run records and W&B pipeline run, alerts, drift checks and their 2019–2025 replay, the season dashboard, the Saturday injury update, time-travel simulations |
 
 ## Weekly graph queries

@@ -72,6 +72,7 @@ from nflengine.digest.report_card import (
 )
 from nflengine.digest.synthesize import Synthesis, synthesize
 from nflengine.models.player_watch import select_watchlist
+from nflengine.ops.calendar import round_name
 from nflengine.paths import DataPaths, ensure_data_root
 from nflengine.settings import get_config, load_followed_teams
 
@@ -156,7 +157,9 @@ def make_context(
     paths = paths or ensure_data_root()
     if run_time is None:
         if mode == "live":
-            run_time = dt.datetime.now(dt.UTC).replace(microsecond=0)
+            from nflengine import clock
+
+            run_time = clock.utc_now()  # the real time, or a rehearsal's pinned Tuesday
         else:
             games = games if games is not None else read_games(paths)
             run_time = tuesday_before(games, season, week)
@@ -435,14 +438,24 @@ def build_payload(
         mode=ctx.mode,
     )
     game_items = build.build_games(preds, ctx.run_time)
+    teams = {g.home for g in game_items} | {g.away for g in game_items}
+    # a playoff week (P10): name the round; trends and under-the-hood only for the teams
+    # still playing (this week's slate), and "last week" may be the previous round
+    week_games = games.filter((pl.col("season") == s) & (pl.col("week") == w))
+    playoff_round = round_name(week_games["game_type"].to_list())
+    alive = sorted(teams) if playoff_round else None
     trends = build.build_trends(
-        _feature(paths, "team_trends", s, w), _feature(paths, "team_trend_drivers", s, w), followed
+        _feature(paths, "team_trends", s, w),
+        _feature(paths, "team_trend_drivers", s, w),
+        followed,
+        teams=alive,
     )
-    uh = select_under_hood(s, w, paths, followed=followed)
+    uh = select_under_hood(
+        s, w, paths, followed=followed, playoffs=bool(playoff_round), teams=alive
+    )
     pw = choose_watch(ctx, games, followed, WatchSizes.from_config(get_config().digest), log)
     upcoming = [g for g in game_items if g.status == "upcoming"]
     started = [g.matchup for g in game_items if g.status == "started"]
-    teams = {g.home for g in game_items} | {g.away for g in game_items}
     news: list = []
     if ctx.mode == "live":
         try:
@@ -471,6 +484,7 @@ def build_payload(
         sources=_sources(ctx, log),
         followed_teams=followed,
         early_season=w <= EARLY_WEEKS,
+        playoff_round=playoff_round,
         graph_status=graph.status,  # type: ignore[arg-type]
         graph_note=graph.note,
     )

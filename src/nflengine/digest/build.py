@@ -152,6 +152,10 @@ def build_highlights(games: list[GameItem]) -> GameHighlights:
 
     by_conf = sorted(upcoming, key=lambda g: (-fav(g)[1], g.game_id))
     by_close = sorted(upcoming, key=lambda g: (fav(g)[1], g.game_id))
+    # a small slate (P10, the playoffs): at most half the games per list, so the lists never
+    # share a game ("the most lopsided call and the closest game" of a one-game Super Bowl);
+    # a regular week (13-16 games) is unchanged
+    half = len(upcoming) // 2
     lop = [
         item(
             g,
@@ -159,11 +163,11 @@ def build_highlights(games: list[GameItem]) -> GameHighlights:
             if i == 0
             else f"the {F.ordinal_str(i + 1)}-most lopsided call",
         )
-        for i, g in enumerate(by_conf[:LOPSIDED_N])
+        for i, g in enumerate(by_conf[: min(LOPSIDED_N, half)])
     ]
     close = [
         item(g, "the closest game" if i == 0 else f"the {F.ordinal_str(i + 1)}-closest game")
-        for i, g in enumerate(by_close[:CLOSEST_N])
+        for i, g in enumerate(by_close[: min(CLOSEST_N, half)])
     ]
     return GameHighlights(most_lopsided=lop, closest=close)
 
@@ -249,13 +253,17 @@ def build_trends(
     drivers: pl.DataFrame,
     followed: Sequence[str] = (),
     per_side: int = MAX_TRENDS_PER_SIDE,
+    teams: Sequence[str] | None = None,
 ) -> list[TrendItem]:
     """2-4 teams trending up or down (the as-of rows for the digest week).
 
     Ranked by |trend_delta| (followed teams x1.15), up to `per_side` risers and fallers.
-    Trends are descriptive (D47).
+    Trends are descriptive (D47). `teams` (a playoff week, P10): only the teams still
+    playing.
     """
     t = trends.filter(pl.col("direction").is_in(["up", "down"]))
+    if teams is not None:
+        t = t.filter(pl.col("team").is_in(list(teams)))
     if t.is_empty():
         return []
     boost = pl.when(pl.col("team").is_in(list(followed))).then(FOLLOWED_BOOST).otherwise(1.0)

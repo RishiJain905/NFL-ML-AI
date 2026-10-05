@@ -490,6 +490,14 @@ The same code as the live digest, producing a past week as if it were that week'
 - **`--no-wandb`** on `nfl graph build` or `nfl digest` skips W&B entirely (local tests).
 - **`nfl graph query`** is read-only and never logs.
 
+### 6.6 P10: what logs nothing, and the end-of-season scoring run
+
+P10 added **no new W&B run, chart or artifact**, on purpose:
+
+- **Rehearsals** (`nfl weekly rehearse`) run with `WANDB_MODE=disabled`: no `track1-game` / `track1-player` train runs, no digest run, no alias moves. Their record is `rehearsal.json` in the rehearsal folder on D: ([season operations guide](season-operations.md)).
+- **The season review** (`nfl season review`) and the season log (`nfl season weeks`) are Markdown and console output read from the run records; they log nothing.
+- **Finishing a season:** after the Super Bowl no weekly run follows, so `nfl scoreboard --season S --week 21` / `--week 22` is run by hand (runbook → End of the season). Each call logs the usual `track1-player` / `eval` run `scoreboard-<season>-w<NN>` (§6.3b), now including playoff weeks: P10 grades playoff projections with the playoff box scores.
+
 ## 7. Season-long views
 
 ### The season scorecard

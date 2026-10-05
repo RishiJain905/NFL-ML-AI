@@ -293,12 +293,14 @@ def load_inputs(
     """Read every curated table the graph needs, restricted to the key's window (plus the
     optional coaching seed, `config/coaching_seed.csv` unless `coaching_seed_path`)."""
     from nflengine.features.venues import game_travel, load_venues
-    from nflengine.graph.tables_extra import read_coaching_seed
+    from nflengine.graph.tables_extra import apply_coach_fixes, read_coach_fixes, read_coaching_seed
 
     games_all = pl.read_parquet(paths.curated / "games.parquet")
     games = games_all.filter(
         key.in_window() & key.through() & pl.col("game_type").is_in(GAME_TYPES)
     )
+    # P10: hand-checked corrections to the schedules' head coaches (config/head_coach_fixes.csv)
+    games = apply_coach_fixes(games, read_coach_fixes(log=log))
 
     def table(name: str, season_col: str | None = "season") -> pl.DataFrame:
         lf = _scan(paths, name)

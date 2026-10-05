@@ -405,7 +405,9 @@ class WatchScorer:
             else:
                 from nflengine.features.player_data import load_inputs, player_history
 
-                inp = load_inputs(self.paths, first_season=season, last_season=season, log=_quiet)
+                inp = load_inputs(  # playoff picks are graded too (P10)
+                    self.paths, first_season=season, last_season=season, log=_quiet, playoffs=True
+                )
                 self._cache[season] = player_history(inp)
         return self._cache[season]
 

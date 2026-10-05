@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import random
 import time
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -1030,6 +1031,134 @@ def weekly_injury_update(
         console.print(f"W&B: {res.url}")
 
 
+def _week_range(text: str) -> list[int]:
+    """`19-22` -> [19, 20, 21, 22]; `1` -> [1]; `19,21` -> [19, 21]."""
+    weeks: list[int] = []
+    for part in text.split(","):
+        a, _, b = part.strip().partition("-")
+        weeks += list(range(int(a), int(b or a) + 1))
+    return weeks
+
+
+@weekly_app.command("rehearse")
+def weekly_rehearse(
+    season: int = typer.Option(..., help="Season of the week(s) to rehearse."),
+    weeks: str = typer.Option(
+        ..., "--week", "--weeks", help="A week, a range or a list: 1, 19-22, 19,21."
+    ),
+    steps: str = typer.Option(
+        "ready,game,player,digest", help="Steps to run (a subset of ready,game,player,digest)."
+    ),
+    llm: str = typer.Option("placeholder", "--llm", help="The digest writer (default: templates)."),
+    out: str | None = typer.Option(
+        None, help="Rehearsal folder (default: <data root>/rehearsals/<season>)."
+    ),
+    at: str | None = typer.Option(
+        None,
+        help="Pin the clock here (ISO; no offset = ET; one week only). Default: 10:00 ET on "
+        "the Tuesday before the week's first kickoff.",
+    ),
+    fresh: bool = typer.Option(False, "--fresh", help="Wipe the rehearsal folder first."),
+) -> None:
+    """Run the live Tuesday steps on a past or current week in a scratch copy (P10): the
+    playoff check, the pre-season week-1 dry run. Reads the real data; writes only under the
+    rehearsal folder; no W&B, no graph write, no run records. Exit 1 if a week failed."""
+    from nflengine.ops.rehearsal import run_rehearsal
+    from nflengine.paths import DataRootError
+    from nflengine.weekly import EXIT_NO_DRIVE, escape, parse_as_of
+
+    todo = _week_range(weeks)
+    if at and len(todo) > 1:
+        raise typer.BadParameter("--at pins one week; rehearse one week at a time with it")
+    failed = 0
+    try:
+        for i, wk in enumerate(todo):
+            res = run_rehearsal(
+                season,
+                wk,
+                steps=[s.strip() for s in steps.split(",") if s.strip()],
+                llm=llm,
+                root=Path(out) if out else None,
+                at=parse_as_of(at) if at else None,
+                fresh=fresh and i == 0,
+                log=console.print,
+            )
+            style = {"ok": "green", "degraded": "yellow"}.get(res.status, "red")
+            detail = f" ({escape(res.error)})" if res.error else ""
+            console.print(f"[{style}]rehearsal {season} week {wk:02d}: {res.status}{detail}[/]")
+            if res.report:
+                console.print(f"  digest: {res.report}")
+            failed += res.status == "failed"
+    except DataRootError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(EXIT_NO_DRIVE) from None
+    except ValueError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(2) from None
+    if failed:
+        raise typer.Exit(1)
+
+
+# ---- season review (P10) --------------------------------------------------------------------
+
+season_app = typer.Typer(
+    help="The season so far and the end-of-season review (P10).",
+    no_args_is_help=True,
+    pretty_exceptions_show_locals=False,
+)
+app.add_typer(season_app, name="season")
+
+
+def _season_root(simulations: bool) -> Path | None:
+    from nflengine.paths import ensure_data_root
+
+    return ensure_data_root().runs / "digest-backtests" if simulations else None
+
+
+@season_app.command("weeks")
+def season_weeks(
+    season: int = typer.Option(..., help="Season."),
+    simulations: bool = typer.Option(
+        False, "--simulations", help="Read the --as-of simulations' records instead."
+    ),
+) -> None:
+    """One line per week (published, on time, checks, drift alerts): the PROGRESS season log."""
+    from nflengine.ops.season_review import week_lines
+
+    kind = "simulation" if simulations else "main"
+    lines = week_lines(season, run_root=_season_root(simulations), kind=kind)
+    for line in lines or [f"no weekly runs recorded for {season}"]:
+        console.print(line, markup=False, soft_wrap=True)
+
+
+@season_app.command("review")
+def season_review(
+    season: int = typer.Option(..., help="Season."),
+    out: str | None = typer.Option(
+        None,
+        help="Output file (default: <data root>/reports/<season>/season-review.md); at the "
+        "end of the season: documentation/reviews/<season>-season-review.md.",
+    ),
+    through_week: int | None = typer.Option(None, help="Stop at this graded week."),
+    simulations: bool = typer.Option(
+        False, "--simulations", help="Review the --as-of simulations' records instead."
+    ),
+) -> None:
+    """The season review from the run records: game model vs Elo vs market, calibration, the
+    accuracy scoreboard per target, the watch list, digest checks, pipeline uptime, best and
+    worst calls, and an empty keep / cut / rebuild section for Rishi."""
+    from nflengine.ops.season_review import write_review
+
+    path = write_review(
+        season,
+        Path(out) if out else None,
+        run_root=_season_root(simulations),
+        through_week=through_week,
+        kind="simulation" if simulations else "main",
+    )
+    console.print(f"[green]season review -> {path}[/]")
+
+
 # ---- season dashboard (P07) -----------------------------------------------------------------
 
 dashboard_app = typer.Typer(
@@ -1169,6 +1298,9 @@ def graph_coaching_seed(
     )
     games = pl.read_parquet(paths.curated / "games.parquet", columns=["home_coach", "away_coach"])
     coaches = set(games["home_coach"].drop_nulls()) | set(games["away_coach"].drop_nulls())
+    from nflengine.graph.tables_extra import read_coach_fixes
+
+    coaches |= set(read_coach_fixes(log=console.print)["coach"])  # P10 corrections
     for name, known in CS.check_names(seed, coaches):
         console.print(f"[yellow]name check: '{name}' looks like nflverse's '{known}'[/]")
     target = Path(out) if out else seed_path()

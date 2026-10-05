@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from contextlib import closing
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import duckdb
 import polars as pl
@@ -255,21 +255,26 @@ def load_inputs(
     first_season: int = FIRST_SEASON,
     last_season: int | None = None,
     log: Callable[[str], None] = print,
+    playoffs: bool = False,
 ) -> PlayerInputs:
-    """Read every curated table the player features need (read-only DuckDB)."""
+    """Read every curated table the player features need (read-only DuckDB). Regular season
+    only; `playoffs=True` (P10, scoring only: `score_weeks`, the watch-list look-back) also
+    reads the playoff games, so saved playoff projections can be graded. Features and
+    training never set it."""
     paths = paths or ensure_data_root()
     cur = paths.curated
+    stype = "season_type IN ('REG', 'POST')" if playoffs else "season_type = 'REG'"
+    gtype = "game_type <> 'SBBYE'" if playoffs else "game_type = 'REG'"
     with closing(duckdb.connect(str(cur / "nfl.duckdb"), read_only=True)) as con:
         last = last_season or int(_read(con, "SELECT max(season) s FROM games")["s"][0])
         rng = [first_season, last]
         games = _read(
             con,
-            f"SELECT {', '.join(GAME_COLS)} FROM games WHERE game_type = 'REG' "
-            "AND season BETWEEN ? AND ?",
+            f"SELECT {', '.join(GAME_COLS)} FROM games WHERE {gtype} AND season BETWEEN ? AND ?",
             rng,
         )
-        reg = "season_type = 'REG' AND season BETWEEN ? AND ?"
-        greg = "game_type = 'REG' AND season BETWEEN ? AND ?"
+        reg = f"{stype} AND season BETWEEN ? AND ?"
+        greg = f"{gtype} AND season BETWEEN ? AND ?"
         player_games = _read(con, f"SELECT {', '.join(PG_COLS)} FROM player_games WHERE {reg}", rng)
         snaps = _read(
             con,
@@ -285,7 +290,7 @@ def load_inputs(
         ngs = {
             k: _read(
                 con,
-                f"SELECT * FROM ngs_{k} WHERE season_type = 'REG' AND NOT is_season_total "
+                f"SELECT * FROM ngs_{k} WHERE {stype} AND NOT is_season_total "
                 "AND week >= 1 AND season BETWEEN ? AND ?",
                 rng,
             )
@@ -313,7 +318,7 @@ def load_inputs(
         .filter(
             (pl.col("season") >= first_season)
             & (pl.col("season") <= last)
-            & (pl.col("season_type") == "REG")
+            & pl.col("season_type").is_in(["REG", "POST"] if playoffs else ["REG"])
         )
         .select(PLAY_COLS)
         .collect()
@@ -355,6 +360,48 @@ def load_inputs(
         game_features=game_features,
         first_season=first_season,
         last_season=last,
+    )
+
+
+def with_playoff_week(
+    inp: PlayerInputs, season: int, week: int, paths: DataPaths | None = None
+) -> PlayerInputs:
+    """A playoff week to project (P10): the inputs above are regular season only, so add
+    that week's playoff games (as upcoming: `completed` false), injury reports and weekly
+    rosters. History, labels and training stay regular season: a playoff projection uses
+    the player's regular-season form (doc 04 -> C, "As built in P10"). No-op for a regular
+    week or a week without playoff games."""
+    paths = paths or ensure_data_root()
+    where = "game_type <> 'REG' AND season = ? AND week = ?"
+    with closing(duckdb.connect(str(paths.curated / "nfl.duckdb"), read_only=True)) as con:
+        games = _read(
+            con, f"SELECT {', '.join(GAME_COLS)} FROM games WHERE {where}", [season, week]
+        )
+        if games.is_empty():
+            return inp
+        injuries = _read(
+            con,
+            f"SELECT {', '.join(inp.injuries.columns)} FROM injuries WHERE {where}",
+            [season, week],
+        )
+        rosters = _read(
+            con,
+            f"SELECT {', '.join(inp.rosters.columns)} FROM rosters_weekly WHERE {where}",
+            [season, week],
+        )
+    games = games.with_columns(
+        pl.col("season", "week").cast(pl.Int32),
+        pl.col("kickoff_utc").dt.convert_time_zone("UTC"),
+        pl.lit(False).alias("completed"),  # predicted as if not played yet (rehearsals too)
+    ).select(inp.games.columns)
+    ids = games["game_id"].to_list()
+    return replace(
+        inp,
+        games=pl.concat(
+            [inp.games.filter(~pl.col("game_id").is_in(ids)), games.cast(inp.games.schema)]
+        ),
+        injuries=pl.concat([inp.injuries, injuries.cast(inp.injuries.schema)]),
+        rosters=pl.concat([inp.rosters, rosters.cast(inp.rosters.schema)]),
     )
 
 

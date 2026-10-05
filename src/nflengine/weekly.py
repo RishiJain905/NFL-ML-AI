@@ -68,6 +68,10 @@ class WeeklyOptions:
     llm: str | None = None  # override llm.provider for the digest step (e.g. placeholder)
     as_of: dt.datetime | None = None  # simulations: the moment the run pretends to start
     kind: str = "main"  # main | simulation (records.KINDS)
+    # rehearsals (P10, `ops/rehearsal.py`) switch these off: the live Neo4j graph and W&B
+    # are shared, so a rehearsal never writes projections into the graph or logs runs
+    graph: bool = True
+    use_wandb: bool = True
 
 
 def _ingest(o: WeeklyOptions, log: Callable[[str], None]) -> str:
@@ -159,7 +163,9 @@ def _player(o: WeeklyOptions, log: Callable[[str], None]) -> str:
             notes.append(f"scoreboard skipped ({type(e).__name__})")
             log(f"[yellow]scoreboard skipped ({type(e).__name__})[/]")
     try:
-        out = run_train(o.season, o.week, o.launched_by, promote=o.promote, log=log)
+        out = run_train(
+            o.season, o.week, o.launched_by, promote=o.promote, log=log, use_wandb=o.use_wandb
+        )
     except Exception as e:
         write_status(ensure_data_root().run_dir(o.season, o.week), "degraded", type(e).__name__)
         raise StepDegraded(
@@ -168,6 +174,9 @@ def _player(o: WeeklyOptions, log: Callable[[str], None]) -> str:
     notes.append(f"{out['table'].height} projections -> {out['predictions']}; W&B {out['url']}")
     teams = _team_fit(o, log, notes)
     table = _consistency(o, out["table"], teams, Path(out["predictions"]), log, notes)
+    if not o.graph:
+        notes.append("graph write skipped (rehearsal)")
+        return "; ".join(notes)
     try:
         from nflengine.graph.projections import write_projections
 
@@ -196,7 +205,9 @@ def _team_fit(o: WeeklyOptions, log: Callable[[str], None], notes: list[str]):
                 team_score(o.season, range(1, o.week), o.launched_by, log=log)
             except Exception as e:  # bookkeeping only
                 notes.append(f"team scoreboard skipped ({type(e).__name__})")
-        res = team_train(o.season, o.week, o.launched_by, promote=o.promote, log=log)
+        res = team_train(
+            o.season, o.week, o.launched_by, promote=o.promote, log=log, use_wandb=o.use_wandb
+        )
         notes.append(f"team: {res['table'].height} projections -> {res['predictions']}")
         return res["table"]
     except Exception as e:
@@ -225,10 +236,11 @@ def _consistency(
     from nflengine.settings import get_config
 
     try:
+        from nflengine import clock
         from nflengine.models.consistency import apply_consistency
 
         cfg = get_config().consistency or {}
-        now = dt.datetime.now(dt.UTC)
+        now = clock.utc_now()
         fresh = players.filter(pl.col("kickoff_utc") > now)
         if fresh.is_empty():
             return players
@@ -284,7 +296,14 @@ def _digest(o: WeeklyOptions, log: Callable[[str], None]) -> str:
     from nflengine.digest.run import run_digest
 
     res = run_digest(
-        o.season, o.week, mode="live", launched_by=o.launched_by, log=log, provider=o.llm
+        o.season,
+        o.week,
+        mode="live",
+        launched_by=o.launched_by,
+        log=log,
+        provider=o.llm,
+        use_wandb=o.use_wandb,
+        graph="auto" if o.graph else "off",
     )
     passed = res.synthesis.final.passed
     return f"{res.report_path} (checks {'passed' if passed else 'FAILED'}); W&B {res.url}"

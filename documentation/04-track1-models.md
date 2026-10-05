@@ -300,6 +300,12 @@ This answers the brief's open question.
 - **Versioning:** every weekly fit is a versioned W&B artifact tagged with `{season}-w{NN}`. The production model is marked with the `production` alias.
 - **Drift response:** if rolling 4-week Brier score (game) or MAE (player) is worse than the baseline for 3+ weeks in a row, open an investigation. Don't automatically retune mid-season.
 
+### As built in P10: playoffs and the pre-season retune (D90, D91)
+
+- **Playoff weeks:** the game model has always covered them. The player models stay trained on regular-season games; a playoff week's rows (the round's games, injury report and rosters) are projected from the player's regular-season form, a playoff pick's "real role" needs a 50% snap share over his last 3 games (not 2) and 3+ games this season, and the "teammate missed the last game" route is off (the final regular-season week rests starters), and playoff projections are graded with the playoff box scores. Team stat totals stay regular season.
+- **A weekly refit borrows only earlier seasons** of the canonical backtest's walk-forward history (`_seed_history`), the same rows live; a refit of a backtested season (a rehearsal of 2025) would otherwise get "history" from after its own weeks.
+- **The pre-season retune** ("Before the season (once)" above) is the runbook's Pre-season checklist, step 4: the same tuning and backtest commands as P02–P08, with the finished season in the reported window and a rule fixed before the runs that count.
+
 ## Model cards
 
 Each model keeps a short card in `documentation/model_cards/` (or as the W&B artifact description). It records: target, features, training window, evaluation results vs baselines, known biases (the closing-line optimism), and the date it was last tuned.

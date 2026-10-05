@@ -116,6 +116,20 @@ def test_unknown_team_is_caught(facts) -> None:
     assert not res.passed and res.issues[0].token in ("Raiders", "LV", "Las Vegas")
 
 
+def test_a_players_surname_that_names_a_team_is_not_that_team() -> None:
+    """P10 playoff rehearsal: "For Washington, ..." about Parker Washington (Jaguars) failed
+    the check because the Commanders weren't playing that week."""
+    base = make_payload()
+    pw = base.under_the_hood[0].model_copy(
+        update={"player": "Parker Washington", "player_id": "00-PW", "team": "JAX"}
+    )
+    fx = build_fact_index(make_payload(under_the_hood=[*base.under_the_hood, pw]))
+    text = "For Washington, that was the biggest drop below his own average."
+    assert check(fx, text, "under_the_hood").result("unknown_entities").passed
+    res = check(fx, "The Commanders keep rising.").result("unknown_entities")
+    assert not res.passed and res.issues[0].token == "Commanders"
+
+
 def test_unknown_rostered_player_is_caught(facts) -> None:
     lex = Lexicon({"Davante Adams", "Ja'Marr Chase", "Jaylen Warren"})
     r = check(facts, "Davante Adams looked sharp against the Bills.", lexicon=lex)

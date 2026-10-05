@@ -32,7 +32,24 @@ import polars as pl
 
 EASTERN = ZoneInfo("America/New_York")
 PLAYOFF_TYPES = ("WC", "DIV", "CON", "SB")
+# what the digest calls a playoff week (P10)
+ROUND_NAMES = {
+    "WC": "Wild Card round",
+    "DIV": "Divisional round",
+    "CON": "Conference championships",
+    "SB": "Super Bowl",
+}
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+def round_name(game_types: Any) -> str | None:
+    """The playoff round of a week from its game types (None for a regular-season week)."""
+    types = {str(t) for t in game_types if t is not None}
+    if not types or "REG" in types:
+        return None
+    return next((ROUND_NAMES[t] for t in PLAYOFF_TYPES if t in types), "Playoffs")
+
+
 # a season "owns" the clock from this long before its first kickoff (pre-season prep)
 SEASON_LEAD = dt.timedelta(days=10)
 

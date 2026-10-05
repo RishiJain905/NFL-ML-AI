@@ -30,6 +30,63 @@ def seed_path() -> Path:
     return CONFIG_DIR / SEED_FILE
 
 
+COACH_FIXES_FILE = "head_coach_fixes.csv"  # in config/ (P10): corrections to nflverse's coaches
+
+
+def coach_fixes_path() -> Path:
+    from nflengine.settings import CONFIG_DIR
+
+    return CONFIG_DIR / COACH_FIXES_FILE
+
+
+def read_coach_fixes(path: Path | None = None, log: Callable[[str], None] = print) -> pl.DataFrame:
+    """Hand-checked corrections to the schedules' head coaches (P10): `season, team,
+    from_week, coach[, source]`, the coach from that week on. nflverse carried last season's
+    head coach into 2026 for three new hires and misspelt a fourth, and has no 2025 interim
+    coaches (P10 roster-churn check). A missing or malformed file is no fixes, never a
+    failed build."""
+    path = path or coach_fixes_path()
+    empty = pl.DataFrame(
+        schema={"season": pl.Int32, "team": pl.String, "from_week": pl.Int32, "coach": pl.String}
+    )
+    if not path.exists():
+        return empty
+    try:
+        df = pl.read_csv(path, comment_prefix="#", infer_schema_length=0)
+        df = df.rename({c: c.strip().lower() for c in df.columns})
+        return df.select(
+            pl.col("season").str.strip_chars().cast(pl.Int32),
+            pl.col("team").str.strip_chars().str.to_uppercase(),
+            pl.col("from_week").str.strip_chars().cast(pl.Int32),
+            pl.col("coach").str.strip_chars(),
+        ).filter(pl.col("coach").is_not_null() & (pl.col("coach") != ""))
+    except Exception as e:  # a hand-made file: log the type only
+        log(f"[yellow]graph: head-coach fixes unreadable ({type(e).__name__}); skipped[/]")
+        return empty
+
+
+def apply_coach_fixes(games: pl.DataFrame, fixes: pl.DataFrame) -> pl.DataFrame:
+    """`home_coach` / `away_coach` with the fixes applied (a later `from_week` for the same
+    team-season wins from its week on)."""
+    if fixes.is_empty() or not {"home_coach", "away_coach"} <= set(games.columns):
+        return games
+    out = games
+    for r in fixes.sort("season", "team", "from_week").iter_rows(named=True):
+        for side in ("home", "away"):
+            hit = (
+                (pl.col("season") == r["season"])
+                & (pl.col(f"{side}_team") == r["team"])
+                & (pl.col("week") >= r["from_week"])
+            )
+            out = out.with_columns(
+                pl.when(hit)
+                .then(pl.lit(r["coach"]))
+                .otherwise(pl.col(f"{side}_coach"))
+                .alias(f"{side}_coach")
+            )
+    return out
+
+
 def read_coaching_seed(
     path: Path | None = None, log: Callable[[str], None] = print
 ) -> pl.DataFrame:

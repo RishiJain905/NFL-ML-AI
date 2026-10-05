@@ -421,6 +421,9 @@ def check_unknown_entities(
 ) -> CheckResult:
     known = fx.entity_names()
     known_team_codes = {k.split(":", 1)[1] for k in fx.entities if k.startswith("team:")}
+    # a payload player's name or unique surname is never a team mention: "For Washington,
+    # ..." about Parker Washington in a playoff week the Commanders aren't in (P10)
+    people = fx.entity_names("player")
     pp = lexicon.player_pattern() if lexicon else None
     issues: list[Issue] = []
     for sec, text in sections.items():
@@ -435,6 +438,8 @@ def check_unknown_entities(
                 if code in known_team_codes:
                     continue
                 for a in team_aliases(code):
+                    if a.lower() in people:
+                        continue
                     if _alias_re(a).search(rest):
                         issues.append(Issue(sec, a, "team not in the payload", s))
                         break

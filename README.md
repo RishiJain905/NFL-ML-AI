@@ -70,6 +70,10 @@ uv run nfl weekly run --auto --as-of 2025-11-04T10:00   # simulate a past week (
 uv run nfl weekly run --season 2026 --week N   # ingest -> ready -> curate -> ratings -> game -> graph -> player -> digest
 uv run nfl weekly run --season 2026 --week N --from-step digest   # resume from a failed step
 uv run nfl dashboard build --season 2026        # create / update the W&B "2026 Season Dashboard" report (P07)
+uv run nfl weekly rehearse --season 2025 --weeks 19-22 --fresh   # P10: the live steps on past weeks in a scratch copy (playoff check)
+uv run nfl weekly rehearse --season 2026 --week 1 --fresh        # P10: the pre-season dry run
+uv run nfl season weeks --season 2026            # P10: one line per week (published, on time, checks, alerts)
+uv run nfl season review --season 2026           # P10: the season review (Markdown) from the run records
 # runbook: documentation/runbook.md
 uv run nfl digest --season 2026 --week N       # payload -> LLM -> checks -> reports/<season>/week<NN>-digest.md (P04)
 uv run nfl digest --season 2025 --weeks 8-9 --backtest   # past weeks as if live on their Tuesday (P04)

@@ -196,11 +196,20 @@ def _long(df: pl.DataFrame, metric: str, value: pl.Expr, volume: pl.Expr) -> pl.
     )
 
 
-def _ngs(df: pl.DataFrame, pool: pl.Expr) -> pl.DataFrame:
+def _regular(df: pl.DataFrame, col: str, post_season: int | None) -> pl.DataFrame:
+    """Regular-season rows; in a playoff digest (P10, `post_season`) also that season's
+    playoff rows, so "last week" can be the previous playoff round."""
+    keep = pl.col(col) == "REG"
+    if post_season is not None:
+        keep = keep | (pl.col("season") == post_season)
+    return df.filter(keep)
+
+
+def _ngs(df: pl.DataFrame, pool: pl.Expr, post_season: int | None = None) -> pl.DataFrame:
     if "is_season_total" in df.columns:
         df = df.filter(~pl.col("is_season_total").fill_null(False))
     if "season_type" in df.columns:
-        df = df.filter(pl.col("season_type") == "REG")
+        df = _regular(df, "season_type", post_season)
     return df.filter(pl.col("week") >= 1).with_columns(
         pl.col("player_gsis_id").alias("player_id"),
         pl.col("player_display_name").alias("name"),
@@ -209,11 +218,12 @@ def _ngs(df: pl.DataFrame, pool: pl.Expr) -> pl.DataFrame:
     )
 
 
-def _dropback_plays(plays: pl.DataFrame) -> pl.DataFrame:
-    """Regular-season dropbacks (passes, sacks, scrambles) without two-point tries."""
+def _dropback_plays(plays: pl.DataFrame, post_season: int | None = None) -> pl.DataFrame:
+    """Regular-season dropbacks (passes, sacks, scrambles) without two-point tries (plus
+    `post_season`'s playoff dropbacks in a playoff digest)."""
     df = plays
     if "season_type" in df.columns:
-        df = df.filter(pl.col("season_type") == "REG")
+        df = _regular(df, "season_type", post_season)
     return df.filter(
         (pl.col("qb_dropback") == 1)
         & pl.col("play_type").is_in(["pass", "run"])
@@ -222,11 +232,12 @@ def _dropback_plays(plays: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def metric_rows(tables: Mapping[str, pl.DataFrame]) -> pl.DataFrame:
-    """One row per metric x player x game (before week aggregation), all sources."""
+def metric_rows(tables: Mapping[str, pl.DataFrame], post_season: int | None = None) -> pl.DataFrame:
+    """One row per metric x player x game (before week aggregation), all sources. Regular
+    season only, plus `post_season`'s playoff games in a playoff digest (P10)."""
     parts: list[pl.DataFrame] = []
     if (df := tables.get("ngs_receiving")) is not None and df.height:
-        rec = _ngs(df, pl.col("player_position").replace({"FB": "RB", "HB": "RB"}))
+        rec = _ngs(df, pl.col("player_position").replace({"FB": "RB", "HB": "RB"}), post_season)
         targets, catches = pl.col("targets"), pl.col("receptions")
         parts += [
             _long(rec, "avg_separation", pl.col("avg_separation"), targets),
@@ -234,21 +245,22 @@ def metric_rows(tables: Mapping[str, pl.DataFrame]) -> pl.DataFrame:
             _long(rec, "avg_yac_above_expectation", pl.col("avg_yac_above_expectation"), catches),
         ]
     if (df := tables.get("ngs_rushing")) is not None and df.height:
-        rush = _ngs(df, pl.lit("RB"))
+        rush = _ngs(df, pl.lit("RB"), post_season)
         col = "rush_yards_over_expected_per_att"
         parts.append(_long(rush, col, pl.col(col), pl.col("rush_attempts")))
     if (df := tables.get("ngs_passing")) is not None and df.height:
-        ps = _ngs(df, pl.lit("QB"))
+        ps = _ngs(df, pl.lit("QB"), post_season)
         for col in ("avg_time_to_throw", "completion_percentage_above_expectation"):
             parts.append(_long(ps, col, pl.col(col), pl.col("attempts")))
 
     plays = tables.get("plays")
-    dropbacks = _dropback_plays(plays) if plays is not None and plays.height else None
+    dropbacks = _dropback_plays(plays, post_season) if plays is not None and plays.height else None
     if (df := tables.get("pfr_pass")) is not None and df.height and dropbacks is not None:
         per_game = dropbacks.group_by("game_id", "passer_id").agg(pl.len().alias("dropbacks"))
         pct = pl.col("times_pressured_pct")
         pp = (
-            df.filter((pl.col("game_type") == "REG") & pct.is_between(0.0, 1.0))
+            _regular(df, "game_type", post_season)
+            .filter(pct.is_between(0.0, 1.0))
             .join(per_game, left_on=["game_id", "gsis_id"], right_on=["game_id", "passer_id"])
             .with_columns(
                 pl.col("gsis_id").alias("player_id"),
@@ -262,7 +274,8 @@ def metric_rows(tables: Mapping[str, pl.DataFrame]) -> pl.DataFrame:
     if (df := tables.get("pfr_def")) is not None and df.height and players is not None:
         rushers = players.filter(pl.col("position_group").is_in(PASS_RUSH_GROUPS))
         pd_ = (
-            df.filter((pl.col("game_type") == "REG") & pl.col("def_pressures").is_not_null())
+            _regular(df, "game_type", post_season)
+            .filter(pl.col("def_pressures").is_not_null())
             .join(rushers.select("gsis_id", "position"), on="gsis_id")
             .with_columns(
                 pl.col("gsis_id").alias("player_id"),
@@ -570,12 +583,18 @@ def build_under_hood(
     max_items: int = 5,
     min_items: int = 3,
     followed: Sequence[str] = (),
+    playoffs: bool = False,
+    teams: Sequence[str] | None = None,
 ) -> pl.DataFrame:
     """Pure core: curated frames in, selected items out (schema `OUTPUT_SCHEMA`).
 
     `tables` may hold `ngs_receiving`, `ngs_rushing`, `ngs_passing`, `pfr_pass`, `pfr_def`,
     `ftn_plays`, `plays` and `players` (any may be missing). Rows from week `week` on are
     dropped first, so nothing at or after the digest week can change the output.
+
+    A playoff digest (P10, `playoffs`): the season's earlier playoff games count too (the
+    Divisional round's "last week" is the Wild Card round), and `teams` keeps only players
+    of the teams still playing (this week's slate).
     """
     if week < 2 or max_items < 1:
         return empty_frame()
@@ -586,15 +605,15 @@ def build_under_hood(
         else df
         for name, df in tables.items()
     }
-    rows = metric_rows(visible)
+    rows = metric_rows(visible, season if playoffs else None)
     if rows.is_empty():
         return empty_frame()
     cands = _candidates(rows, season, week)
     if cands.is_empty():
         return empty_frame()
 
-    teams = {normalize_team(t.strip().upper()) for t in followed}
-    boost = pl.when(pl.col("team").is_in(list(teams))).then(FOLLOWED_BOOST).otherwise(1.0)
+    fav = {normalize_team(t.strip().upper()) for t in followed}
+    boost = pl.when(pl.col("team").is_in(list(fav))).then(FOLLOWED_BOOST).otherwise(1.0)
     cands = cands.with_columns(pl.col("score") * boost)
     players = visible.get("players")
     if players is not None and players.height:
@@ -610,6 +629,9 @@ def build_under_hood(
             pl.lit(None, pl.String).alias("player_position"),
         )
     cands = cands.filter(pl.col("team").is_not_null())
+    if teams is not None:
+        alive = [normalize_team(t.strip().upper()) for t in teams]
+        cands = cands.filter(pl.col("team").is_in(alive))
 
     picks = _select(cands, max_items, min_items)
     if not picks:
@@ -649,8 +671,11 @@ def build_under_hood(
     return pl.DataFrame(out, schema=OUTPUT_SCHEMA)
 
 
-def load_tables(season: int, week: int, paths: DataPaths) -> dict[str, pl.DataFrame]:
-    """Curated rows the selection needs: seasons season-2..season, weeks before `week`."""
+def load_tables(
+    season: int, week: int, paths: DataPaths, playoffs: bool = False
+) -> dict[str, pl.DataFrame]:
+    """Curated rows the selection needs: seasons season-2..season, weeks before `week`
+    (regular-season plays, plus this season's playoff plays in a playoff digest)."""
     con = duckdb.connect(str(paths.curated / "nfl.duckdb"), read_only=True)
     try:
         have = _table_names(con)
@@ -665,11 +690,12 @@ def load_tables(season: int, week: int, paths: DataPaths) -> dict[str, pl.DataFr
             sql = f"SELECT {select} FROM {name} WHERE {window}"
             tables[name] = con.execute(sql, params).pl()
         if "plays" in have:
+            kind = "(season_type = 'REG' OR season = ?)" if playoffs else "season_type = 'REG'"
             sql = (
                 f"SELECT {', '.join(PLAY_COLS)} FROM plays WHERE {window} "
-                "AND season_type = 'REG' AND qb_dropback = 1 AND play_type IN ('pass', 'run')"
+                f"AND {kind} AND qb_dropback = 1 AND play_type IN ('pass', 'run')"
             )
-            tables["plays"] = con.execute(sql, params).pl()
+            tables["plays"] = con.execute(sql, params + ([season] if playoffs else [])).pl()
         if "players" in have:
             tables["players"] = con.execute(f"SELECT {', '.join(PLAYER_COLS)} FROM players").pl()
     finally:
@@ -685,28 +711,43 @@ def select_under_hood(
     max_items: int = 5,
     min_items: int = 3,
     followed: Sequence[str] = (),
+    playoffs: bool = False,
+    teams: Sequence[str] | None = None,
 ) -> pl.DataFrame:
-    """The "Last week under the hood" items for the digest of `week` (looks at week - 1)."""
+    """The "Last week under the hood" items for the digest of `week` (looks at week - 1);
+    `playoffs` / `teams`: see `build_under_hood`."""
     if week < 2:
         return empty_frame()
     paths = paths or ensure_data_root()
-    tables = load_tables(season, week, paths)
+    tables = load_tables(season, week, paths, playoffs=playoffs)
     return build_under_hood(
-        season, week, tables, max_items=max_items, min_items=min_items, followed=followed
+        season,
+        week,
+        tables,
+        max_items=max_items,
+        min_items=min_items,
+        followed=followed,
+        playoffs=playoffs,
+        teams=teams,
     )
 
 
 def source_weeks(season: int, paths: DataPaths | None = None) -> dict[str, int | None]:
-    """Latest regular-season week present per source ('NGS', 'PFR', 'FTN') for the season."""
+    """Latest week present per source ('NGS', 'PFR', 'FTN') for the season, playoff weeks
+    included (P10, Sol review: regular season only, the conference and Super Bowl weeks read
+    2-3 weeks "behind" and raised false stale-source alerts). NGS numbers the Super Bowl
+    one week after nflverse (23 vs 22 since 2021, 22 vs 21 before): counted as nflverse's."""
     paths = paths or ensure_data_root()
     ngs = (
-        "SELECT max(week) FROM {t} WHERE season = ? AND season_type = 'REG' AND week >= 1 "
+        "SELECT max(CASE WHEN season_type = 'POST' "
+        "AND week = (CASE WHEN season >= 2021 THEN 23 ELSE 22 END) THEN week - 1 ELSE week END) "
+        "FROM {t} WHERE season = ? AND season_type IN ('REG', 'POST') AND week >= 1 "
         "AND NOT coalesce(is_season_total, false)"
     )
-    pfr = "SELECT max(week) FROM {t} WHERE season = ? AND game_type = 'REG'"
+    pfr = "SELECT max(week) FROM {t} WHERE season = ? AND game_type <> 'SBBYE'"
     ftn = (
         "SELECT max(f.week) FROM ftn_plays f JOIN games g ON g.game_id = f.nflverse_game_id "
-        "WHERE g.season = ? AND g.game_type = 'REG'"
+        "WHERE g.season = ? AND g.game_type <> 'SBBYE'"
     )
     # source -> [(tables the query needs, query)]
     queries: dict[str, list[tuple[tuple[str, ...], str]]] = {

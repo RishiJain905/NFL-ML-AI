@@ -15,6 +15,8 @@ How to run the weekly NFL digest, what normal looks like, and what to do when so
 
 Before the first run of a session it doesn't hurt to run `uv run nfl doctor` (every line OK).
 
+**After each Tuesday run (P10):** look at any drift alert it printed ([Drift alerts](#drift-alerts): an agent investigates and proposes, Rishi decides), then add the week's line to `documentation/plans/PROGRESS.md` → **Season log**. `uv run nfl season weeks --season 2026` prints it, e.g. `week 05: published ✓ on time (58.2 h before kickoff), checks passed first time, 0 drift alerts`.
+
 ### Exit codes of `nfl weekly run`
 
 | Code | Status | Meaning | What to do |
@@ -135,6 +137,18 @@ Usually play-by-play lands overnight after Monday Night Football. Run again ever
 
 The ingest step lists optional failures ("30 datasets (2 optional failures)") and the run goes on: no news section, model-only probabilities where lines are missing (the consensus item is skipped), weather absent. `run_summary.json` → `freshness` marks the dataset `stale` once its newest snapshot is more than 7 days old, and the drift check `data_freshness` alerts.
 
+### An unofficial endpoint changed (P10)
+
+ESPN, the NGS site and Open-Meteo are unofficial or free endpoints that can change shape without notice. Signs: the same optional failure on every run ("30 datasets (1 optional failures)"), a `failed` or `partial` result for that source in the run's ingest manifest (`D:\nfl-ml-data\raw\_runs\ingest-<time>.json`, with the error type in `detail`), its latest snapshot date falling behind in `uv run nfl data-status`, and after 7 days the `stale data source` drift alert.
+
+1. **Nothing is urgent.** Every optional source fails soft; the digest goes out (no news section, model-only probabilities where lines are missing, no weather). nflverse is the one required source: if it fails, the run stops at `ingest`.
+2. **Find the adapter and the error:** `src/nflengine/ingest/espn.py`, `ngs_site.py`, `weather.py`, `odds_api.py`. Re-run just that source: `uv run nfl ingest --sources espn` (or `ngs_site`, `weather`, `odds_api`).
+3. **Look at what the endpoint returns now** (a browser or a scratch script through `ingest/http.PoliteClient`), fix the parser, and add the new response shape as a test fixture under `tests/fixtures/` (no network in tests).
+4. **If it can't be fixed quickly,** switch the source off in `config/settings.yaml` → `sources` (`espn: false`, `ngs_site: false`, `open_meteo: false`, `odds_api: false`). The footer and `freshness` then say it's missing; switch it back on after the fix.
+5. Log it in the decisions log if the source changes for good (doc 03 lists every source).
+
+`uv run nfl doctor` says whether the Odds API keys (`ODDS_API_KEY`, backup `ODDS_API_KEY2`) are set; it never shows them. ESPN's per-week scoreboard and QBR pulls are regular season only (`seasontype=2`); nothing downstream reads them, and the news headlines the digest uses aren't per-week, so the playoffs don't need them.
+
 ### The digest failed its checks
 
 It regenerates once with the list of failures; if that fails too, it publishes with the ⚠️ banner, and the pipeline prints a warn alert "digest checks failed" naming the checks. Look at `runs\<season>\week<NN>\checks.json`, then usually fix and [re-publish the digest](#re-publish-only-the-digest). The `digest-checks` skill covers known false positives.
@@ -142,9 +156,64 @@ It regenerates once with the list of failures; if that fails too, it publishes w
 ### Week 1, playoffs, the offseason, a new season
 
 - **Week 1:** nothing to wait for; ratings lean on last season (the digest says so).
-- **Playoffs:** `--auto` targets weeks 19–22 like any other week. Between the end of week 18 and nflverse adding the wild-card games, it refreshes only the schedule and, if the games still aren't there, records a not-ready run (exit 3); after the retry window it raises the error alert "games still not in the schedule". Running the full pipeline on playoff weeks is P10 work: check the first one by hand.
+- **Playoffs:** `--auto` targets weeks 19–22 like any other week (details: [Playoffs](#playoffs-p10)). Between the end of week 18 and nflverse adding the wild-card games, it refreshes only the schedule and, if the games still aren't there, records a not-ready run (exit 3); after the retry window it raises the error alert "games still not in the schedule".
 - **Offseason:** `idle`, exit 0.
-- **New season:** `--auto` refuses to run when the calendar's season differs from `seasons.current` in `config/settings.yaml`. Update it as part of the P10 pre-season work, then rebuild the coaching seed with the new staffs: `uv run nfl graph coaching-seed --refresh` (also after a mid-season coordinator change; read its name-check lines; [knowledge-graph guide → Q5b](guides/knowledge-graph.md)).
+- **New season:** `--auto` refuses to run when the calendar's season differs from `seasons.current` in `config/settings.yaml`. Update it as part of the [pre-season checklist](#pre-season-checklist-p10), then rebuild the coaching seed with the new staffs: `uv run nfl graph coaching-seed --refresh` (also after a mid-season coordinator change; read its name-check lines; [knowledge-graph guide → Q5b](guides/knowledge-graph.md)).
+
+### Rehearse a week (P10)
+
+A **rehearsal** runs the real Tuesday steps (`ready`, `game`, `player`, `digest`) on a past or current week, with the clock pinned to 10:00 ET on the Tuesday before it, into a scratch folder. Nothing live is touched: no W&B, no graph write or graph sections, no run records, no alias moves, no lock. Use it before anything risky (a dependency upgrade, a new step), for the playoff check every January and for the pre-season dry run.
+
+```powershell
+uv run nfl weekly rehearse --season 2025 --weeks 19-22 --fresh   # last season's playoffs, round by round
+uv run nfl weekly rehearse --season 2026 --week 1 --fresh       # the pre-season dry run
+uv run nfl weekly rehearse --season 2025 --week 19 --steps digest --llm openrouter   # one real-LLM digest
+```
+
+- Output: `D:\nfl-ml-data\rehearsals\<season>\` (its own `runs\`, `models\`, `reports\`, seeded with copies of the feature tables and the canonical backtests; `rehearsal.json` per week says what each step did). Weeks rehearsed into the same folder chain like live weeks (week 20's report card grades week 19's rehearsed picks). `--fresh` wipes the folder first (only a folder with its `REHEARSAL.md` marker).
+- Exit 0 when every week ran (`ok` or `degraded`), 1 if a week failed.
+- **What it proves, and what it doesn't:** the code path, end to end. Not the accuracy: it reads today's data, so closing lines and final injury reports leak into a past week's numbers. `ingest`, `curate`, `ratings` and `graph` aren't rehearsed (they rewrite shared files); it reads their current output.
+- How long: a regular-season week takes about the live time without ingest (the player step dominates: about 95 s in week 4, longer each week); a playoff week about 10 minutes (the player refits walk through weeks 1–18 first).
+
+### Playoffs (P10)
+
+Checked on the 2025 playoffs with `nfl weekly rehearse --season 2025 --weeks 19-22` (the [season operations guide](guides/season-operations.md) has the results). What changes in a playoff week:
+
+- **Calendar:** weeks 19–22; the `slate:` line says `playoffs`; the deadline is the round's first kickoff (a Saturday). The Super Bowl comes after a week off: the Tuesday after the conference games targets it.
+- **Game model:** unchanged (it has always included playoff games; the Super Bowl is a neutral site).
+- **Player model:** projects the round's games from each player's **regular-season** form (training stays regular season; the round's injury report and roster decide who plays, D91). Saved playoff projections are graded the next week like any other.
+- **Team stat totals:** regular season only (the step notes 0 team projections; nothing reads them).
+- **Digest:** titled by the round ("2026 Wild Card round (week 19)"); trends and "Last week under the hood" only for the teams still playing, and from the Divisional round on "last week" is the previous playoff round.
+- **Before the first live playoff run** (by Tuesday 2027-01-12): rehearse last season's playoffs again (`nfl weekly rehearse --season 2025 --weeks 19-22 --fresh`) to be sure nothing broke since; every week should end `ok`.
+
+### End of the season (P10)
+
+No weekly run follows the Super Bowl (`--auto` says `idle`), so nothing ingests its result or grades its saved projections by itself (Sol review, P10). About a week after the game (PFR publishes a week late):
+
+```powershell
+uv run nfl ingest                          # the Super Bowl's score, box score, PFR
+uv run nfl curate
+uv run nfl scoreboard --season 2026 --week 21   # the conference games again (late PFR pressures)
+uv run nfl scoreboard --season 2026 --week 22   # the Super Bowl's player projections
+uv run nfl season weeks --season 2026     # one line per week: published, on time, checks, alerts
+uv run nfl season review --season 2026 --out documentation/reviews/2026-season-review.md
+```
+
+(`nfl scoreboard` also logs the season's `scoreboard-2026-wNN` W&B run, as each weekly run does.) The review grades every game from the saved predictions and the final scores, so the Super Bowl is in it even though no digest's report card ever grades it.
+
+The review is built from the run records and scorecards (game model vs Elo vs market, calibration, the accuracy scoreboard per target, the watch-list hit rate, the digest checks, pipeline uptime, best and worst calls) and ends with an empty "keep / cut / rebuild" section for Rishi's review (🧑). Lessons go into the decisions log.
+
+### Pre-season checklist (P10)
+
+Each summer, before week 1 (for 2027: August 2027). The dated plan is in `documentation/plans/PROGRESS.md` → Season calendar.
+
+1. **Data refresh, before the season switch:** with `seasons.current` still on the finished season, `uv run nfl ingest` re-pulls that whole season (final stat corrections) and its **participation** data once nflverse publishes it (it says "not published yet" until then; research only, never a live feature: doc 03's availability rule). Then `uv run nfl curate` and `uv run nfl data-status`. Older seasons are pulled once (D32); `--refresh-history` re-pulls them if nflverse corrected history.
+2. **Season switch:** `seasons.current` in `config/settings.yaml` → the new season; `uv run nfl ingest` (the new season's schedule and rosters); `uv run nfl graph coaching-seed --refresh` (new coordinators); check the schedule is in (`uv run nfl weekly status`).
+3. **Roster churn:** trades, free agency, the draft and coaching changes reach the models through the weekly rosters, depth charts and schedules; nothing to do by hand. What is and isn't covered: [season operations guide → roster churn](guides/season-operations.md).
+4. **Re-tune (🧑 Rishi runs it):** with last season now in the walk-forward window: `uv run nfl ratings tune` then `uv run nfl ratings eval`; `uv run nfl backtest game --variant model-only` and `--variant market` (and `nfl backtest game-weights`); `uv run nfl tune player --target <each>` then `uv run nfl backtest player --target <each>`; `uv run nfl tune team` / `uv run nfl backtest team`. Change a setting only when the walk-forward result improves by the rule written down before the run (the P08 habit). Record what changed in the decisions log.
+5. **Dry run:** `uv run nfl weekly rehearse --season <last season> --week 1 --fresh` (every step `ok`), then `uv run nfl weekly run --auto --dry-run` once the new schedule is in.
+6. **Big Data Bowl:** check whether the next edition is announced (usually in the fall); see the [season operations guide](guides/season-operations.md).
+7. ✋ **Ready for the season:** Rishi signs off.
 
 ## What each alert means
 

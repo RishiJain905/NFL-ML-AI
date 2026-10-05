@@ -34,6 +34,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 
+from nflengine import clock
 from nflengine.features import team_stats as TS
 from nflengine.features.asof import AsOf, last_asof_week
 from nflengine.models import metrics as M
@@ -850,7 +851,7 @@ def run_train(
     if week > latest:
         raise ValueError(f"week {week} of {season} isn't predictable yet (latest {latest})")
     key = AsOf(season, week)
-    now = dt.datetime.now(dt.UTC).replace(microsecond=0)
+    now = clock.utc_now()
     data = data or build_team_data(paths, live_key=key, run_date=run_date, log=log)
     tag = f"{season}-w{week:02d}"
     version = f"{FAMILY}-{MODEL_VERSION}:{tag}"
@@ -923,7 +924,7 @@ def run_train(
     preds = pl.concat(all_preds, how="vertical_relaxed")
     # the refits take a moment: the projections exist from now, so the kickoff cutoff and
     # `created_at` use the save time (a game kicking off mid-run gets no new projection)
-    now = dt.datetime.now(dt.UTC).replace(microsecond=0)
+    now = clock.utc_now()
     preds = preds.with_columns(pl.lit(now).cast(pl.Datetime("us", "UTC")).alias("created_at"))
     started = preds.filter(pl.col("kickoff_utc") <= now)["game_id"].n_unique()
     if started:

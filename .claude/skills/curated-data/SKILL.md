@@ -164,6 +164,13 @@ Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/particip
 - **The player feature table (P08)** has CB rows and the `cvg_*` family: ~225k rows × 138 columns; CB/S pool ~3.6–3.9k player-games a season. `player_history` adds `any_td`, `def_int_any`, `pd_any`, `pfr_completions_allowed`.
 - **Polars:** `(col == "x").all()` on an all-null column is `True` (vacuous): `fill_null(False)` first.
 
+## Quirks found in P10 (checked live 2026-10-05)
+- **Playoff rows by table (2025):** `games` WC 6 / DIV 4 / CON 2 / SB 1 (weeks 19–22); `injuries` and `rosters_weekly` carry `game_type` WC / DIV / CON / SB for those weeks; `pfr_*` and `ftn_plays` use weeks 19–22 with `game_type`; `plays` uses `season_type = 'POST'`, weeks 19–22; **NGS** uses `season_type = 'POST'` with weeks 19, 20, 21 and **23 for the Super Bowl** (nflverse says 22); before 2021 it's 18, 19, 20 and **22** (nflverse 21).
+- **The player data layer is regular season** (`features.player_data.load_inputs`): `with_playoff_week(inp, S, W)` adds one playoff week's games (as not completed), injury report and rosters for live rows; `load_inputs(playoffs=True)` adds every playoff game, for **scoring only** (`score_weeks`, the watch-list look-back). Features and training never see playoff rows.
+- **ESPN per-week ingest is regular season** (`ingest/runner.py`: weeks ≤ 18, `seasontype=2`); `espn_scoreboard` / `espn_qbr_weekly` have no consumer downstream.
+- **Participation for the current season** is "not published yet" until nflverse fills it after the season; with `seasons.current` still on that season, `nfl ingest` picks it up (research only).
+- **2026 schedule:** week 18 is on 2027-01-10, so Wild Card weekend is 2027-01-16/18 and the Wild Card Tuesday run is 2027-01-12.
+
 ## Recipes
 
 **Open the data:**

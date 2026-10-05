@@ -8,6 +8,8 @@ command checks the drive is connected before touching anything.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -113,13 +115,34 @@ class DataPaths:
         ]
 
 
+_redirect: DataPaths | None = None
+
+
+@contextmanager
+def redirect_data_root(paths: DataPaths) -> Iterator[DataPaths]:
+    """Inside the block, `ensure_data_root()` (no explicit root) returns `paths` (P10
+    rehearsals: `ops/rehearsal.RehearsalPaths` reads the real raw and curated data and
+    writes features, models, runs and reports into a scratch folder)."""
+    global _redirect
+    previous, _redirect = _redirect, paths
+    try:
+        for d in paths.all_dirs():
+            d.mkdir(parents=True, exist_ok=True)
+        yield paths
+    finally:
+        _redirect = previous
+
+
 def ensure_data_root(root: Path | str | None = None, init: bool = False) -> DataPaths:
     """Return DataPaths for the data root, failing clearly if the drive or root is missing.
 
     The root folder itself is only created when `init=True` (`nfl doctor --init-data-root`),
     so a typo in NFL_DATA_ROOT fails loudly instead of silently building a new tree.
-    Standard subfolders are created whenever the root exists.
+    Standard subfolders are created whenever the root exists. Inside `redirect_data_root`
+    a call without `root` returns the redirected paths.
     """
+    if root is None and _redirect is not None:
+        return _redirect
     if root is None:
         root = get_env().nfl_data_root
     if root is None:

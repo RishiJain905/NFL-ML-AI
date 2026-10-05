@@ -97,6 +97,15 @@ def test_train_writes_predictions_models_and_artifact(mocked) -> None:
     assert meta["trained_through"] == f"{SEASON}-w{WEEK - 1:02d}"
     assert (paths.models / "game-model" / f"{SEASON}-w{WEEK:02d}" / "market.joblib").exists()
     assert runs[-1].artifacts == [("game-model", [f"{SEASON}-w{WEEK:02d}"])]  # not promoted
+    # P10: the weekly fit refreshes the feature table the player / team models read, so the
+    # predicted week's market numbers and expected QBs are in it
+    feats = pl.read_parquet(paths.features / "game_features.parquet")
+    assert feats.filter((pl.col("season") == SEASON) & (pl.col("week") == WEEK)).height
+    gmeta = json.loads((paths.features / "_meta" / "game_features.json").read_text())
+    assert gmeta["built_by"].startswith("nfl weekly run (game step")
+    upd = game_runs.run_train(SEASON, WEEK, log=lambda *_: None, output="update")
+    assert upd["models"] is None  # the Saturday update never rewrites it (still the main's)
+    assert json.loads((paths.features / "_meta" / "game_features.json").read_text()) == gmeta
     out = game_runs.run_train(SEASON, WEEK, launched_by="agent", promote=True, log=lambda *_: None)
     assert runs[-1].artifacts == [("game-model", [f"{SEASON}-w{WEEK:02d}", "production"])]
 

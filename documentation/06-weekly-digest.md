@@ -314,3 +314,15 @@ GLM 5.3 Flash through OpenRouter (D56) stays the writer; no `anthropic` / `opena
 - **Regeneration:** keep passing sentences; "no entity named" → add the name; a named owner who doesn't own the number → remove it.
 - **Routing:** `deepinfra/fp4` dropped (it skipped the reasoning on 3 of 5 calls); `max_tokens` 96,000; BaseTen first by an explicit `order` instead of `sort: price` (Rishi, D88: BaseTen wrote a digest in 3 minutes vs 12–25 on Novita, about a cent more; `sort: throughput` didn't help, as OpenRouter has no throughput stats for these endpoints).
 - **Whose win % the outlook quotes (D88):** a consensus game gets the win % of the team in `model_vs_consensus.team` (the team the gap is about), a highlight game its favorite's `prob`; a game that is both, the consensus team's. GLM had mixed the two (always correct, sometimes the underdog's).
+
+## As built in P10: playoff digests (D91)
+
+Checked by rehearsing the 2025 playoffs ([season operations guide](guides/season-operations.md#5-playoff-weeks)). A playoff week's digest:
+
+- is titled by the round: "NFL digest: 2025 Wild Card round (week 19)" (`Meta.playoff_round`: Wild Card round, Divisional round, Conference championships, Super Bowl; `null` in the regular season);
+- keeps **team trends** and **Last week under the hood** to the teams still playing (this week's slate); under-the-hood reads this season's playoff games too, so from the Divisional round on "last week" is the previous round;
+- has **players to watch** from the player model (playoff rows use the player's regular-season form; a pick needs a 50% snap share over his last 3 games and 3+ games this season, and "a teammate missed the last game" doesn't count, so a backup who started only the rested-starters final week isn't a "regular") and grades last round's picks in the report card like any week;
+- the outlook's "most lopsided" / "closest" highlights use at most half the slate each (Wild Card 3 + 2, Divisional 2 + 2, conference games 1 + 1, the Super Bowl none), so one game is never both;
+- a check fix: a payload player's surname that is also a team alias ("For Washington, ..." about Parker Washington) is not an unknown team.
+
+Fewer games change nothing else: the outlook, the report card and the graph sections work on 1–6 games as on 16.

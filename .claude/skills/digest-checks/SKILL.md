@@ -99,6 +99,12 @@ Team aliases: code, nickname, full name, location (not "New York" / "Los Angeles
 - **Backtest digests** see P08 targets because `run.materialize_backtest_player_predictions` copies main **and** shipped P08 targets (`live_targets()`).
 - **Placeholder names:** `_short_names` counts last names over every player in the fact index (game QBs, graph items, starters out), not just the writer's own players: "Jones" with Mac / Zay / Jonathan Jones elsewhere in the payload binds to nobody (found by the P08 graph agent in a 2025 w13 backtest).
 
+## 6e. Playoff digests (P10, D91)
+- `build_payload` reads the week's game types: a playoff week sets `Meta.playoff_round` ("Wild Card round" ... "Super Bowl", `ops.calendar.round_name`; `null` in the regular season, so regular-season payloads only gain one null key), the title becomes "NFL digest: 2025 Wild Card round (week 19)", and `build_trends(teams=...)` / `select_under_hood(playoffs=True, teams=...)` keep only the slate's teams. Under-the-hood reads this season's playoff rows (`under_hood._regular`), so from the Divisional round on "last week" is the previous round; earlier seasons stay regular season.
+- **Small slates:** `build.build_highlights` caps each list at half the upcoming games (regular weeks unchanged), so a one-game Super Bowl has no rankings and the conference round's two games one each.
+- **Unknown-entities false positive fixed:** a payload player's name or unique surname that is also a team alias ("For Washington, ..." about Parker Washington while the Commanders aren't playing) is skipped by the team scan (`check_unknown_entities`, `fx.entity_names("player")`). In the regular season nearly every team is in the payload, which is why it never showed before the playoff rehearsal.
+- Try a playoff digest with `nfl weekly rehearse --season <last> --weeks 19-22` (placeholder) and one real-LLM rehearsal (`--steps digest --llm openrouter`) after a prompt change that could touch playoff wording.
+
 ## 7. Placeholder writer rules (`llm/placeholder.py`)
 - Uses only display strings; every sentence with a number names its owner.
 - Fits each section to its budget (`TRIM = 1.0`): required sentences first, then optional ones / extra items while they fit (`_fit`, `_fit_items`), so the total stays within budget.

@@ -44,6 +44,9 @@ class Meta(Model):
     sources: dict[str, str] = Field(default_factory=dict)  # source -> freshness note
     followed_teams: list[str] = Field(default_factory=list)
     early_season: bool = False  # weeks 1-3: ratings lean on last season (documentation/02)
+    # a playoff week (P10): "Wild Card round", "Divisional round", "Conference
+    # championships" or "Super Bowl"; None in the regular season
+    playoff_round: str | None = None
     # knowledge graph (P05): ok | unavailable (Neo4j down / build failed) | off
     graph_status: Literal["ok", "unavailable", "off"] = "off"
     graph_note: str | None = None  # why the graph sections are missing, when they are

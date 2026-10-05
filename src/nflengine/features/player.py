@@ -44,6 +44,7 @@ season-to-date mean.
 
 from __future__ import annotations
 
+import datetime as dt
 from collections.abc import Callable, Sequence
 
 import polars as pl
@@ -144,8 +145,13 @@ def upcoming_rows(
     *,
     drop_unavailable: bool = True,
     pgroups: Sequence[str] | None = None,
+    now: dt.datetime | None = None,
 ) -> pl.DataFrame:
     """Rows for the players expected to play in week `week` of `season` (live).
+
+    The week's games to project are the ones not completed yet, or, with `now` (a P10
+    rehearsal's pinned clock), the ones kicking off after `now`: a past week replayed as
+    of its Tuesday.
 
     A non-QB qualifies when his latest game before the week was for the team, he played
     (his side) in one of the team's last 3 completed games (or he is on the week's active
@@ -160,9 +166,10 @@ def upcoming_rows(
     non_qb = [p for p in groups if p != "QB"]
     tg = team_games(inp.games)
     t_now = (season - 2000) * 22 + week
-    slate = tg.filter(
-        (pl.col("season") == season) & (pl.col("week") == week) & ~pl.col("completed")
-    )
+    upcoming = ~pl.col("completed")
+    if now is not None:
+        upcoming = upcoming | (pl.col("kickoff_utc") > now)
+    slate = tg.filter((pl.col("season") == season) & (pl.col("week") == week) & upcoming)
     last3 = (
         tg.filter(pl.col("completed") & (pl.col("t") < t_now))
         .sort("t", descending=True)

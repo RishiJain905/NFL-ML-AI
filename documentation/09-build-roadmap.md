@@ -28,7 +28,7 @@ Track 2 (parallel, recommended after P04):  T00 Data+baselines ─► T01 GBT �
 | P07 | One-command weekly runs (manual-first, D71; scheduling deferred) | Done 2026-10-04 (week 4) |
 | P08 | More targets (12 player, 4 team; all live), a consistency layer, the advanced graph with GDS insights; the LightGBM game model was evaluated and not promoted (v0 stays, D79) | Done 2026-10-04 (week 4); live from the week-5 run |
 | P09 | Real LLM: GLM 5.3 Flash via OpenRouter since P04 (D56); re-checked on the full P08 digest, prompt and checks tuned, no native adapters (D87) | Done 2026-10-05; the tuned prompt is live from the week-5 run |
-| P10 | Playoffs, season review, 2027 prep | January onward |
+| P10 | Rehearsals (the live steps on any week, D90), playoff weeks (D91), the season review and season log, the pre-season checklist; dated work on the season calendar (D89) | Done 2026-10-05; the calendar runs to August 2027 |
 | T00–T04 | Track 2 ladder + bridge to Track 1 | Parallel, at Rishi's pace |
 
 ## How work is run

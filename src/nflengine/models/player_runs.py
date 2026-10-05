@@ -51,9 +51,15 @@ import numpy as np
 import polars as pl
 import yaml
 
+from nflengine import clock
 from nflengine.features import player as PF
 from nflengine.features.asof import AsOf, last_asof_week
-from nflengine.features.player_data import PlayerInputs, load_inputs, player_history
+from nflengine.features.player_data import (
+    PlayerInputs,
+    load_inputs,
+    player_history,
+    with_playoff_week,
+)
 from nflengine.models import metrics as M
 from nflengine.models.backtest import SampleWeights, walk_forward, week_keys
 from nflengine.models.player_model import (
@@ -93,6 +99,8 @@ SCOREBOARD_FILE = "accuracy_scoreboard.parquet"
 FEATURE_FILE = "player_features.parquet"
 DESCRIPTIONS = Path(__file__).resolve().parents[1] / "features" / "descriptions.yaml"
 ROLE_SNAP = 0.5  # documentation/04: a real role = snap share >= 50% over the last 2 games
+LAST_REG_WEEK = 18  # since 2021 (17 before: `last_reg_week`); history is regular season only
+PLAYOFF_MIN_GAMES = 3  # a playoff pick's role needs this many games this season (D91)
 ROLE_CHANGE_TGT = 0.15  # target share left open (`open_tgt`) that counts as a role change
 ROLE_CHANGE_CAR = 0.25
 # P08 per-target settings that live in code until the ship decision moves them to
@@ -207,6 +215,8 @@ def build_player_data(
     paths = paths or ensure_data_root()
     inp = load_inputs(paths, log=log)
     hist = player_history(inp)
+    if live_key is not None:  # P10: a playoff week's games, injuries and rosters (no-op REG)
+        inp = with_playoff_week(inp, live_key.season, live_key.week, paths)
     pgroups = PF.target_pgroups(targets) if targets is not None else None
     coverage = targets is None or any(t.group == "CB/S" for t in targets)
     rows = PF.history_rows(hist, pgroups)
@@ -218,7 +228,22 @@ def build_player_data(
             ).select("game_id"),
             on="game_id",
         ).select("team", "qb_id")
-        up = PF.upcoming_rows(inp, hist, live_key.season, live_key.week, qbs, pgroups=pgroups)
+        # a rehearsal (P10) replays a past week as of its Tuesday: the pinned clock picks
+        # the games still to come, and their box-score rows (who actually played) give way
+        # to the expected players, as on a live Tuesday; rows of the week's games already
+        # played by then stay, as they would have live
+        now = clock.utc_now() if clock.is_pinned() else None
+        up = PF.upcoming_rows(
+            inp, hist, live_key.season, live_key.week, qbs, pgroups=pgroups, now=now
+        )
+        if now is not None:
+            rows = rows.filter(
+                ~(
+                    (pl.col("season") == live_key.season)
+                    & (pl.col("week") == live_key.week)
+                    & (pl.col("kickoff_utc") > now)
+                )
+            )
         rows = pl.concat([rows.join(up, on=["player_id", "game_id"], how="anti"), up])
         log(f"live rows for {live_key}: {up.height} players")
     log("building player features ...")
@@ -270,6 +295,39 @@ def tuesdays(games: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def last_reg_week(season: pl.Expr) -> pl.Expr:
+    """The season's last regular-season week: 18 since 2021, 17 before (Sol review, P10)."""
+    return pl.when(season >= 2021).then(LAST_REG_WEEK).otherwise(LAST_REG_WEEK - 1)
+
+
+def _playoff_row(p: pl.DataFrame) -> pl.Expr:
+    """A playoff row (after the season's last regular-season week): only live playoff weeks
+    and rehearsals of them have one (history is regular season), so backtests and
+    regular-season weeks never match."""
+    if "week" not in p.columns:
+        return pl.lit(False)
+    if "season" not in p.columns:
+        return pl.col("week") > LAST_REG_WEEK
+    return pl.col("week") > last_reg_week(pl.col("season"))
+
+
+def _role_ok(p: pl.DataFrame) -> pl.Expr:
+    """A real role: snap share >= `ROLE_SNAP` over his last 2 games. In a playoff week (P10,
+    D91) also over his last 3, with 3+ games this season: the history is regular season
+    only, so a playoff row's last games include the final regular-season week, when many
+    teams rest starters, and a backup who started only that game (or a late call-up with 1-2
+    games) looked like a regular. 2025 Wild Card rehearsal: 5 of the 20 picks had ~0% of
+    snaps before week 18 and ~0% in the playoff game; the 3-game rule removed them, and 4
+    of the 5 non-players left had 2 or fewer games. Regular-season rows are unchanged."""
+    ok = pl.col("use_snap_l2").fill_null(0) >= ROLE_SNAP
+    if "use_snap_l3" not in p.columns:
+        return ok
+    steady = (pl.col("use_snap_l3").fill_null(0) >= ROLE_SNAP) & (
+        pl.col("own_n_season").fill_null(0) >= PLAYOFF_MIN_GAMES
+    )
+    return ok & (~_playoff_row(p) | steady)
+
+
 def assemble(
     preds: pl.DataFrame,
     frame: pl.DataFrame,
@@ -296,6 +354,7 @@ def assemble(
         "own_n_career",
         "own_n_season",
         "use_snap_l2",
+        *(["use_snap_l3"] if "use_snap_l3" in frame.columns else []),
         "baseline_source",
         "baseline_season_mean",
         "baseline_role",
@@ -334,8 +393,9 @@ def assemble(
         pl.col("own_n_career").fill_null(0).cast(pl.Int32).alias("games_history"),
         pl.col("own_n_season").fill_null(0).cast(pl.Int32).alias("games_season"),
         pl.col("use_snap_l2").alias("snap_share_l2"),
-        (pl.col("use_snap_l2").fill_null(0) >= ROLE_SNAP).alias("role_ok"),
-        change.alias("role_change"),
+        _role_ok(p).alias("role_ok"),
+        # a playoff week: the teammate "missing" from the last game was rested in week 18
+        (change & ~_playoff_row(p)).alias("role_change"),
         vac.alias("vacated_share"),
         pl.col("avail_status")
         .replace_strict(
@@ -1288,11 +1348,16 @@ def run_tune(
 
 
 def _seed_history(paths: DataPaths, target: Target, season: int) -> pl.DataFrame:
-    """The canonical backtest's last seasons, as walk-forward history for a weekly refit."""
+    """The canonical backtest's last seasons, as walk-forward history for a weekly refit.
+    Only seasons before `season`: the refit's own walk-forward covers the season itself
+    (the same rows live; a P10 rehearsal of a backtested season would otherwise hand the
+    harness "history" from after its weeks, which it rightly refuses)."""
     path = paths.runs / "backtests" / "player" / target.key / PRED_FILE
     if not path.exists():
         return pl.DataFrame()
-    p = pl.read_parquet(path).filter(pl.col("season") >= season - BURN_IN)
+    p = pl.read_parquet(path).filter(
+        (pl.col("season") >= season - BURN_IN) & (pl.col("season") < season)
+    )
     cols = ["season", "week", "player_id", "game_id", "p10", "p50", "p90", "mean", "actual"]
     if target.kind == "amount":
         cols += ["_p10_raw", "_p90_raw"]
@@ -1336,7 +1401,7 @@ def run_train(
     if week > latest:
         raise ValueError(f"week {week} of {season} isn't predictable yet (latest {latest})")
     key = AsOf(season, week)
-    now = dt.datetime.now(dt.UTC).replace(microsecond=0)
+    now = clock.utc_now()
     data = build_player_data(paths, live_key=key, run_date=run_date, log=log, targets=targets)
     phrases = load_phrases()
     tag = f"{season}-w{week:02d}"
@@ -1425,7 +1490,7 @@ def run_train(
     # the refits take minutes: the projections exist from now, so the kickoff cutoff and
     # `created_at` use the save time, not the start time (Sol review: a game kicking off
     # mid-run must not get a projection stamped before its kickoff)
-    now = dt.datetime.now(dt.UTC).replace(microsecond=0)
+    now = clock.utc_now()
     preds = preds.with_columns(pl.lit(now).cast(pl.Datetime("us", "UTC")).alias("created_at"))
     # a game that already kicked off gets no new projection (it would be made after
     # kickoff); its saved pre-kickoff rows are kept below. Results come later (`score_weeks`).
@@ -1615,7 +1680,10 @@ def score_weeks(
         if use_wandb and board.height:  # keep the season panel current (backtest rows)
             log_scoreboard(season, max(weeks), board, launched_by)
         return board
-    inp = load_inputs(paths, first_season=season, last_season=season, log=lambda *_: None)
+    # playoff box scores too (P10): saved playoff projections are graded like any week
+    inp = load_inputs(
+        paths, first_season=season, last_season=season, log=lambda *_: None, playoffs=True
+    )
     hist = player_history(inp)
     all_rows = []
     for w, path in sorted(files.items()):

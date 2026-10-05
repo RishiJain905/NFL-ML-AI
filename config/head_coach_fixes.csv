@@ -1,0 +1,12 @@
+# Corrections to nflverse's schedule head coaches (P10; read by the graph build, graph/tables_extra.read_coach_fixes).
+# One row per change: the coach from `from_week` of `season` on. Checked 2026-10-05.
+# 2026 hires nflverse still listed under last season's coach: NFL.com "Assessing new hires from this year's coaching carousel" (2026),
+# Bleacher Report "Grading Mike LaFleur to the Cardinals and every new NFL head coach hiring of 2026".
+# 2025 interims (nflverse lists the fired coach all season): tennesseetitans.com (Mike McCoy interim, 2025-10-13), Wikipedia "2025 New York Giants season" (Mike Kafka interim, 2025-11-10).
+season,team,from_week,coach,source
+2025,TEN,7,Mike McCoy,interim after Brian Callahan was fired on 2025-10-13 (after week 6)
+2025,NYG,11,Mike Kafka,interim after Brian Daboll was fired on 2025-11-10 (after week 10)
+2026,ARI,1,Mike LaFleur,nflverse lists Jonathan Gannon
+2026,ATL,1,Kevin Stefanski,nflverse lists Raheem Morris
+2026,BUF,1,Joe Brady,nflverse lists Sean McDermott
+2026,LV,1,Klint Kubiak,nflverse spells it Klint Kubliak

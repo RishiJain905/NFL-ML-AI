@@ -207,6 +207,12 @@ Write one card per model family at `documentation/model_cards/<family>.md` (also
 - **A new kind of target needs its own drift signal:** probability targets have no MAE, so the MAE-based `player_vs_baseline` never saw them; `player_prob_vs_baseline` runs the same rule on Brier (D85). Replay any new signal on 2019–2025 before trusting it.
 - **Agent processes can't use the W&B Python API** (the key is only loaded by `tracking.init_run`): put tags in the run code, not in driver scripts; deleting runs needs Rishi.
 
+## 9f. Lessons from P10 (rehearsals, playoffs, the pre-season retune)
+- **A weekly refit borrows the canonical backtest's walk-forward history** (`player_runs._seed_history`, `team_runs._seed_history`): only seasons **before** the target season, or a refit of a backtested season (a rehearsal of 2025) hands the harness rows from after its keys and `walk_forward` raises `LeakageError` ("history rows on/after"). The guard is right; keep the cut.
+- **Playoff projections use regular-season form:** the player models are trained on regular-season rows only; a playoff week's rows come from `with_playoff_week` and are graded with the playoff box scores. If a few seasons of live grading show playoff projections clearly worse than regular-season ones, train on playoff rows too (D91's revisit trigger): a model change, so walk-forward first.
+- **The pre-season retune** (runbook → Pre-season checklist): ratings (`nfl ratings tune` → `eval`), game (`nfl backtest game` both variants, `game-weights`), players (`nfl tune player` → `nfl backtest player` per target), team (`nfl tune team` → `nfl backtest team`), each with the just-finished season in the reported window, a rule written down before the reported runs, the 🧑 handoff notes of §6, and a decisions-log entry for every setting that changes.
+- **Rehearse before trusting a model change on a live Tuesday:** `nfl weekly rehearse` runs the real weekly fit on a past week in a scratch copy (W&B off); a pinned rehearsal of a published week must reproduce its files exactly when nothing should have changed.
+
 ## 10. Honesty rules
 - Report results that lose to the baseline as well. A model that doesn't beat its baseline doesn't ship (`documentation/11`).
 - A metric that looks too good usually means leakage. Check the as-of logic and feature timing before celebrating.

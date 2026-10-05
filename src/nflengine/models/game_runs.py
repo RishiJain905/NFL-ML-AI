@@ -29,6 +29,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 
+from nflengine import clock
 from nflengine.features.asof import AsOf, last_asof_week
 from nflengine.features.game import build_game_features, load_game_inputs
 from nflengine.models import metrics as M
@@ -169,7 +170,9 @@ def load_frame(
     if qb_mode == "actual":
         overrides = _actual_overrides(paths)
     elif live_key is not None:
-        overrides = _live_overrides(paths, live_key, run_date or dt.date.today())
+        if run_date is None:  # what the depth charts / injury reports knew on the run's day
+            run_date = clock.utc_now().date() if clock.is_pinned() else dt.date.today()
+        overrides = _live_overrides(paths, live_key, run_date)
     gi = load_game_inputs(paths, train_start(), qb_overrides=overrides, log=log)
     return build_game_features(
         gi.games,
@@ -214,16 +217,20 @@ def _live_overrides(paths: DataPaths, key: AsOf, run_date: dt.date):
     return fn
 
 
-def write_feature_table(frame: pl.DataFrame, paths: DataPaths | None = None) -> Path:
-    from nflengine.curate.build import write_duckdb_views
-
+def save_feature_frame(
+    frame: pl.DataFrame, paths: DataPaths | None = None, built_by: str = "nfl features game"
+) -> Path:
+    """Write `features/game_features.parquet` (+ its `_meta` record) atomically. The player
+    and team models read it for the market-implied points, spread and total of every game
+    and the expected QBs of past weeks, so the weekly game step refreshes it (P10)."""
     paths = paths or ensure_data_root()
     out = paths.features / "game_features.parquet"
-    tmp = out.with_suffix(".parquet.tmp")
-    frame.write_parquet(tmp, compression="zstd")
-    tmp.replace(out)
+    from nflengine.ops.lock import write_parquet_atomic
+
+    write_parquet_atomic(frame, out, compression="zstd")
     meta = {
         "built_at": dt.datetime.now().isoformat(timespec="seconds"),
+        "built_by": built_by,
         "rows": frame.height,
         "seasons": [int(frame["season"].min()), int(frame["season"].max())],
         "git_commit": git_commit(),
@@ -231,6 +238,14 @@ def write_feature_table(frame: pl.DataFrame, paths: DataPaths | None = None) -> 
     }
     (paths.features / "_meta").mkdir(exist_ok=True)
     (paths.features / "_meta" / "game_features.json").write_text(json.dumps(meta, indent=2))
+    return out
+
+
+def write_feature_table(frame: pl.DataFrame, paths: DataPaths | None = None) -> Path:
+    from nflengine.curate.build import write_duckdb_views
+
+    paths = paths or ensure_data_root()
+    out = save_feature_frame(frame, paths)
     write_duckdb_views(paths)
     return out
 
@@ -864,7 +879,7 @@ def assemble_predictions(
         pl.all_horizontal(pl.col(c).is_not_null() for c in COMPLETE_COLS)
     )
     has_market = set(mk["game_id"].to_list())
-    now = dt.datetime.now(dt.UTC).replace(microsecond=0)
+    now = clock.utc_now()
     qb_cols = [
         c
         for c in ("home_qb_name", "away_qb_name", "home_qb_source", "away_qb_source")
@@ -980,6 +995,12 @@ def run_train(
     frame_week = frame.filter((pl.col("season") == season) & (pl.col("week") == week))
     if frame_week.is_empty():
         raise ValueError(f"no feature rows for {key}: run `nfl ratings build` first")
+    if output == "main":
+        # P10: the player and team models read this file for every game's market points /
+        # spread / total and past weeks' expected QBs; before, only `nfl features game` wrote
+        # it, so a weekly run's new week had none (found rehearsing 2026 week 4). The
+        # DuckDB view reads the file by path: no view rebuild (it would write `curated/`).
+        save_feature_frame(frame, paths, built_by=f"nfl weekly run (game step, {key})")
     report = [season]
     week_preds: dict[str, pl.DataFrame] = {}
     fits: dict[str, Any] = {}
@@ -1011,7 +1032,7 @@ def run_train(
     run_dir = paths.run_dir(season, week)
     run_dir.mkdir(parents=True, exist_ok=True)
     pred_path = run_dir / "predictions_games.parquet"
-    table, kept = keep_started(table, pred_path, dt.datetime.now(dt.UTC))
+    table, kept = keep_started(table, pred_path, clock.utc_now())
     if kept:
         log(f"kept the saved predictions of {len(kept)} game(s) that already kicked off: {kept}")
     from nflengine.ops.lock import write_parquet_atomic

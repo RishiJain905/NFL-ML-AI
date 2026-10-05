@@ -39,6 +39,8 @@ class FooterInfo:
 def header(p: Payload) -> str:
     m = p.meta
     title = f"# NFL digest: {m.season} week {m.week}"
+    if m.playoff_round:  # P10: the round's name, the week number in brackets
+        title = f"# NFL digest: {m.season} {m.playoff_round} (week {m.week})"
     if m.mode == "backtest":
         title += " (backtest)"
     fresh = "; ".join(f"{k} {v}" for k, v in m.sources.items())

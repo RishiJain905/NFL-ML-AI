@@ -123,3 +123,9 @@ P07 is **manual-first** (D71): the run is started by hand, but every run now rec
 - **Consistency** (`track1-player` / `eval`, `consistency-2019-2025`) and the weekly `consistency/*` keys on the pipeline run.
 - **Drift:** a sixth signal, `player_prob_vs_baseline` (D85): doc 08's "player model worse than baseline" rule on the Brier score of the chances, per group (0 alerts in the 2019–2025 replay). CB/S and TEAM rows join `player_vs_baseline` as extra groups.
 - Every chart and key: the [W&B guide](guides/weights-and-biases.md) §4.7, §4.9, §6.3, §6.3b, §6.3c.
+
+## As built in P10: the season review and the season log
+
+- **`nfl season review`** (`ops/season_review.py`) turns the season's records into one Markdown review: game model vs Elo vs market, calibration against its chance level, the accuracy scoreboard per target, the watch list, digest checks, pipeline uptime and alerts, best and worst calls, and an empty keep / cut / rebuild section for Rishi. It reads the same files as the season dashboard (`ops/dashboard.build_dashboard_data`) plus the saved predictions and run summaries, so the W&B dashboard, the digest's report card and the review agree. No W&B run of its own.
+- **`nfl season weeks`** prints one line per week (published, on time, checks, drift alerts) for PROGRESS → Season log.
+- Rehearsals (`nfl weekly rehearse`) log nothing to W&B (`WANDB_MODE=disabled`).

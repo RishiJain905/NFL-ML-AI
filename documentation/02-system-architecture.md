@@ -154,6 +154,7 @@ D:\nfl-ml-data\
 ├── models\                                      # local model files (also W&B artifacts)
 ├── runs\{season}\week{NN}\                      # per-run payload, predictions, checks, logs
 ├── reports\{season}\                            # published digests
+├── rehearsals\{season}\                         # P10: `nfl weekly rehearse` sandboxes (safe to delete)
 ├── bdb\                                         # Track 2: raw CSV, Parquet, outputs
 ├── neo4j\data\  neo4j\logs\                     # Neo4j database files (Docker bind mount)
 ├── wandb\                                       # W&B local run files (WANDB_DIR)
@@ -224,6 +225,12 @@ Rishi chose **manual-first** at the start of P07: the project isn't deployed, an
 | Two runs at once | An operating-system lock on `runs/.weekly.lock` shared by the weekly run and the injury update (exit 4 while held); the OS releases it when the holding process ends, crash included |
 | Notifications | Alerts print at the end of the run, go into `run_summary.json`, and go out as **W&B alerts** (W&B's own email / app notifications; `ops.wandb_alerts`). No SMTP |
 | Time travel | `--as-of` (ISO, Eastern without an offset): in the past it simulates the run (readiness from `kickoff + ops.data_lag_hours`, the digest as a backtest), writing only to the backtest folders |
+
+## As built in P10: rehearsals and the season calendar (D89–D91)
+
+- **Rehearsals** (`nfl weekly rehearse`, `ops/rehearsal.py`): the live steps `ready → game → player → digest` on any past or current week, with the steps' clock (`clock.py`) pinned to that week's Tuesday and the data root redirected (`paths.redirect_data_root`): raw and curated data are read from the data root, features / models / runs / reports go under `rehearsals\<season>\`. No W&B, no Neo4j write, no run records. Used for the playoff check every January and the pre-season dry run ([season operations guide](guides/season-operations.md)).
+- **Playoff weeks** run the same eight steps; the player model and the digest learned the playoffs in P10 (D91).
+- **The season beyond one week** (the Tuesday season log, the playoff check, the season review after the Super Bowl, the pre-season checklist) is a dated calendar in PROGRESS and the runbook, run by hand like the weekly command (D71, D89).
 
 ## Secrets and config
 
