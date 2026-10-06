@@ -8,7 +8,18 @@ from app_helpers import BASE, TOKEN, make_client
 from nflengine.ops.summary import scrub
 from nflengine.paths import DataRootError
 
-SCANNED_GETS = ["/api/meta", "/api/weeks"]  # /api/session returns the launch token on purpose
+# /api/session returns the launch token on purpose. The week endpoints are scanned again on a
+# full synthetic week in test_app_week.py (raw LLM text, credential-shaped details, the root).
+SCANNED_GETS = [
+    "/api/meta",
+    "/api/weeks",
+    "/api/team-info",
+    "/api/weeks/2026/5",
+    *[
+        f"/api/weeks/2026/5/{tab}"
+        for tab in ("pipeline", "digest", "games", "players", "results", "graph")
+    ],
+]
 
 
 @pytest.fixture

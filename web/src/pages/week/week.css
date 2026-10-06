@@ -1,0 +1,13 @@
+/* Week-tab additions the mockup draws inline (src/pages/week/). Same tokens as app.css. */
+.notice.warn { border-style: solid; border-color: color-mix(in srgb, var(--warn) 50%, transparent); background: color-mix(in srgb, var(--warn) 7%, var(--panel)); }
+.notice.warn .ic { color: var(--warn); }
+.checklist .x { color: var(--err); font-weight: 700; }
+.checklist .issues { margin: 2px 0 4px; padding-left: 16px; color: var(--ink-2); font-size: 12px; }
+.tbl tr.dnp td { color: var(--ink-3); }
+.range, .minirange, .probbar .mk { cursor: default; }
+.range:focus-visible, .minirange:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sub-h { font-family: var(--font-display); font-size: 17px; font-weight: 700; letter-spacing: .02em; margin: 0; color: var(--ink-2); }
+.wk-stack { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.wk-more { display: flex; justify-content: center; padding: 12px; border-top: 1px solid var(--line); }
+.tbl tr.grp td { background: var(--raised); padding-top: 12px; }
+.tbl tr.grp .sub-h { display: inline; font-size: 16px; margin-right: 6px; }

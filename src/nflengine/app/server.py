@@ -19,13 +19,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
+from fastapi import Path as PathParam
+from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.staticfiles import StaticFiles
 
 from nflengine.app.jsonsafe import SafeJSONResponse
+from nflengine.app.readers.common import strip_root, use_data_root
+from nflengine.app.readers.digest import get_digest
+from nflengine.app.readers.games import get_games
+from nflengine.app.readers.graph import get_graph
 from nflengine.app.readers.meta import lock_dict, plan_dict
-from nflengine.app.readers.weeks import list_weeks
+from nflengine.app.readers.pipeline import get_pipeline
+from nflengine.app.readers.players import get_players
+from nflengine.app.readers.results import get_results
+from nflengine.app.readers.weeks import get_week, list_weeks, team_info
 from nflengine.app.security import LocalOnlyMiddleware
 from nflengine.app.status import ServiceStatus
 from nflengine.ops.summary import scrub
@@ -55,6 +64,12 @@ def _utc_now() -> dt.datetime:
     return utc_now()
 
 
+def _read_only_root() -> DataPaths:
+    """The data root without creating its standard folders: a GET must never write
+    (Sol review, CR01). Readers treat a missing folder as "no data"."""
+    return ensure_data_root(create_dirs=False)
+
+
 def _current_season() -> int:
     from nflengine.settings import get_config
 
@@ -68,7 +83,7 @@ class AppSettings:
     dev: bool = False
     rehearsal: bool = False
     web_dist: Path | None = None
-    data_root: Callable[[], DataPaths] = ensure_data_root
+    data_root: Callable[[], DataPaths] = _read_only_root
     schedules: Callable[[DataPaths], Any] = _load_schedules
     now: Callable[[], dt.datetime] = _utc_now
     current_season: Callable[[], int] = _current_season
@@ -86,7 +101,9 @@ class _Context:
         self._lock = threading.Lock()
 
     def paths(self) -> DataPaths:
-        return self.s.data_root()
+        paths = self.s.data_root()
+        use_data_root(paths.root)  # every text `clean()` touches loses the root (D102)
+        return paths
 
     def schedules(self, paths: DataPaths) -> Any:
         with self._lock:
@@ -103,6 +120,12 @@ class _Context:
         try:
             return plan_week(self.schedules(paths), self.s.now())
         except FileNotFoundError:  # no schedule snapshot yet
+            return None
+
+    def schedules_or_none(self, paths: DataPaths) -> Any:
+        try:
+            return self.schedules(paths)
+        except FileNotFoundError:
             return None
 
 
@@ -136,6 +159,11 @@ def create_app(settings: AppSettings) -> FastAPI:
     async def http_error(_req: Request, exc: StarletteHTTPException) -> SafeJSONResponse:
         code = "not_found" if exc.status_code == 404 else f"http_{exc.status_code}"
         return _error(exc.status_code, code, str(exc.detail))
+
+    @app.exception_handler(RequestValidationError)
+    async def bad_request(_req: Request, _exc: RequestValidationError) -> SafeJSONResponse:
+        # fixed text: the validation details echo the request's values back
+        return _error(422, "bad_request", "Season and week must be whole numbers in range.")
 
     @app.exception_handler(DataRootError)
     async def no_drive(_req: Request, _exc: DataRootError) -> SafeJSONResponse:
@@ -190,6 +218,71 @@ def create_app(settings: AppSettings) -> FastAPI:
         season = plan.season if plan is not None and plan.week is not None else None
         season = season or settings.current_season()
         return SafeJSONResponse(list_weeks(paths, plan, lock_dict(paths), season))
+
+    # ---- CR01: the week archive. Season and week are validated integers; no endpoint
+    # takes a file path (README §4). Every answer goes through `strip_root`: no string can
+    # carry the data root's path (NFL_DATA_ROOT's value) to the browser (Sol review, CR01).
+    Season = PathParam(ge=1999, le=2100)
+    Week = PathParam(ge=1, le=22)
+
+    def week_json(paths: DataPaths, body: Any) -> SafeJSONResponse:
+        return SafeJSONResponse(strip_root(body, paths.root))
+
+    @app.get("/api/team-info")
+    def team_info_route() -> SafeJSONResponse:
+        paths = ctx.paths()
+        return week_json(paths, team_info(paths))
+
+    @app.get("/api/weeks/{season}/{week}")
+    def week_route(season: int = Season, week: int = Week) -> SafeJSONResponse:
+        paths = ctx.paths()
+        body = get_week(
+            paths,
+            season,
+            week,
+            ctx.plan(paths),
+            lock_dict(paths),
+            ctx.schedules_or_none(paths),
+            settings.now(),
+        )
+        return week_json(paths, body)
+
+    @app.get("/api/weeks/{season}/{week}/pipeline")
+    def pipeline_route(season: int = Season, week: int = Week) -> SafeJSONResponse:
+        paths = ctx.paths()
+        return week_json(
+            paths, get_pipeline(paths, season, week, ctx.plan(paths), lock_dict(paths))
+        )
+
+    @app.get("/api/weeks/{season}/{week}/digest")
+    def digest_route(season: int = Season, week: int = Week) -> SafeJSONResponse:
+        paths = ctx.paths()
+        return week_json(paths, get_digest(paths, season, week))
+
+    @app.get("/api/weeks/{season}/{week}/games")
+    def games_route(season: int = Season, week: int = Week) -> SafeJSONResponse:
+        paths = ctx.paths()
+        body = get_games(paths, season, week, ctx.plan(paths), ctx.schedules_or_none(paths))
+        return week_json(paths, body)
+
+    @app.get("/api/weeks/{season}/{week}/players")
+    def players_route(
+        season: int = Season,
+        week: int = Week,
+        stats: str = Query("main", pattern="^(main|all)$"),
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        return week_json(paths, get_players(paths, season, week, stats))
+
+    @app.get("/api/weeks/{season}/{week}/results")
+    def results_route(season: int = Season, week: int = Week) -> SafeJSONResponse:
+        paths = ctx.paths()
+        return week_json(paths, get_results(paths, season, week, ctx.schedules_or_none(paths)))
+
+    @app.get("/api/weeks/{season}/{week}/graph")
+    def graph_route(season: int = Season, week: int = Week) -> SafeJSONResponse:
+        paths = ctx.paths()
+        return week_json(paths, get_graph(paths, season, week))
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def api_not_found(rest: str) -> SafeJSONResponse:

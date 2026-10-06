@@ -133,13 +133,16 @@ def redirect_data_root(paths: DataPaths) -> Iterator[DataPaths]:
         _redirect = previous
 
 
-def ensure_data_root(root: Path | str | None = None, init: bool = False) -> DataPaths:
+def ensure_data_root(
+    root: Path | str | None = None, init: bool = False, create_dirs: bool = True
+) -> DataPaths:
     """Return DataPaths for the data root, failing clearly if the drive or root is missing.
 
     The root folder itself is only created when `init=True` (`nfl doctor --init-data-root`),
     so a typo in NFL_DATA_ROOT fails loudly instead of silently building a new tree.
-    Standard subfolders are created whenever the root exists. Inside `redirect_data_root`
-    a call without `root` returns the redirected paths.
+    Standard subfolders are created whenever the root exists, unless `create_dirs=False`
+    (the control room only reads, CR01). Inside `redirect_data_root` a call without `root`
+    returns the redirected paths.
     """
     if root is None and _redirect is not None:
         return _redirect
@@ -164,8 +167,9 @@ def ensure_data_root(root: Path | str | None = None, init: bool = False) -> Data
             )
         root.mkdir(parents=True)
     paths = DataPaths(root)
-    for d in paths.all_dirs():
-        d.mkdir(parents=True, exist_ok=True)
+    if create_dirs:
+        for d in paths.all_dirs():
+            d.mkdir(parents=True, exist_ok=True)
     return paths
 
 

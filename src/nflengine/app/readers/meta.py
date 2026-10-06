@@ -6,9 +6,9 @@ import datetime as dt
 import re
 from typing import Any
 
+from nflengine.app.readers.common import clean
 from nflengine.ops.calendar import WeekPlan
 from nflengine.ops.lock import is_locked, lock_path, read_holder
-from nflengine.ops.summary import scrub
 from nflengine.paths import DataPaths
 
 
@@ -36,7 +36,7 @@ def plan_dict(plan: WeekPlan | None) -> dict[str, Any] | None:
         "byes": list(s.teams_on_bye) if s else [],
         "neutral_sites": list(s.neutral_sites) if s else [],
         "international": list(s.international) if s else [],
-        "notes": [scrub(n, 200) for n in plan.notes],
+        "notes": [clean(n, None, 200) for n in plan.notes],
     }
 
 
@@ -55,7 +55,7 @@ def lock_dict(paths: DataPaths, probe=is_locked) -> dict[str, Any]:
     note = read_holder(path)
     held = bool(note) and probe(path)
     note = note if held else None
-    command = scrub(note.get("command"), 200) if note else None
+    command = clean(note.get("command"), None, 200) if note else None
     return {"held": held, "command": command, "started": note.get("started") if note else None}
 
 

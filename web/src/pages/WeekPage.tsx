@@ -1,49 +1,18 @@
-// One week: header + tabs (mockup: renderTop / renderTabs). In CR00 every tab shows a
-// designed empty state that says what will appear and which phase brings it.
+// One week: header + tabs (mockup: renderTop / renderTabs / week4View / week5View). Every tab
+// reads its own endpoint (CR01); MLOps is CR03 and keeps its designed empty state.
 
 import { NavLink, Navigate, useParams } from 'react-router-dom';
-import { useMeta, useWeeks } from '../api/client';
+import { useMeta, useWeekDetail, useWeeks } from '../api/client';
 import { WeekHeader } from '../components/WeekHeader';
 import { EmptyState } from '../components/ui';
+import { comma } from '../lib/format';
+import { DigestTab } from './week/DigestTab';
+import { GamesTab } from './week/GamesTab';
+import { GraphTab } from './week/GraphTab';
+import { PipelineTab } from './week/PipelineTab';
+import { PlayersTab } from './week/PlayersTab';
+import { ResultsTab } from './week/ResultsTab';
 import { TABS, type TabKey } from './tabs';
-
-const COMING: Record<TabKey, { glyph: string; title: string; body: string }> = {
-  pipeline: {
-    glyph: 'CR01',
-    title: "The week's run, step by step",
-    body: 'Finished runs with their real step times, in three views (drive chart, pipeline map, timeline) picked per week, come in CR01. The Run button, pre-flight checks and the live view come in CR02.',
-  },
-  digest: {
-    glyph: 'MD',
-    title: 'The digest, with its checks and writer',
-    body: "The rendered digest, its checks, words per section, the GLM's route, time and cost, and Saturday's addendum. Coming in CR01.",
-  },
-  games: {
-    glyph: 'CR01',
-    title: 'Every game: win %, score, model vs market',
-    body: 'Game cards with the model, model-only, Elo and market chances, predicted scores, QB changes and finals once played. Coming in CR01.',
-  },
-  players: {
-    glyph: 'CR01',
-    title: 'Projections and the watch list',
-    body: 'Watch-list cards with ranges and baselines, tough spots, and every projection with filters. Coming in CR01.',
-  },
-  results: {
-    glyph: 'CR01',
-    title: "How this week's calls did",
-    body: "Once the next week's run grades this week: picks, Brier vs Elo and market, game by game, player accuracy and the watch list. Coming in CR01.",
-  },
-  mlops: {
-    glyph: 'ML',
-    title: 'Health · W&B runs · Artifacts',
-    body: "Run health, data freshness, ingest and quality checks, drift; the week's W&B runs with their charts redrawn; artifact versions and where production points. Coming in CR03.",
-  },
-  graph: {
-    glyph: 'KG',
-    title: 'The knowledge graph behind the digest',
-    body: 'Counts, build time, the insights the digest used and the ones it skipped, rows per query. Coming in CR01.',
-  },
-};
 
 export function WeekPage() {
   const params = useParams();
@@ -52,26 +21,49 @@ export function WeekPage() {
   const tab = params.tab as TabKey;
   const weeks = useWeeks();
   const meta = useMeta();
+  const detail = useWeekDetail(season, week);
 
   if (!TABS.some(([k]) => k === tab)) return <Navigate to={`/week/${season}/${week}/pipeline`} replace />;
   const entry = weeks.data?.season === season ? weeks.data.weeks.find((w) => w.week === week) : undefined;
-  const c = COMING[tab];
+  const d = detail.data;
+  const isCurrent = Boolean(d?.is_current ?? entry?.is_current);
+  const lastPublishedWeek = d?.last_published_week ?? null;
+  const counts: Partial<Record<TabKey, string>> = {
+    games: d?.tab_counts.games != null ? String(d.tab_counts.games) : undefined,
+    players: d?.tab_counts.players != null ? comma(d.tab_counts.players) : undefined,
+    graph: d?.tab_counts.graph != null ? String(d.tab_counts.graph) : undefined,
+  };
+  const props = { season, week, isCurrent, lastPublishedWeek };
 
   return (
     <>
-      <WeekHeader season={season} week={week} entry={entry} calendar={meta.data?.calendar} />
+      <WeekHeader season={season} week={week} entry={entry} calendar={meta.data?.calendar} detail={d} />
       {/* plain route links (NavLink sets aria-current="page"), not ARIA tabs (Sol review, CR00) */}
       <nav className="tabs" aria-label="Week sections">
         {TABS.map(([k, label]) => (
           <NavLink key={k} to={`/week/${season}/${week}/${k}`} className="tab">
             {label}
+            {counts[k] ? (
+              <span className="count" aria-label={`(${counts[k]})`}>
+                {counts[k]}
+              </span>
+            ) : null}
           </NavLink>
         ))}
       </nav>
       <section className="view" aria-label={TABS.find(([k]) => k === tab)?.[1]}>
-        <EmptyState glyph={c.glyph} title={c.title}>
-          {c.body}
-        </EmptyState>
+        {tab === 'pipeline' ? <PipelineTab season={season} week={week} detail={d} /> : null}
+        {tab === 'digest' ? <DigestTab {...props} /> : null}
+        {tab === 'games' ? <GamesTab {...props} /> : null}
+        {tab === 'players' ? <PlayersTab {...props} /> : null}
+        {tab === 'results' ? <ResultsTab {...props} /> : null}
+        {tab === 'graph' ? <GraphTab {...props} /> : null}
+        {tab === 'mlops' ? (
+          <EmptyState glyph="ML" title="Health · W&B runs · Artifacts">
+            Run health, data freshness, ingest and quality checks, drift; the week's W&amp;B runs with their charts
+            redrawn; artifact versions and where production points. Coming in CR03.
+          </EmptyState>
+        ) : null}
       </section>
     </>
   );

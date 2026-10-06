@@ -87,3 +87,34 @@ export function seasonEyebrow(season: number, phase?: string | null): string {
   const p = phase === 'playoffs' ? 'playoffs' : phase === 'preseason' ? 'pre-season' : 'regular season';
   return `${season} ${p}`;
 }
+
+/** Seconds as the mockup writes them: "42 s", "8m 41s", "1 h 05 m". */
+export function duration(sec: number | null | undefined): string {
+  if (sec == null || Number.isNaN(sec)) return '—';
+  const s = Math.max(0, Math.round(sec));
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+  return `${Math.floor(s / 3600)} h ${String(Math.round((s % 3600) / 60)).padStart(2, '0')} m`;
+}
+
+/** 0.356 → "36%" (null → "—"). */
+export function pct(p: number | null | undefined, digits = 0): string {
+  return p == null || Number.isNaN(p) ? '—' : `${(p * 100).toFixed(digits)}%`;
+}
+
+/** A fixed-decimals number (null → "—"). */
+export function fixed(v: number | null | undefined, digits = 1): string {
+  return v == null || Number.isNaN(v) ? '—' : v.toFixed(digits);
+}
+
+/** Signed, with a real minus sign: +2.1 / −0.4 / 0.0. */
+export function signed(v: number | null | undefined, digits = 1): string {
+  if (v == null || Number.isNaN(v)) return '—';
+  const sign = v > 0 ? '+' : v < 0 ? '−' : '';
+  return sign + Math.abs(v).toFixed(digits);
+}
+
+/** 1860 → "1,860". */
+export function comma(v: number | null | undefined): string {
+  return v == null ? '—' : v.toLocaleString('en-US');
+}
