@@ -1,0 +1,90 @@
+/* Colour tokens, ported unchanged from the approved mockup
+   (documentation/control-room/mockup/styles.css). Two palettes (Turf & Pylon, Playbook) x
+   dark / light, chosen by `data-pal` and `data-mode` on <html> (src/theme/appearance.ts).
+   The bare root and the system-dark blocks are Turf & Pylon, for the first paint. */
+:root {
+  --bg:#EFF4F0; --panel:#FFFFFF; --raised:#F6F9F7; --line:#D4DFD8; --line-2:#BFCEC5;
+  --ink:#0B1D14; --ink-2:#3E594A; --ink-3:#768C80;
+  --accent:#D14E17; --on-accent:#FFFFFF; --accent-ink:#B8430F; --accent-wash:rgba(209,78,23,.09);
+  --s1:#D9541C; --s2:#2A78D6; --s3:#16A06F;
+  --ok:#138A4E; --warn:#A87C08; --err:#D33A3A;
+  --field:#2C6B41; --field-2:#307146; --chalk:rgba(255,255,255,.88); --ball:#7A3E1D;
+  --console-bg:#0B1D14; --console-ink:#CFE0D5; --console-dim:#6C8576;
+  --shadow:0 1px 2px rgba(11,29,20,.06), 0 8px 24px rgba(11,29,20,.06);
+  --font-display:"Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --font-body:"Barlow", "Segoe UI", system-ui, sans-serif;
+  --font-mono:"JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --r:8px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#07120D; --panel:#0D1B14; --raised:#13251C; --line:#1F3529; --line-2:#2C4738;
+    --ink:#E9F2EC; --ink-2:#A2B9AB; --ink-3:#6B8377;
+    --accent:#FF6B2C; --on-accent:#1C0A02; --accent-ink:#FF8A55; --accent-wash:rgba(255,107,44,.13);
+    --s1:#E0581F; --s2:#3987E5; --s3:#199E70;
+    --ok:#4FD98F; --warn:#F1C64A; --err:#FF5A5F;
+    --field:#0F2E1D; --field-2:#123522; --chalk:rgba(233,242,236,.8); --ball:#8B4A2B;
+    --console-bg:#040B07; --console-ink:#CFE0D5; --console-dim:#58705F;
+    --shadow:0 1px 2px rgba(0,0,0,.35), 0 10px 30px rgba(0,0,0,.3);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#07120D; --panel:#0D1B14; --raised:#13251C; --line:#1F3529; --line-2:#2C4738;
+  --ink:#E9F2EC; --ink-2:#A2B9AB; --ink-3:#6B8377;
+  --accent:#FF6B2C; --on-accent:#1C0A02; --accent-ink:#FF8A55; --accent-wash:rgba(255,107,44,.13);
+  --s1:#E0581F; --s2:#3987E5; --s3:#199E70;
+  --ok:#4FD98F; --warn:#F1C64A; --err:#FF5A5F;
+  --field:#0F2E1D; --field-2:#123522; --chalk:rgba(233,242,236,.8); --ball:#8B4A2B;
+  --console-bg:#040B07; --console-ink:#CFE0D5; --console-dim:#58705F;
+  --shadow:0 1px 2px rgba(0,0,0,.35), 0 10px 30px rgba(0,0,0,.3);
+  color-scheme: dark;
+}
+
+/* ---- Turf & Pylon (field green, end-zone pylon orange) ---- */
+:root[data-pal="turf"][data-mode="dark"] {
+  --bg:#07120D; --panel:#0D1B14; --raised:#13251C; --line:#1F3529; --line-2:#2C4738;
+  --ink:#E9F2EC; --ink-2:#A2B9AB; --ink-3:#6B8377;
+  --accent:#FF6B2C; --on-accent:#1C0A02; --accent-ink:#FF8A55; --accent-wash:rgba(255,107,44,.13);
+  --s1:#E0581F; --s2:#3987E5; --s3:#199E70;
+  --ok:#4FD98F; --warn:#F1C64A; --err:#FF5A5F;
+  --field:#0F2E1D; --field-2:#123522; --chalk:rgba(233,242,236,.8); --ball:#8B4A2B;
+  --console-bg:#040B07; --console-ink:#CFE0D5; --console-dim:#58705F;
+  --shadow:0 1px 2px rgba(0,0,0,.35), 0 10px 30px rgba(0,0,0,.3);
+  color-scheme: dark;
+}
+:root[data-pal="turf"][data-mode="light"] {
+  --bg:#EFF4F0; --panel:#FFFFFF; --raised:#F6F9F7; --line:#D4DFD8; --line-2:#BFCEC5;
+  --ink:#0B1D14; --ink-2:#3E594A; --ink-3:#768C80;
+  --accent:#D14E17; --on-accent:#FFFFFF; --accent-ink:#B8430F; --accent-wash:rgba(209,78,23,.09);
+  --s1:#D9541C; --s2:#2A78D6; --s3:#16A06F;
+  --ok:#138A4E; --warn:#A87C08; --err:#D33A3A;
+  --field:#2C6B41; --field-2:#307146; --chalk:rgba(255,255,255,.88); --ball:#7A3E1D;
+  --console-bg:#0B1D14; --console-ink:#CFE0D5; --console-dim:#6C8576;
+  --shadow:0 1px 2px rgba(11,29,20,.06), 0 8px 24px rgba(11,29,20,.06);
+  color-scheme: light;
+}
+/* ---- Playbook (whiteboard by day, chalkboard by night) ---- */
+:root[data-pal="playbook"][data-mode="light"] {
+  --bg:#F6F7F4; --panel:#FFFFFF; --raised:#FAFBF8; --line:#DCDFD8; --line-2:#C6CAC2;
+  --ink:#1A1E23; --ink-2:#4E555E; --ink-3:#848A92;
+  --accent:#1F5FD1; --on-accent:#FFFFFF; --accent-ink:#1F5FD1; --accent-wash:rgba(31,95,209,.08);
+  --s1:#1F5FD1; --s2:#D9541C; --s3:#16A06F;
+  --ok:#15904D; --warn:#B7791F; --err:#CC2F2F;
+  --field:#FCFDFB; --field-2:#F3F5F1; --chalk:rgba(26,30,35,.55); --ball:#CC2F2F;
+  --console-bg:#1A1E23; --console-ink:#D9DDD6; --console-dim:#7A8088;
+  --shadow:0 1px 2px rgba(26,30,35,.06), 0 8px 24px rgba(26,30,35,.05);
+  color-scheme: light;
+}
+:root[data-pal="playbook"][data-mode="dark"] {
+  --bg:#18201D; --panel:#1F2925; --raised:#26312C; --line:#34413B; --line-2:#45534C;
+  --ink:#EFEFE6; --ink-2:#BCC3B9; --ink-3:#88928A;
+  --accent:#8DB8FF; --on-accent:#0E1A2E; --accent-ink:#8DB8FF; --accent-wash:rgba(141,184,255,.12);
+  --s1:#3987E5; --s2:#D9692B; --s3:#199E70;
+  --ok:#7BDB9C; --warn:#F2CB66; --err:#FF8478;
+  --field:#22302A; --field-2:#25342D; --chalk:rgba(239,239,230,.7); --ball:#F2CB66;
+  --console-bg:#121815; --console-ink:#DADFD4; --console-dim:#76807A;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.25);
+  color-scheme: dark;
+}

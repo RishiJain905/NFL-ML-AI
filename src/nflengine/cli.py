@@ -186,6 +186,30 @@ def data_status() -> None:
     console.print(render_status())
 
 
+# ---- the control room (CR00, documentation/control-room/) ---------------------------------
+
+
+@app.command("app")
+def control_room(
+    port: int = typer.Option(8765, min=1024, max=65535, help="Port on 127.0.0.1."),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Don't open a browser tab."),
+    dev: bool = typer.Option(
+        False, "--dev", help="API only, for `npm --prefix web run dev` (Vite on port 5173)."
+    ),
+    rehearsal: bool = typer.Option(
+        False,
+        "--rehearsal",
+        help="The Run button (CR02) runs `nfl weekly rehearse` instead of the live week.",
+    ),
+) -> None:
+    """Open the control room: a local web app for the weekly pipeline (127.0.0.1 only)."""
+    from nflengine.app.serve import serve
+
+    raise typer.Exit(
+        serve(port=port, open_browser=not no_browser, dev=dev, rehearsal=rehearsal, log=print)
+    )
+
+
 # ---- team ratings, Elo, trend (P02) -------------------------------------------------------
 
 ratings_app = typer.Typer(

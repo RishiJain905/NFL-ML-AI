@@ -21,13 +21,19 @@ dependencies = [
     "shap",
     "httpx",
     "python-dotenv",
+    "fastapi>=0.142.2",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
 nfl = "nflengine.cli:app"
 
 [dependency-groups]
-dev = ["pytest", "ruff"]
+dev = [
+    "httpx2>=2.13.1",
+    "pytest",
+    "ruff",
+]
 
 [build-system]
 requires = ["uv_build>=0.9,<0.10"]

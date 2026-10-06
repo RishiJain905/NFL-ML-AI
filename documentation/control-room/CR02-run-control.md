@@ -180,6 +180,7 @@ Everything runs through the same `nfl` commands as the terminal, with the same l
 
 ## Pitfalls / notes
 
+- **The local schedule snapshot is stale on a Tuesday morning** (found in CR00: "1/16 final" for week 4 at 9 PM Monday, and still before the run). `--auto` refreshes it under the lock before deciding. Pre-flight must not report "last week isn't final" as a blocking fact from a stale snapshot: show the snapshot's date and either let "Check again" run a schedule-only refresh under the lock, or mark the check "unknown until the run refreshes it" and let the run's own exit 3 decide. Decide in the probe and log it.
 - **Never let the browser choose the week or the command.** The server computes both. The browser's `expect_week` is only a cross-check, and a mismatch is refused.
 - **The lock is the truth for "is a run going?".** Don't keep a second "running" flag that can go stale. Use `ops.lock.is_locked` and the lock note.
 - **A live `--auto` run publishes a digest and moves W&B aliases.** Agents only press Run (or call `POST /api/run` for real) when Rishi asks in the current session, exactly as for the CLI (`weekly-ops` skill §1). Rehearsal mode is always fine.

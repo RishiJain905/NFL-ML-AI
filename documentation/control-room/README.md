@@ -214,3 +214,21 @@ The plan is read-only first (useful from day one with no risk to the live pipeli
 ## 10. As built
 
 Each phase adds what it built and any differences from this spec here, with decision numbers.
+
+**CR00 (2026-10-05, D97).**
+- **What runs:** `uv run nfl app` serves the built React app and the API on `127.0.0.1:8765` (exit 1 port in use, 2 no build). The guide is [`guides/control-room.md`](../guides/control-room.md); the skill is `.claude/skills/control-room/SKILL.md`.
+- **Endpoints so far:** `/api/meta`, `/api/weeks`, `/api/session`.
+- **Differences from §4–§5:**
+  - no CORS headers at all: dev mode uses Vite's proxy;
+  - the token comes from `GET /api/session`;
+  - extra headers (CSP `frame-ancestors 'none'` and friends, `no-store` on the API);
+  - no API docs routes;
+  - the Neo4j status is polled every 30 s;
+  - short status badges in the sidebar;
+  - the W&B link in the week header moves to CR03.
+- **The week-status rules** (Running, Published, Failed, Incomplete, Ready, Waiting, No run) are in the guide §2. A not-ready run is "not ready", not "failed".
+- **Sol review:** 8 findings, all fixed (D98). The ones that change this spec's rules:
+  - unexpected errors are handled inside the safety layer (scrubbed, with headers);
+  - the data root's path never reaches the browser;
+  - the lock check doesn't probe the lock unless a run has written its note;
+  - the week tabs are navigation links.

@@ -4,8 +4,8 @@
 
 **Current phase:** P10 closed ✅ (season operations: built and rehearsed in week 5; its dated steps are on the **Season calendar** below, D89). Every main-path phase P00–P10 is done; Track 2 (T00) starts whenever Rishi wants.
 **Next step:** Tuesday 2026-10-06, 10:00 ET or later: `uv run nfl weekly run --auto` (week 5). New since P10: the game step now refreshes `features/game_features.parquet` (before, week 5's player and team projections would have had no market numbers: P10 found it), the graph uses `config/head_coach_fixes.csv` (2026 ATL / ARI / BUF / LV coaches, D92); everything else as before: the first live run with P08's targets and graph, P09's prompt `7a529f64c5a6` with BaseTen-first routing (check the footer, `calls[].provider`, `raw_llm_output.json` → `reasoning_tokens` > 0, read the prose once against `payload.json`), `pipeline-2026-w05`, the graph's `gds/status`, the `player` step's detail line ("team: …", "consistency: …") and the TD / Sack chance columns. Then add the week's line to the **Season log** (`uv run nfl season weeks --season 2026`). Saturday 2026-10-10: `uv run nfl weekly injury-update --auto`. Runs stay manual (D71); the runbook is `documentation/runbook.md`.
-**Control room track (planned, D94–D96):** the local web app's spec, its four phases (CR00–CR03) and the approved mockup are in [`../control-room/`](../control-room/README.md) ([mockup](https://claude.ai/artifact/1z7AapJzJwKusNtWzXYfQw)). Not started: it begins when Rishi says (confirm the 🧑 / ✋ waivers at the kickoff). Big Data Bowl (T00) is on hold meanwhile (Rishi, 2026-10-05).
-**Last updated:** 2026-10-05, control-room track planned (CR00–CR03); earlier the same day P09 closed (approved), P10 built, rehearsed and closed
+**Control room track (D94–D98):** the spec, phases CR00–CR03 and the approved mockup are in [`../control-room/`](../control-room/README.md) ([mockup](https://claude.ai/artifact/1z7AapJzJwKusNtWzXYfQw)). **CR00 is built and Sol-reviewed, ⏸ at its ✋ checkpoint** (Rishi kept it at the kickoff): run `uv run nfl app` (the web app is already built in `web/dist`; after a fresh clone run `npm --prefix web ci` and `npm --prefix web run build` first), check that the sidebar shows week 4 Published and week 5's real state, switch Turf & Pylon / Playbook and System / Dark / Light under the gear, reload and see the choice kept, then approve CR00. Big Data Bowl (T00) is on hold meanwhile (Rishi, 2026-10-05).
+**Last updated:** 2026-10-05, control room CR00 built + Sol review fixed (⏸ ✋); earlier the same day the control-room track was planned, P09 closed (approved), P10 built, rehearsed and closed
 
 Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ blocked · ✅ done
 
@@ -29,7 +29,7 @@ Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ b
 | T02 | BDB sequence model | ⬜ | | | |
 | T03 | BDB interaction model | ⬜ | | | |
 | T04 | Track 2 → Track 1 bridge | ⬜ | | | |
-| CR00 | Control room: foundations | ⬜ | | | Planned 2026-10-05 (D94–D96): `nfl app`, FastAPI on 127.0.0.1 + the React shell, both themes, safety rules and tests. Phase files in `documentation/control-room/` |
+| CR00 | Control room: foundations | ⏸ | 2026-10-05 | | Built: `nfl app` (FastAPI on 127.0.0.1, safety middleware, `/api/meta` · `/api/weeks` · `/api/session`), the React shell (sidebar with real weeks, header, 7 tabs, gear with Turf & Pylon / Playbook × System / Dark / Light), chart primitives, guide + skill, D97. Sol review: 8 findings (0 high), all fixed, D98. ⏸ Rishi kept the ✋ close |
 | CR01 | Control room: the week archive (read-only) | ⬜ | | | Every week tab from real files; the three pipeline views + per-week picker |
 | CR02 | Control room: run control and the live pipeline | ⬜ | | | `--expect-week`, progress events, pre-flight / Run / Resume / injury update, live views; ends with the first Tuesday run from the app (🧑) |
 | CR03 | Control room: MLOps, W&B and the season pages | ⬜ | | | MLOps → Health · W&B runs · Artifacts; Scorecard, Teams, Models, Alerts, Health; closes the track |
@@ -106,6 +106,57 @@ One line per live week (`uv run nfl season weeks --season 2026`), plus any drift
 - week 04: published ✓ (digest found, no run record: before P07's run records), checks passed after one regeneration
 
 ## Session log (newest first)
+
+### 2026-10-05: Control room CR00 built and Sol-reviewed (⏸ at the ✋ checkpoint)
+- **Kickoff:** Rishi: "Begin with CR00 … once finished use /sol-qa to do a code review of whatever that was made in CR00". The ✋ close wasn't waived in the kickoff, so I asked once (AskUserQuestion): **"Keep the checkpoint"**. CR00 stops at ⏸ for his look.
+- **Session start:** `nfl doctor` all OK except Neo4j (Docker Desktop wasn't running; left down on purpose to test the app's "down" state; the weekly run starts it); `pytest` 1,483 passed.
+- **Probe** (scratchpad):
+  - the backend's calls: `load_schedules` 0.14 s, `plan_week` 0.006 s, `is_locked` 0.001 s, `neo4j_up` 4.5 s when down (hence a background ping);
+  - week 4's run folder (no `run_summary.json`);
+  - the calendar now says week 5, but the local schedule snapshot shows week 4 at 1/16 final (stale until a run refreshes it);
+  - Node 24.15 / npm 11.7; port 8765 free.
+- **Built:**
+  - **backend** `src/nflengine/app/`:
+    - `serve.py` (`nfl app`: 127.0.0.1 only, exit 1 port in use / 2 no build);
+    - `server.py` (`AppSettings` with every dependency injectable, `create_app`, `/api/meta`, `/api/weeks`, `/api/session`, the SPA with client routes, no API docs);
+    - `security.py` (plain ASGI: Host check, Origin + launch token on changes, CSP `frame-ancestors 'none'` and friends, `no-store`);
+    - `jsonsafe.py` (NaN → null);
+    - `status.py` (30-s Neo4j ping);
+    - `readers/meta.py`, `readers/weeks.py` (the week-status rules);
+  - **frontend** `web/` (Vite 8, React 19, TS 6, Tailwind 4, Radix, TanStack Query, React Router 7, bundled fonts):
+    - the mockup's tokens and styles ported as they are;
+    - the sidebar with the real weeks, badges and a status footer;
+    - the gear with both themes × three modes, saved in the browser;
+    - the week header (slate tags, countdown, retry window, the greyed-out Saturday button);
+    - seven tabs and five season / system pages as designed placeholders;
+    - chart primitives (line + crosshair tooltip, bars, sparkline), the confirm dialog;
+  - **deps:** `fastapi`, `uvicorn`; `httpx2` (dev); `.gitignore` for `web/node_modules`, `web/dist`.
+- **Sol review** (`/sol-qa`: Codex `gpt-6.1-sol` xhigh, read-only, job `task-muw0gyvh-3xmmhh`, ~11 min): **8 findings, 0 high, all valid, all fixed with tests** (D98).
+  - **Medium:**
+    1. raw exception logs and 500s without the security headers;
+    2. a real `ready` failure shown as "not ready";
+    3. "Ready" with no slate.
+  - **Low:**
+    4. the data root's path in `/api/meta`;
+    5. a simulation's lock marking the live week as running;
+    6. Ctrl+C not exiting 0;
+    7. the chart tooltip running off-screen;
+    8. ARIA tabs without arrow keys.
+  - **My own fix in the same pass:** the lock check reads the note before probing, so the status line can't make a starting Tuesday run exit 4.
+- **Verified:**
+  - `uv run pytest` **1,533 passed** (50 new app tests); `ruff check` / `format --check` clean;
+  - in `web/`, eslint and tsc clean, **20 Vitest tests**, the build (137 KB gzipped script);
+  - **the live server on the real data root:** `/api/meta` (week 5, lock free, Neo4j down, no path in `data_root`), `/api/weeks` (week 5 "Waiting on week 4", week 4 "Published · Checks passed after a rewrite"); `Host: evil.example` → 400; `POST` without the token → 403; client routes serve the app; `no-store` and `DENY` headers present;
+  - **Playwright:** `/` → week 5; Turf & Pylon dark, Playbook light and the gear menu; phone width with no sideways scroll; the only console error was a missing favicon (added);
+  - the live `runs/2026/week04/` listing is unchanged after the full test runs.
+- **Docs:** the new guide `guides/control-room.md`; the new skill `control-room`; D97 (as built), D98 (Sol fixes); CR00 ticks + "As built"; the spec's §10; a CR02 pitfall (pre-flight vs the stale schedule snapshot); the docs index, README commands, CLAUDE.md (guide list, skills table), AGENTS.md.
+- **Found:**
+  - **Week 5's Eagles at Jaguars at Tottenham** is listed by nflverse as a Jaguars **home** game (location `Home`, stadium Tottenham), not a neutral site. The calendar doesn't tag it international, and the game model will give the Jaguars home-field advantage tomorrow. The travel features already use Tottenham (`stadiums.yaml`). A modelling decision for Rishi; not changed.
+  - **The local schedule snapshot is stale on Tuesday mornings** (a CR02 pre-flight design point, noted in CR02).
+- **Next:**
+  - ✋ Rishi opens `uv run nfl app` and approves CR00;
+  - then CR01 (the week archive);
+  - Tuesday 2026-10-06: the week-5 run from the terminal as planned (unchanged).
 
 ### 2026-10-05: The control room planned as its own track (CR00–CR03, D94–D96)
 - **Ask (Rishi):** P00–P10 are done and the Big Data Bowl is on hold. Build a local web dashboard (React, not Streamlit) that runs the weekly pipeline from a button for the right week, keeps every past week as a track record, and shows both the MLOps side (the pipeline live, W&B charts and artifacts) and the NFL side (digest, results vs last week). "First, just talk to me"; then an HTML mockup with colour and pipeline-view options; then phase files.

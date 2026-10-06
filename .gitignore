@@ -35,3 +35,7 @@ Thumbs.db
 
 # Browser-preview tool output (found 2026-10-05)
 .playwright-mcp/
+
+# Control room web app (CR00): dependencies and the build stay out of git
+web/node_modules/
+web/dist/

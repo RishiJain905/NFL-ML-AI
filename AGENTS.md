@@ -48,7 +48,7 @@ A personal ML system that produces a weekly NFL digest (win probabilities, predi
 
 - **Design docs:** `documentation/01`–`11` (start at `documentation/README.md`).
 - **Control room:** the local web app track, `documentation/control-room/` (spec, phases CR00–CR03, the approved mockup's source; D94–D96).
-- **Guides:** `documentation/guides/` (knowledge graph, Graph Data Science, W&B tracking, the LLM writer, player projections, weekly operations, season operations); the operator's how-to is `documentation/runbook.md`; **model cards:** `documentation/model_cards/`. A phase that adds a technology, component, W&B run or artifact must also add or update its guide (CLAUDE.md → Documentation).
+- **Guides:** `documentation/guides/` (knowledge graph, Graph Data Science, W&B tracking, the LLM writer, player projections, weekly operations, season operations, the control room); the operator's how-to is `documentation/runbook.md`; **model cards:** `documentation/model_cards/`. A phase that adds a technology, component, W&B run or artifact must also add or update its guide (CLAUDE.md → Documentation).
 - **Build plan:** `documentation/plans/README.md`. **Where work stands:** `documentation/plans/PROGRESS.md`.
 - **Decisions:** `documentation/10-decisions-log.md`.
 - **Stack:** Python managed with `uv`, package in `src/nflengine/`, tests in `tests/`, DuckDB + Parquet data, a Neo4j graph in Docker, W&B for experiment tracking. The shell is PowerShell on Windows.

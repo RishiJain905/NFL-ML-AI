@@ -35,6 +35,9 @@ uv run nfl wandb-smoke             # W&B smoke test
 uv run nfl ingest                  # pull every source into dated snapshots on D: (P01)
 uv run nfl curate                  # curated tables + DuckDB views + quality checks (P01)
 uv run nfl data-status             # newest week per source, row counts, join rates (P01)
+
+npm --prefix web ci; npm --prefix web run build   # once: build the control room's web app (CR00)
+uv run nfl app                     # the control room on http://127.0.0.1:8765 (local only; documentation/guides/control-room.md)
 uv run nfl ingest --check-ready --week N   # are week N's games final and in play-by-play?
 
 uv run nfl ratings build           # team_ratings / team_elo / team_trends tables (P02)
