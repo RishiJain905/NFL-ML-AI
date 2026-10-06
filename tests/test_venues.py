@@ -8,13 +8,16 @@ import yaml
 from nflengine.features.venues import (
     STADIUMS_PATH,
     TRAVEL_COLUMNS,
+    US_ZONES,
     _norm_name,
     _wrap_hours,
+    abroad_flags,
     game_travel,
     haversine_km,
     load_game_venues,
     load_venues,
     team_home_venues,
+    with_neutral_rule,
 )
 
 VENUES = load_venues()
@@ -427,3 +430,54 @@ def test_output_schema_row_order_and_kickoff_time_zone_handling() -> None:
     naive = games.with_columns(pl.col("kickoff_utc").dt.replace_time_zone(None))
     assert game_travel(toronto).equals(out)
     assert game_travel(naive).equals(out)
+
+
+# ---- D99: a game played abroad is a neutral site ---------------------------------------------
+
+
+def _intl_games() -> pl.DataFrame:
+    """2026 week 5 PHI@JAX at Tottenham (nflverse: location Home, stadium_id JAX00), a real
+    Jaguars home game, a listed-neutral London game and a game at an unknown stadium."""
+    return pl.DataFrame(
+        {
+            "game_id": ["2026_05_PHI_JAX", "2026_02_PHI_JAX", "2026_06_HOU_JAX", "2026_07_X_Y"],
+            "season": [2026] * 4,
+            "home_team": ["JAX", "JAX", "JAX", "CHI"],
+            "away_team": ["PHI", "PHI", "HOU", "GB"],
+            "location": ["Home", "Home", "Neutral", "Home"],
+            "stadium": [
+                "Tottenham Hotspur Stadium",
+                "EverBank Stadium",
+                "Wembley Stadium",
+                "Nowhere",
+            ],
+            "stadium_id": ["JAX00", "JAX00", "LON00", "ZZZ99"],
+            "kickoff_utc": [_utc(2026, 10, 11, 13, 30)] * 4,
+        }
+    ).with_columns(pl.col("season").cast(pl.Int32))
+
+
+def test_abroad_flags_resolve_the_venue_by_name() -> None:
+    out = abroad_flags(_intl_games(), overrides={})
+    assert out["venue_stadium_id"].to_list() == ["LON02", "JAX00", "LON00", None]
+    assert out["abroad"].to_list() == [True, False, True, False]
+
+
+def test_a_home_game_abroad_becomes_neutral() -> None:
+    out = with_neutral_rule(_intl_games(), overrides={})
+    assert out["neutral_site"].to_list() == [True, False, True, False]
+    assert out["game_id"].to_list() == _intl_games()["game_id"].to_list()  # row order kept
+    assert out["location"].to_list() == ["Home", "Home", "Neutral", "Home"]  # raw label kept
+
+
+def test_a_correction_in_game_venues_counts_too() -> None:
+    g = _intl_games().with_columns(pl.lit("EverBank Stadium").alias("stadium"))
+    out = with_neutral_rule(g, overrides={"2026_05_PHI_JAX": "LON02"})
+    assert out["neutral_site"].to_list()[0] is True
+
+
+def test_toronto_and_mexico_city_are_abroad() -> None:
+    zones = dict(zip(VENUES["stadium_id"], VENUES["tz"], strict=True))
+    abroad = {sid for sid, tz in zones.items() if tz not in US_ZONES}
+    assert {"LON00", "LON02", "MEX00", "MUN01", "MAD01", "PAR00", "MEL00", "RIO00"} <= abroad
+    assert not abroad & {"JAX00", "PHO00", "DET00"}

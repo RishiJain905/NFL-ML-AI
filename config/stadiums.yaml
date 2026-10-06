@@ -3,6 +3,8 @@
 #   - Travel features (features/venues.py): lat/lon for great-circle distance, `tz` (IANA zone)
 #     for the time-zone shift between a team's home venue and the game venue.
 # Resolution order: stadium NAME (from schedules) first, then stadium_id. nflverse can keep
+# A venue outside the US time zones makes a game a neutral site (D99, features/venues.py
+# with_neutral_rule), whatever nflverse's `location` says. nflverse can keep
 # the home team's stadium_id for neutral-site games (e.g. 2026 PHI@JAX at Tottenham has
 # stadium_id JAX00), so names win. Coordinates are approximate (weather grid is ~km scale).
 # `verify: true` marks entries whose nflverse id mapping is inferred, not confirmed.

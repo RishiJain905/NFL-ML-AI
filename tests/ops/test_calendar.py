@@ -72,6 +72,8 @@ def test_thanksgiving_dates() -> None:
         (2025, 1, {"international", "friday"}, set()),
         # 2026 week 1: a Wednesday (Eastern) game in Melbourne
         (2026, 1, {"midweek", "international", "early_season"}, set()),
+        # 2026 week 5: PHI@JAX in London, listed by nflverse as a Jaguars home game (D99)
+        (2026, 5, {"international", "neutral_site", "morning_kickoff"}, set()),
     ],
 )
 def test_slate_special_cases(sched, season, week, expect, absent) -> None:
@@ -203,3 +205,10 @@ def test_retry_window_never_outlasts_the_first_kickoff(sched) -> None:
     # Christmas 2024: week 16 ended Monday, week 17 kicked off Wednesday 13:00 ET
     p = plan_week(sched, et(2024, 12, 24, 10), data_lag_hours=10)
     assert p.week == 17 and p.retry_until == et(2024, 12, 25, 13)
+
+
+def test_a_home_game_abroad_is_neutral_and_international(sched) -> None:
+    """D99: nflverse lists 2026 week 5 PHI@JAX at Tottenham as a Jaguars home game."""
+    sl = slate(sched, 2026, 5)
+    assert "PHI@JAX" in sl.neutral_sites and "PHI@JAX" in sl.international
+    assert {"neutral_site", "international"} <= set(sl.special)

@@ -30,6 +30,9 @@ from zoneinfo import ZoneInfo
 
 import polars as pl
 
+# time zones of US venues; anything else is abroad (one definition, shared with the features)
+from nflengine.features.venues import US_ZONES
+
 EASTERN = ZoneInfo("America/New_York")
 PLAYOFF_TYPES = ("WC", "DIV", "CON", "SB")
 # what the digest calls a playoff week (P10)
@@ -205,23 +208,6 @@ def slate(schedules: pl.DataFrame, season: int, week: int) -> Slate | None:
     )
 
 
-# time zones of US venues (`config/stadiums.yaml` -> tz); anything else is abroad
-US_ZONES = frozenset(
-    {
-        "America/New_York",
-        "America/Detroit",
-        "America/Indiana/Indianapolis",
-        "America/Kentucky/Louisville",
-        "America/Chicago",
-        "America/Denver",
-        "America/Phoenix",
-        "America/Los_Angeles",
-        "America/Anchorage",
-        "Pacific/Honolulu",
-    }
-)
-
-
 def _game_zones(game_ids: list[str]) -> dict[str, str]:
     """game_id -> IANA zone of the venue, from `config/stadiums.yaml`: the `game_venues`
     corrections first (nflverse lists some neutral-site games under the home team's stadium,
@@ -251,13 +237,15 @@ def _name_zones() -> dict[str, str]:
 
 
 def _neutral_sites(wk: pl.DataFrame, local: list[dt.datetime]) -> tuple[list[str], list[str]]:
-    """(neutral-site games, the ones abroad) as "AWAY@HOME", Super Bowl excluded."""
-    if "location" not in wk.columns:
+    """(neutral-site games, the ones abroad) as "AWAY@HOME", Super Bowl excluded. Neutral =
+    nflverse's `location == "Neutral"` or a venue abroad (D99: nflverse lists 2026 PHI@JAX at
+    Tottenham as a Jaguars home game), the same rule as the curated `neutral_site`."""
+    if "location" not in wk.columns and "stadium" not in wk.columns:
         return [], []
     rows = [
         (r, t)
         for r, t in zip(wk.iter_rows(named=True), local, strict=True)
-        if r["location"] == "Neutral" and r["game_type"] != "SB"
+        if r.get("game_type") != "SB"
     ]
     if not rows:
         return [], []
@@ -265,10 +253,14 @@ def _neutral_sites(wk: pl.DataFrame, local: list[dt.datetime]) -> tuple[list[str
     by_name = _name_zones() if "stadium" in wk.columns else {}
     neutral, abroad = [], []
     for r, t in rows:
+        tz = by_game.get(r.get("game_id")) or by_name.get(str(r.get("stadium") or "").lower())
+        listed_neutral = r.get("location") == "Neutral"
+        is_abroad = tz is not None and tz not in US_ZONES
+        if not (listed_neutral or is_abroad):
+            continue
         label = f"{r['away_team']}@{r['home_team']}"
         neutral.append(label)
-        tz = by_game.get(r.get("game_id")) or by_name.get(str(r.get("stadium") or "").lower())
-        if (tz is not None and tz not in US_ZONES) or (tz is None and t.hour < 11):
+        if is_abroad or (tz is None and listed_neutral and t.hour < 11):
             abroad.append(label)
     return neutral, abroad
 

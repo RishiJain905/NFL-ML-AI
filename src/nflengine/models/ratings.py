@@ -113,7 +113,9 @@ class RatingParams:
 # ---- inputs ---------------------------------------------------------------------------
 
 
-def rating_plays(plays: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
+def rating_plays(
+    plays: pl.DataFrame | pl.LazyFrame, neutral_games: list[str] | None = None
+) -> pl.DataFrame:
     """Scrimmage plays used for ratings: real passes and runs with an EPA.
 
     Drops kneels, spikes and no-plays (their own play types), two-point tries and plays
@@ -138,6 +140,8 @@ def rating_plays(plays: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
             (
                 (pl.col("posteam") == pl.col("home_team"))
                 & (pl.col("location").fill_null("Home") != "Neutral")
+                # the curated neutral_site rule (D99): a "home" game abroad isn't one
+                & ~pl.col("game_id").is_in(neutral_games or [])
             ).alias("home"),
             (pl.col("qb_dropback").fill_null(0) == 1).alias("dropback"),
             pl.col("epa").cast(pl.Float64),

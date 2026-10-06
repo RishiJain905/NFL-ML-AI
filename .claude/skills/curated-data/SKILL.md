@@ -26,7 +26,7 @@ It's rebuilt by `uv run nfl curate` from the raw snapshots (`uv run nfl ingest`)
 | Spread | `home_spread` / `spread_line` **> 0 means the home team is favored** (nflverse convention). ESPN's own sign is the opposite and is flipped in `lines` |
 | Result | `games.result` = home score − away score; `total` = combined points; `completed` = result is not null |
 | Kickoff | `games.kickoff_utc` (UTC). `gameday`/`gametime` are US Eastern |
-| Neutral site | `games.neutral_site` (international games; home field = 0) |
+| Neutral site | `games.neutral_site` = nflverse `location == "Neutral"` **or** a venue abroad (D99, `features/venues.with_neutral_rule`); home field = 0. `games.location` keeps nflverse's raw label (2026 PHI@JAX at Tottenham is `Home` there, but neutral here) |
 
 ## Tables
 

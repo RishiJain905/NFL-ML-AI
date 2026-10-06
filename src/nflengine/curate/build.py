@@ -92,10 +92,13 @@ class Curator:
             .dt.replace_time_zone("America/New_York", ambiguous="earliest", non_existent="null")
             .dt.convert_time_zone("UTC")
             .alias("kickoff_utc"),
-            (pl.col("location") == "Neutral").alias("neutral_site"),
             pl.col("result").is_not_null().alias("completed"),
             pl.col("espn").cast(pl.String).alias("espn_event_id"),
         )
+        # neutral = nflverse "Neutral" or a venue abroad (D99: a "home" game in London is not)
+        from nflengine.features.venues import with_neutral_rule
+
+        s = with_neutral_rule(s)
         self._games = s
         self.write("games", s)
 

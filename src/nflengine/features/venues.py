@@ -199,6 +199,70 @@ def _home_venues(lab: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+# Time zones of US venues (`stadiums.yaml` -> tz); a venue in any other zone is abroad.
+US_ZONES = frozenset(
+    {
+        "America/New_York",
+        "America/Detroit",
+        "America/Indiana/Indianapolis",
+        "America/Kentucky/Louisville",
+        "America/Chicago",
+        "America/Denver",
+        "America/Phoenix",
+        "America/Los_Angeles",
+        "America/Anchorage",
+        "Pacific/Honolulu",
+    }
+)
+
+
+def abroad_flags(
+    games: pl.DataFrame,
+    venues: pl.DataFrame | None = None,
+    overrides: dict[str, str] | None = None,
+) -> pl.DataFrame:
+    """`game_id, venue_stadium_id, abroad`: the venue each game resolves to (the
+    `game_venues` corrections, then the stadium name, then the id) and whether it lies
+    outside the US. A venue the YAML doesn't know isn't called abroad (it can't be told)."""
+    venues = load_venues() if venues is None else venues
+    overrides = load_game_venues() if overrides is None else overrides
+    if "neutral_site" not in games.columns:
+        games = games.with_columns(pl.lit(False).alias("neutral_site"))
+    lab = _labeled_games(games, venues, overrides)
+    tz = dict(zip(venues["stadium_id"], venues["tz"], strict=True))
+    zone = pl.col("venue_id").replace_strict(tz, default=None, return_dtype=pl.String)
+    return lab.select(
+        "game_id",
+        pl.col("venue_id").alias("venue_stadium_id"),
+        (zone.is_not_null() & ~zone.is_in(sorted(US_ZONES))).alias("abroad"),
+    )
+
+
+def with_neutral_rule(
+    games: pl.DataFrame,
+    venues: pl.DataFrame | None = None,
+    overrides: dict[str, str] | None = None,
+) -> pl.DataFrame:
+    """Set `neutral_site` = nflverse's `location == "Neutral"` **or** a venue abroad (D99).
+
+    nflverse marks some games abroad as the home team's game (2026 PHI@JAX at Tottenham, the
+    Bills' Toronto games in 2010-12); no team has home-field advantage there, so Elo, the
+    ratings and the models must see them as neutral. Without a `location` column the existing
+    `neutral_site` is the base. Row order is kept."""
+    base = (
+        pl.col("location") == "Neutral" if "location" in games.columns else pl.col("neutral_site")
+    )
+    g = games.with_columns(base.fill_null(False).alias("neutral_site"))
+    ab = abroad_flags(g, venues, overrides).select("game_id", pl.col("abroad").alias("_abroad"))
+    return (
+        g.join(ab, on="game_id", how="left", maintain_order="left")
+        .with_columns(
+            (pl.col("neutral_site") | pl.col("_abroad").fill_null(False)).alias("neutral_site")
+        )
+        .drop("_abroad")
+    )
+
+
 def team_home_venues(
     games: pl.DataFrame,
     venues: pl.DataFrame | None = None,

@@ -123,7 +123,7 @@ Alongside win probability, the game model predicts **each team's points** (two r
 
 - Rating differences: net, pass offense vs pass defense, rush offense vs rush defense (home and away combinations)
 - Elo difference
-- Home field (0 for neutral sites, including international games), travel distance and time zones crossed
+- Home field (0 for neutral sites, including international games: `neutral_site` = nflverse's `Neutral` **or** a venue abroad, D99; nflverse lists some games abroad as the home team's, e.g. 2026 PHI@JAX at Tottenham), travel distance and time zones crossed
 - Rest difference (`home_rest - away_rest`), short week, coming off a bye
 - **QB status:** expected starter vs the QB the ratings were built on. A backup starting is a large effect, estimated from historical QB-change games
 - Injury load: snap-weighted absence of key starters by position group (QB, OL, WR/TE, pass rush, secondary)

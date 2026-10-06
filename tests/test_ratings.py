@@ -222,3 +222,33 @@ def test_ratings_do_not_depend_on_the_future(league, key) -> None:
         protect={"play_id", "completed", "depth_rank", "neutral_site"},
     )
     assert out.height > 0
+
+
+def test_rating_plays_treat_a_neutral_game_as_nobodys_home() -> None:
+    """D99: the curated neutral_site list (a "home" game abroad) overrides pbp's location."""
+    import polars as pl
+
+    from nflengine.models.ratings import rating_plays
+
+    plays = pl.DataFrame(
+        {
+            "game_id": ["2026_05_PHI_JAX", "2026_05_PHI_JAX", "2026_02_PHI_JAX"],
+            "season": [2026, 2026, 2026],
+            "week": [5, 5, 2],
+            "season_type": ["REG"] * 3,
+            "posteam": ["JAX", "PHI", "JAX"],
+            "defteam": ["PHI", "JAX", "PHI"],
+            "home_team": ["JAX", "JAX", "JAX"],
+            "location": ["Home", "Home", "Home"],
+            "play_type": ["pass", "run", "pass"],
+            "two_point_attempt": [0, 0, 0],
+            "qb_dropback": [1, 0, 1],
+            "epa": [0.5, -0.2, 0.1],
+            "success": [1, 0, 1],
+            "wp": [0.5, 0.5, 0.5],
+        }
+    )
+    before = rating_plays(plays)
+    assert before["home"].to_list() == [True, False, True]
+    after = rating_plays(plays, neutral_games=["2026_05_PHI_JAX"])
+    assert after["home"].to_list() == [False, False, True]

@@ -4,8 +4,8 @@
 
 **Current phase:** P10 closed ✅ (season operations: built and rehearsed in week 5; its dated steps are on the **Season calendar** below, D89). Every main-path phase P00–P10 is done; Track 2 (T00) starts whenever Rishi wants.
 **Next step:** Tuesday 2026-10-06, 10:00 ET or later: `uv run nfl weekly run --auto` (week 5). New since P10: the game step now refreshes `features/game_features.parquet` (before, week 5's player and team projections would have had no market numbers: P10 found it), the graph uses `config/head_coach_fixes.csv` (2026 ATL / ARI / BUF / LV coaches, D92); everything else as before: the first live run with P08's targets and graph, P09's prompt `7a529f64c5a6` with BaseTen-first routing (check the footer, `calls[].provider`, `raw_llm_output.json` → `reasoning_tokens` > 0, read the prose once against `payload.json`), `pipeline-2026-w05`, the graph's `gds/status`, the `player` step's detail line ("team: …", "consistency: …") and the TD / Sack chance columns. Then add the week's line to the **Season log** (`uv run nfl season weeks --season 2026`). Saturday 2026-10-10: `uv run nfl weekly injury-update --auto`. Runs stay manual (D71); the runbook is `documentation/runbook.md`.
-**Control room track (D94–D98):** the spec, phases CR00–CR03 and the approved mockup are in [`../control-room/`](../control-room/README.md) ([mockup](https://claude.ai/artifact/1z7AapJzJwKusNtWzXYfQw)). **CR00 is built and Sol-reviewed, ⏸ at its ✋ checkpoint** (Rishi kept it at the kickoff): run `uv run nfl app` (the web app is already built in `web/dist`; after a fresh clone run `npm --prefix web ci` and `npm --prefix web run build` first), check that the sidebar shows week 4 Published and week 5's real state, switch Turf & Pylon / Playbook and System / Dark / Light under the gear, reload and see the choice kept, then approve CR00. Big Data Bowl (T00) is on hold meanwhile (Rishi, 2026-10-05).
-**Last updated:** 2026-10-05, control room CR00 built + Sol review fixed (⏸ ✋); earlier the same day the control-room track was planned, P09 closed (approved), P10 built, rehearsed and closed
+**Control room track (D94–D98):** the spec, phases CR00–CR03 and the approved mockup are in [`../control-room/`](../control-room/README.md) ([mockup](https://claude.ai/artifact/1z7AapJzJwKusNtWzXYfQw)). **CR00 is closed ✅** (approved by Rishi on 2026-10-05). **CR01 waits:** Rishi said not to start it yet. Big Data Bowl (T00) is on hold meanwhile (Rishi, 2026-10-05).
+**Last updated:** 2026-10-05, CR00 approved and closed; games abroad are neutral sites (D99), live tables rebuilt; earlier the same day CR00 was built + Sol-reviewed, the control-room track was planned, P09 closed (approved), P10 built, rehearsed and closed
 
 Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ blocked · ✅ done
 
@@ -29,7 +29,7 @@ Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ b
 | T02 | BDB sequence model | ⬜ | | | |
 | T03 | BDB interaction model | ⬜ | | | |
 | T04 | Track 2 → Track 1 bridge | ⬜ | | | |
-| CR00 | Control room: foundations | ⏸ | 2026-10-05 | | Built: `nfl app` (FastAPI on 127.0.0.1, safety middleware, `/api/meta` · `/api/weeks` · `/api/session`), the React shell (sidebar with real weeks, header, 7 tabs, gear with Turf & Pylon / Playbook × System / Dark / Light), chart primitives, guide + skill, D97. Sol review: 8 findings (0 high), all fixed, D98. ⏸ Rishi kept the ✋ close |
+| CR00 | Control room: foundations | ✅ | 2026-10-05 | 2026-10-05 | Built: `nfl app` (FastAPI on 127.0.0.1, safety middleware, `/api/meta` · `/api/weeks` · `/api/session`), the React shell (sidebar with real weeks, header, 7 tabs, gear with Turf & Pylon / Playbook × System / Dark / Light), chart primitives, guide + skill, D97. Sol review: 8 findings (0 high), all fixed, D98. ✋ approved by Rishi ("CR00 is approved!") |
 | CR01 | Control room: the week archive (read-only) | ⬜ | | | Every week tab from real files; the three pipeline views + per-week picker |
 | CR02 | Control room: run control and the live pipeline | ⬜ | | | `--expect-week`, progress events, pre-flight / Run / Resume / injury update, live views; ends with the first Tuesday run from the app (🧑) |
 | CR03 | Control room: MLOps, W&B and the season pages | ⬜ | | | MLOps → Health · W&B runs · Artifacts; Scorecard, Teams, Models, Alerts, Health; closes the track |
@@ -106,6 +106,30 @@ One line per live week (`uv run nfl season weeks --season 2026`), plus any drift
 - week 04: published ✓ (digest found, no run record: before P07's run records), checks passed after one regeneration
 
 ## Session log (newest first)
+
+### 2026-10-05: CR00 approved and closed; games abroad are neutral sites (D99)
+- **Rishi:** "CR00 is approved! Do not start CR01", and fix the modelling decision: international games should have the correct stadium and be neutral sites, because 2026 has several and the odds shouldn't be skewed by home field. CR00 is ✅ (✋ ticked); **CR01 not started**.
+- **Probe** (scratchpad):
+  - every game since 2010 resolved to its venue (the `game_venues` correction, then the name, then the id);
+  - **2026 has 9 games abroad** (Melbourne, Rio, London ×3, Paris, Madrid, Munich, Mexico City), all at the right stadium for travel and time zones (no fallbacks), and all but one marked `Neutral` by nflverse;
+  - the exception is **2026_05_PHI_JAX** (Tottenham, `location Home`, `stadium_id` JAX00), plus the Bills' Toronto games 2009–2012 (`Home`);
+  - all consumers read the curated `neutral_site` (Elo, ratings evaluation, game features, the game model's home base rate, player and team features, the graph, the digest), except the team ratings (pbp's own `location`) and the calendar (the raw schedule's `location`).
+- **Fixed** (D99), with one definition in `features/venues.py`: `US_ZONES` (moved from the calendar), `abroad_flags`, `with_neutral_rule` (neutral = nflverse `Neutral` or a venue abroad). Applied in:
+  - curation;
+  - `ratings.rating_plays(neutral_games=...)` (fed from the curated games);
+  - the calendar's `_neutral_sites` (PHI@JAX now tagged `neutral_site` + `international`);
+  - the weather lookup, which takes the `game_venues` corrections first.
+- **Tests:** 13 new (the venue rule, a correction counting, Toronto / Mexico City / Europe abroad, the calendar's 2026 week 5 tags, the ratings' home flag, the weather correction); `pytest` **1,541 passed**; ruff clean.
+- **Live data rebuilt** (allowed: curated / features): `nfl curate`, `nfl ratings build` (it also rewrote `runs/2026/week04/ratings_sanity.md`, its normal side output), `nfl features game`.
+  - **Before / after** against copies saved first: in curated games only those 5 games' `neutral_site` changed (every other column identical);
+  - 2026 Elo and team ratings unchanged (max 1e-6); 2010–2017 Elo moved by up to 5.3 points;
+  - game features changed only historically (the v1-only `home_edge_trailing` by up to 2.5, not used by production v0).
+- **Effect on predictions:**
+  - **week 4**, rehearsed at the published moment (`--steps game --at 2026-10-03T18:06:32Z`, scratch folder deleted afterwards): win chances within 0.0002 of the published file, margins within 0.007 points;
+  - **PHI@JAX (week 5):** the model-only margin loses its 2.07-point home field (about 6 points of win chance), and Elo its 48 points; the market-informed numbers in the digest barely move (home field −0.02), so the main effect is an honest "model vs market" gap and Elo baseline.
+  - Week 5 can't be rehearsed before week 4 is complete in the data; tomorrow's run applies the rule by itself (it re-curates).
+- **Docs:** D99; doc 04 (home field); the `curated-data` skill; the weekly operations guide (calendar tags); the `stadiums.yaml` header; CR00's ✋ ticked; this file.
+- **Next:** Tuesday 2026-10-06, `uv run nfl weekly run --auto` (week 5) as planned. Check that the digest marks **Eagles at Jaguars "(n)"** and the calendar line lists it as neutral and abroad. CR01 when Rishi says.
 
 ### 2026-10-05: Control room CR00 built and Sol-reviewed (⏸ at the ✋ checkpoint)
 - **Kickoff:** Rishi: "Begin with CR00 … once finished use /sol-qa to do a code review of whatever that was made in CR00". The ✋ close wasn't waived in the kickoff, so I asked once (AskUserQuestion): **"Keep the checkpoint"**. CR00 stops at ⏸ for his look.

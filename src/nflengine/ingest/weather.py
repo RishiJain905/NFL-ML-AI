@@ -36,12 +36,20 @@ class StadiumLocator:
     def __init__(self, path: Path | None = None):
         cfg = yaml.safe_load((path or CONFIG_DIR / "stadiums.yaml").read_text(encoding="utf-8"))
         self.by_id: dict[str, dict[str, Any]] = cfg["stadiums"]
+        # game_id -> stadium_id corrections (nflverse can list a game abroad under the home
+        # team's stadium, e.g. 2025's Dublin game as Acrisure Stadium); they win over names
+        self.overrides: dict[str, str] = dict(cfg.get("game_venues") or {})
         self.by_name: dict[str, dict[str, Any]] = {}
         for sid, s in self.by_id.items():
             for n in [s["name"], *(s.get("aliases") or [])]:
                 self.by_name[_norm(n)] = {**s, "id": sid}
 
-    def locate(self, stadium_id: str | None, stadium_name: str | None) -> dict[str, Any] | None:
+    def locate(
+        self, stadium_id: str | None, stadium_name: str | None, game_id: str | None = None
+    ) -> dict[str, Any] | None:
+        fix = self.overrides.get(game_id) if game_id else None
+        if fix and fix in self.by_id:
+            return {**self.by_id[fix], "id": fix}
         if stadium_name and (hit := self.by_name.get(_norm(stadium_name))):
             return hit
         if stadium_id and stadium_id in self.by_id:
@@ -83,7 +91,7 @@ def ingest_weather(
         ko = kickoff_utc(g["gameday"], g.get("gametime"))
         if not (now <= ko <= now + dt.timedelta(days=15)):
             continue
-        loc = locator.locate(g.get("stadium_id"), g.get("stadium"))
+        loc = locator.locate(g.get("stadium_id"), g.get("stadium"), g.get("game_id"))
         if loc is None:
             unresolved.append(f"{g['game_id']} ({g.get('stadium')})")
             continue

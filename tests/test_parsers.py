@@ -144,3 +144,15 @@ def test_kickoff_utc_and_pick_hour() -> None:
     assert ko == dt.datetime(2026, 10, 11, 17, 0, tzinfo=dt.UTC)
     hourly = {"time": ["2026-10-11T16:00", "2026-10-11T17:00"], "temperature_2m": [50, 55]}
     assert pick_hour(hourly, ko)["temperature_2m"] == 55
+
+
+def test_weather_locator_prefers_the_game_venue_correction() -> None:
+    """A game abroad listed under the home team's stadium gets the corrected venue's weather."""
+    from nflengine.ingest.weather import StadiumLocator
+
+    loc = StadiumLocator()
+    # 2025's Dublin game was listed as Acrisure Stadium (Pittsburgh)
+    hit = loc.locate("PIT00", "Acrisure Stadium", "2025_04_MIN_PIT")
+    assert hit["id"] == "DUB00"
+    assert loc.locate("PIT00", "Acrisure Stadium")["id"] != "DUB00"  # no game id: by name
+    assert loc.locate("JAX00", "Tottenham Hotspur Stadium", "2026_05_PHI_JAX")["id"] == "LON02"

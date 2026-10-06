@@ -52,7 +52,7 @@ flowchart LR
 | `thursday`, `thanksgiving`, `black_friday` | A Thursday game; games on the 4th Thursday of November; the Friday after | 2024 week 13 (3 Thursday games + LV@KC on Black Friday) |
 | `christmas`, `midweek` | Games on Dec 25; any Tuesday / Wednesday game | 2024 week 17: Christmas fell on a **Wednesday**, so the deadline was Wed 13:00 ET; 2026 week 1: SF@LA in Melbourne on a Wednesday evening ET |
 | `friday`, `saturday`, `monday_doubleheader` | Odd game days | 2024 week 1 Friday night in São Paulo; Saturday games in weeks 16–18 and the wild card round |
-| `neutral_site`, `international`, `morning_kickoff` | Neutral venue (not the Super Bowl); abroad (from the venue's time zone in `config/stadiums.yaml`); before 11:00 ET | 2024 week 5 NYJ@MIN in London 09:30 ET; 2024 wild card MIN@LA moved to Glendale by the wildfires = neutral but **not** abroad |
+| `neutral_site`, `international`, `morning_kickoff` | Neutral venue (not the Super Bowl): nflverse's `Neutral` or any venue abroad, the same rule as the curated `neutral_site` (D99: 2026 PHI@JAX at Tottenham is listed as a Jaguars home game); abroad (from the venue's time zone in `config/stadiums.yaml`); before 11:00 ET | 2024 week 5 NYJ@MIN in London 09:30 ET; 2024 wild card MIN@LA moved to Glendale by the wildfires = neutral but **not** abroad |
 | `byes` | Teams without a game (the team list is printed) | 2024 week 5: DET, LAC, PHI, TEN |
 | `early_season`, `final_week`, `playoffs` | Weeks 1–3 (ratings lean on last season); the last regular week (rested starters); weeks 19–22 | |
 

@@ -112,7 +112,7 @@ Nothing reads a whole week yet (CR01) and nothing runs (CR02).
 - [x] 🤖 Create `.claude/skills/control-room/SKILL.md`: the layout, how to add a reader + endpoint + test, how to add a screen, the safety rules and their tests, the quality gates, known quirks. Add it to CLAUDE.md's skills table.
 - [x] 🤖 README §10 "As built" for CR00; decisions for any deviation; PROGRESS.
 - [x] 🤖 Sol review (Codex, read-only) of the security middleware and `nfl app`. Fix the findings with tests. *(8 findings, 0 high, all valid, all fixed with tests: D98.)*
-- [ ] ✋ **Checkpoint:** Rishi runs `uv run nfl app`, sees the real weeks, switches themes and modes, and approves CR00.
+- [x] ✋ **Checkpoint:** Rishi runs `uv run nfl app`, sees the real weeks, switches themes and modes, and approves CR00. *(Approved by Rishi on 2026-10-05: "CR00 is approved!")*
 
 ## Rishi-in-the-loop moments: what to look for
 

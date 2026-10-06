@@ -60,7 +60,8 @@ def load_rating_data(paths: DataPaths, min_season: int) -> RatingData:
     cur = paths.curated
     games = pl.read_parquet(cur / "games.parquet")
     plays = pl.scan_parquet((cur / "plays" / "*.parquet").as_posix()).select(RATING_PLAY_COLS)
-    rp = rating_plays(plays.filter(pl.col("season") >= min_season))
+    neutral = games.filter(pl.col("neutral_site").fill_null(False))["game_id"].to_list()
+    rp = rating_plays(plays.filter(pl.col("season") >= min_season), neutral_games=neutral)
     dc_path = cur / "depth_charts.parquet"
     depth = None
     if dc_path.exists():
