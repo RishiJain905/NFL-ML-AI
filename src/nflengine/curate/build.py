@@ -26,7 +26,9 @@ from nflengine.curate.teams import (
     normalize_team_cols,
     team_like_columns,
 )
+from nflengine.fsutil import replace_file
 from nflengine.ingest.base import SnapshotStore
+from nflengine.ops import events
 from nflengine.paths import DataPaths, configure_tool_env, ensure_data_root
 
 NV = "nflverse"
@@ -58,9 +60,11 @@ class Curator:
             df = df.with_columns(casts)
         tmp = self.out / f"{name}.parquet.tmp"
         df.write_parquet(tmp, compression="zstd")
-        tmp.replace(self.out / f"{name}.parquet")
+        replace_file(tmp, self.out / f"{name}.parquet")
         self.built.append(name)
         self.log(f"  {name}: {df.height:,} rows")
+        n = len(self.built)  # CR02 progress: ~32 tables on a Tuesday (an estimate, capped)
+        events.progress(None, min(n, CURATE_TABLES), CURATE_TABLES, f"table {n} · {name}")
 
     @property
     def xwalk(self) -> pl.DataFrame:
@@ -160,7 +164,7 @@ class Curator:
             df = normalize_team_cols(df, team_like_columns(df))
             tmp = out_dir / f"{part}.parquet.tmp"
             df.write_parquet(tmp, compression="zstd")
-            tmp.replace(out_dir / f"{part}.parquet")
+            replace_file(tmp, out_dir / f"{part}.parquet")
             total += df.height
         self.built.append("plays")
         self.log(f"  plays: {total:,} rows ({len(list(out_dir.glob('*.parquet')))} seasons)")
@@ -357,6 +361,9 @@ def write_duckdb_views(paths: DataPaths) -> Path:
         con.close()
     shutil.move(tmp, db)
     return db
+
+
+CURATE_TABLES = 32  # tables a weekly curate writes (2026 week 4); progress events only
 
 
 def build_all(log: Callable[[str], None] = print) -> list[str]:

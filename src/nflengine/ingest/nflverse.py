@@ -105,10 +105,12 @@ def ingest_nflverse(
     # In-memory cache only: raw snapshots already persist everything on D:.
     nflreadpy.config.update_config(cache_mode="memory")
 
+    from nflengine.ops import events
+
     results = []
-    for ds in _datasets():
-        if datasets and ds.name not in datasets:
-            continue
+    todo = [ds for ds in _datasets() if not datasets or ds.name in datasets]
+    for i, ds in enumerate(todo):
+        events.progress(None, i, len(todo), f"dataset {i + 1}/{len(todo)} · nflverse · {ds.name}")
         target = research_store if ds.research_only else store
         if ds.first_season is None:
             results.append(_ingest_whole(target, ds, log))

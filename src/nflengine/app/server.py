@@ -22,10 +22,13 @@ from typing import Any
 from fastapi import FastAPI, Query, Request
 from fastapi import Path as PathParam
 from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import StreamingResponse
 from starlette.staticfiles import StaticFiles
 
 from nflengine.app.jsonsafe import SafeJSONResponse
+from nflengine.app.preflight import get_preflight, rehearsal_target
 from nflengine.app.readers.common import strip_root, use_data_root
 from nflengine.app.readers.digest import get_digest
 from nflengine.app.readers.games import get_games
@@ -35,8 +38,10 @@ from nflengine.app.readers.pipeline import get_pipeline
 from nflengine.app.readers.players import get_players
 from nflengine.app.readers.results import get_results
 from nflengine.app.readers.weeks import get_week, list_weeks, team_info
+from nflengine.app.runner import Runner, RunRefused, public, rehearsal_root
 from nflengine.app.security import LocalOnlyMiddleware
 from nflengine.app.status import ServiceStatus
+from nflengine.app.stream import parse_cursor, run_stream
 from nflengine.ops.summary import scrub
 from nflengine.paths import DataPaths, DataRootError, ensure_data_root
 
@@ -76,6 +81,22 @@ def _current_season() -> int:
     return get_config().seasons.current
 
 
+def _keys_set(names: tuple[str, ...]) -> dict[str, bool]:
+    """Set / not set per variable name (the doctor's check): never a value (README §5.4)."""
+    from nflengine.settings import get_env
+
+    env = get_env()
+    return {n: env.is_set(n) for n in names}
+
+
+class RunBody(BaseModel):
+    """`POST /api/run`: a kind and the browser's expected week, nothing else."""
+
+    model_config = ConfigDict(extra="forbid")
+    kind: str = Field(pattern="^(weekly|resume|injury_update)$")
+    expect_week: int = Field(ge=1, le=22)
+
+
 @dataclass
 class AppSettings:
     port: int = 8765
@@ -89,6 +110,12 @@ class AppSettings:
     current_season: Callable[[], int] = _current_season
     services: ServiceStatus | None = None
     schedule_ttl_s: float = 60.0
+    # CR02: the runner (tests inject one with a fake launcher), the key check, the stream
+    runner: Runner | None = None
+    fail_at: str | None = None  # `nfl app --rehearsal --fail-at STEP` (the first rehearsal)
+    keys_set: Callable[[tuple[str, ...]], dict[str, bool]] = _keys_set
+    stream_poll_s: float = 0.5
+    stream_heartbeat_s: float = 15.0
 
 
 class _Context:
@@ -97,6 +124,9 @@ class _Context:
     def __init__(self, settings: AppSettings) -> None:
         self.s = settings
         self.services = settings.services or ServiceStatus()
+        self.runner = settings.runner or Runner(
+            rehearsal=settings.rehearsal, fail_at=settings.fail_at
+        )
         self._sched: tuple[float, Any] | None = None
         self._lock = threading.Lock()
 
@@ -127,6 +157,31 @@ class _Context:
             return self.schedules(paths)
         except FileNotFoundError:
             return None
+
+    def preflight(self, paths: DataPaths) -> dict[str, Any]:
+        plan = self.plan(paths)
+        cur = self.runner.current(paths, plan)
+        running = cur["run"] if cur["state"] == "running" else None
+        rehearsal = None
+        if self.s.rehearsal:
+            season = plan.season if plan is not None else self.s.current_season()
+            target = rehearsal_target(paths, plan, season)
+            rehearsal = {
+                "season": target[0] if target else None,
+                "week": target[1] if target else None,
+                "root": rehearsal_root(paths),
+                "lock_held": running is not None,
+            }
+        return get_preflight(
+            paths,
+            plan,
+            now=self.s.now(),
+            current_season=self.s.current_season(),
+            neo4j=self.services.snapshot(),
+            keys_set=self.s.keys_set,
+            running=running,
+            rehearsal=rehearsal,
+        )
 
 
 def _error(status: int, code: str, message: str) -> SafeJSONResponse:
@@ -161,8 +216,14 @@ def create_app(settings: AppSettings) -> FastAPI:
         return _error(exc.status_code, code, str(exc.detail))
 
     @app.exception_handler(RequestValidationError)
-    async def bad_request(_req: Request, _exc: RequestValidationError) -> SafeJSONResponse:
+    async def bad_request(req: Request, _exc: RequestValidationError) -> SafeJSONResponse:
         # fixed text: the validation details echo the request's values back
+        if req.url.path == "/api/run":
+            return _error(
+                422,
+                "bad_request",
+                "A run request is {kind: weekly | resume | injury_update, expect_week: 1-22}.",
+            )
         return _error(422, "bad_request", "Season and week must be whole numbers in range.")
 
     @app.exception_handler(DataRootError)
@@ -283,6 +344,71 @@ def create_app(settings: AppSettings) -> FastAPI:
     def graph_route(season: int = Season, week: int = Week) -> SafeJSONResponse:
         paths = ctx.paths()
         return week_json(paths, get_graph(paths, season, week))
+
+    # ---- CR02: run control. The server decides the week and builds the command; the browser
+    # sends a kind and its expected week (a cross-check). POSTs need the launch token and a
+    # same-origin Origin (security.py). Nothing here takes a path or a command.
+
+    @app.get("/api/preflight")
+    def preflight_route() -> SafeJSONResponse:
+        paths = ctx.paths()
+        return week_json(paths, ctx.preflight(paths))
+
+    @app.post("/api/run")
+    def run_route(body: RunBody) -> SafeJSONResponse:
+        paths = ctx.paths()
+        pf = ctx.preflight(paths)
+        lock_held = (
+            ctx.runner.current(paths, ctx.plan(paths))["state"] == "running"
+            if settings.rehearsal
+            else lock_dict(paths)["held"]
+        )
+        try:
+            started = ctx.runner.start(
+                body.kind,
+                body.expect_week,
+                paths=paths,
+                preflight=pf,
+                now=settings.now(),
+                lock_held=lock_held,
+            )
+        except RunRefused as e:
+            status = 409 if e.code in ("running", "locked") else 403
+            return _error(status, e.code, e.message)
+        log.warning("control room started: %s (run %s)", started["command"], started["run_id"])
+        return SafeJSONResponse(strip_root(started, paths.root), 202)
+
+    @app.get("/api/run/current")
+    def run_current_route() -> SafeJSONResponse:
+        paths = ctx.paths()
+        return week_json(paths, public(ctx.runner.current(paths, ctx.plan(paths))))
+
+    @app.get("/api/run/stream")
+    async def run_stream_route(
+        request: Request, after: int | None = Query(None, ge=0)
+    ) -> StreamingResponse:
+        paths = ctx.paths()
+        cursor_run, cursor = parse_cursor(request.headers.get("last-event-id"))
+        start = after if after is not None else cursor
+
+        def current() -> dict[str, Any]:
+            return ctx.runner.current(paths, ctx.plan(paths))
+
+        gen = run_stream(
+            current=current,
+            paths=paths,
+            after=start,
+            after_run=None if after is not None else cursor_run,
+            disconnected=request.is_disconnected,
+            poll_s=settings.stream_poll_s,
+            heartbeat_s=settings.stream_heartbeat_s,
+            public=public,
+        )
+        return StreamingResponse(
+            gen,
+            media_type="text/event-stream",
+            headers={"x-accel-buffering": "no"},
+        )
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def api_not_found(rest: str) -> SafeJSONResponse:

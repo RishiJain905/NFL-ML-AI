@@ -23,6 +23,7 @@ from pathlib import Path
 import polars as pl
 
 from nflengine.features.asof import AsOf, last_asof_week
+from nflengine.fsutil import replace_file
 from nflengine.models.elo import EloParams, team_elo
 from nflengine.models.ratings import (
     RATING_PLAY_COLS,
@@ -194,7 +195,7 @@ def write_tables(paths: DataPaths, t: BuiltTables, meta: dict) -> dict[str, Path
         path = paths.features / f"{name}.parquet"
         tmp = path.with_suffix(".parquet.tmp")
         getattr(t, name).write_parquet(tmp, compression="zstd")
-        tmp.replace(path)
+        replace_file(tmp, path)
         out[name] = path
     meta_dir = paths.features / "_meta"
     meta_dir.mkdir(exist_ok=True)

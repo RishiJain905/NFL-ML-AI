@@ -24,6 +24,18 @@ def _no_real_wandb_runs(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_runner_process(monkeypatch):
+    """CR02: the control room's runner never starts a real process in pytest. Tests give
+    `Runner` a fake launcher; anything that reaches the real one fails loudly instead."""
+    import nflengine.app.runner as R
+
+    def refuse(argv, log_file):
+        raise AssertionError(f"a test tried to start a real process: {argv[3:6]}")
+
+    monkeypatch.setattr(R, "default_launcher", refuse)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_schedule_refresh(monkeypatch):
     """`weekly.refresh_schedule` would run a real nflverse ingest on the data root (P07).
     Returns the seasons it was asked to refresh."""

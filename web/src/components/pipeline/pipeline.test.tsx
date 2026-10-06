@@ -661,11 +661,41 @@ describe('LogPanel', () => {
 
   it('says where the lines came from', () => {
     const { container, rerender } = render(<LogPanel lines={[]} source="calendar" />);
-    expect(container.textContent).toContain('from the calendar: the dry run comes with CR02 · secrets scrubbed');
+    expect(container.textContent).toContain("from the calendar's plan · secrets scrubbed");
+    rerender(<LogPanel lines={[]} source="dryrun" />);
+    expect(container.textContent).toContain('the dry run (read-only) · secrets scrubbed');
     rerender(<LogPanel lines={[]} source="none" />);
     expect(container.textContent).toContain('no log for this week');
+    rerender(<LogPanel lines={LINES} source="events" />);
+    expect(container.textContent).toContain('streamed from the run · secrets scrubbed');
     rerender(<LogPanel lines={LINES} source="rebuilt" live />);
     expect(container.textContent).toContain('streamed from the run · secrets scrubbed');
+  });
+
+  it('can carry another title, for a second log on the page', () => {
+    render(<LogPanel lines={[]} source="events" title="Rehearsal log" />);
+    expect(screen.getByRole('region', { name: 'Rehearsal log' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Rehearsal log' })).toBeInTheDocument();
+  });
+
+  it('follows the newest line until the reader scrolls up, and again once they scroll back to the end', () => {
+    vi.spyOn(Element.prototype, 'scrollHeight', 'get').mockImplementation(function (this: Element) {
+      return this.querySelectorAll('.ln').length * 20;
+    });
+    const more = (n: number): LogLine[] => Array.from({ length: n }, (_, i) => ({ ts: '', text: `line ${i}`, cls: '' as const }));
+    const { rerender } = render(<LogPanel lines={more(10)} source="events" live />);
+    const log = screen.getByRole('log');
+    expect(log.scrollTop).toBe(200);
+    // the reader scrolls up to an earlier line: new lines no longer move the view
+    log.scrollTop = 40;
+    fireEvent.scroll(log);
+    rerender(<LogPanel lines={more(12)} source="events" live />);
+    expect(log.scrollTop).toBe(40);
+    // ...and back to the end (clientHeight is 0 in jsdom, so "the end" is scrollTop = scrollHeight)
+    log.scrollTop = 240;
+    fireEvent.scroll(log);
+    rerender(<LogPanel lines={more(14)} source="events" live />);
+    expect(log.scrollTop).toBe(280);
   });
 
   it('shows the blinking cursor only while live', () => {

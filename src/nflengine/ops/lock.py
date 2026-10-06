@@ -25,6 +25,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from nflengine.fsutil import replace_file
+
 LOCK_NAME = ".weekly.lock"
 LOCK_OFFSET = 1 << 20  # the locked byte sits past the note, so the note stays readable
 
@@ -156,7 +158,7 @@ def write_parquet_atomic(df, path: Path, **kwargs) -> Path:
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:
         df.write_parquet(tmp, **kwargs)
-        os.replace(tmp, path)
+        replace_file(tmp, path)  # retried while a reader has it open (CR02)
     finally:
         with contextlib.suppress(FileNotFoundError):
             tmp.unlink()
@@ -164,10 +166,14 @@ def write_parquet_atomic(df, path: Path, **kwargs) -> Path:
 
 
 @contextlib.contextmanager
-def run_lock(path: Path, command: str, stale_hours: float | None = None) -> Iterator[LockInfo]:
+def run_lock(
+    path: Path, command: str, stale_hours: float | None = None, run_id: str | None = None
+) -> Iterator[LockInfo]:
     """Hold the weekly-run lock for the duration of the block, or raise `LockHeld`.
     (`stale_hours` is accepted for older callers and ignored: the OS releases a dead run's
-    lock by itself.)"""
+    lock by itself.) `run_id` (CR02) goes into the note: the control room ties a held lock to
+    the run that holds it (its events file, its own launch record) by it, not by a pid that
+    Windows may reuse (Sol review)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0))
     try:
@@ -179,6 +185,7 @@ def run_lock(path: Path, command: str, stale_hours: float | None = None) -> Iter
             "host": socket.gethostname(),
             "command": command,
             "started": dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat(),
+            **({"run_id": run_id} if run_id else {}),
         }
         os.lseek(fd, 0, os.SEEK_SET)
         os.ftruncate(fd, 0)

@@ -1,0 +1,98 @@
+/* The run controls (CR02): toasts that stack, the checks' reasons, the run panel's actions,
+   the failure banner's row. Shared classes (.runpanel, .checks, .cmd, .toast, .modal) are in
+   styles/app.css, kept in step with the mockup. */
+
+.toasts {
+  position: fixed;
+  right: 18px;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: none;
+}
+.toasts .toast {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  pointer-events: auto;
+  padding-right: 34px;
+}
+.toasts .toast span {
+  display: block;
+  color: var(--ink-2);
+}
+.toast.err {
+  border-left-color: var(--err);
+}
+.toast.warn {
+  border-left-color: var(--warn);
+}
+.toast .x {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  background: none;
+  border: 0;
+  padding: 2px 4px;
+  color: var(--ink-3);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.toast .x:hover {
+  color: var(--ink);
+}
+@media (max-width: 520px) {
+  .toasts {
+    left: 16px;
+    right: 16px;
+    align-items: stretch;
+  }
+  .toasts .toast {
+    max-width: none;
+  }
+}
+
+.checks .why {
+  grid-column: 2 / -1;
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-top: -4px;
+}
+.runpanel .checked {
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+.runpanel .actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.runrow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  align-items: center;
+}
+.runrow .cmd {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.saturday {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+.injurylog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}

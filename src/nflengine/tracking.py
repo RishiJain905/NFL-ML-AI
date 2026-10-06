@@ -30,6 +30,17 @@ def assert_no_secrets(config: dict[str, Any], _prefix: str = "") -> None:
             assert_no_secrets(value, f"{name}.")
 
 
+# CR02: who launched this process, when not a terminal (`nfl ... --app-run <id>` sets
+# "control-room"). Every W&B run of the process then carries a `via:<launcher>` tag, so runs
+# started from the control room can be told apart from terminal runs (D103).
+LAUNCH_VIA: str | None = None
+
+
+def set_launch_via(via: str | None) -> None:
+    global LAUNCH_VIA
+    LAUNCH_VIA = via
+
+
 def default_launched_by() -> str:
     """'agent' when running inside a Claude Code session, otherwise 'rishi'."""
     return "agent" if os.environ.get("CLAUDECODE") else "rishi"
@@ -100,7 +111,7 @@ def init_run(
         group=group,
         job_type=job_type,
         config=config,
-        tags=[*tags, f"launched-by:{launched_by}"],
+        tags=[*tags, f"launched-by:{launched_by}", *([f"via:{LAUNCH_VIA}"] if LAUNCH_VIA else [])],
         name=name,
         dir=str(paths.wandb),
     )

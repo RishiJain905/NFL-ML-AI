@@ -82,6 +82,7 @@ from nflengine.models.player_schema import (
     live_targets,
     score_predictions,
 )
+from nflengine.ops import events
 from nflengine.paths import DataPaths, ensure_data_root
 from nflengine.settings import get_config
 from nflengine.tracking import dataset_version, git_commit, init_run
@@ -1411,7 +1412,8 @@ def run_train(
     if not update:
         model_dir.mkdir(parents=True, exist_ok=True)
     all_preds, walk, meta_t = [], [], {}
-    for target in targets:
+    for i, target in enumerate(targets):
+        events.progress(None, i, len(targets), f"refitting {i + 1}/{len(targets)} · {target.key}")
         frame = target_data(data, target)
         frame = frame.filter(
             (pl.col("season") < season) | ((pl.col("season") == season) & (pl.col("week") <= week))

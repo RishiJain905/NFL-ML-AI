@@ -55,6 +55,7 @@ from zoneinfo import ZoneInfo
 
 import polars as pl
 
+from nflengine.ops.events import progress
 from nflengine.paths import DataPaths, ensure_data_root
 from nflengine.settings import get_config
 from nflengine.tracking import git_commit, init_run
@@ -615,6 +616,7 @@ def run_injury_update(
     try:
         before = injury_state(paths, season, week)  # before re-ingesting (same-day overwrite)
         snaps_before = snapshot_info(paths)
+        progress(None, 0, 4, "re-pulling injuries, news and lines")  # CR02 events (no-op)
         if ingest:
             notes += _ingest_and_curate(season, log, timings)
         else:
@@ -624,10 +626,12 @@ def run_injury_update(
 
         from nflengine.models import game_runs, player_runs
 
+        progress(None, 1, 4, "re-predicting the unstarted games")
         t = time.perf_counter()
         out = game_runs.run_train(season, week, launched_by, log=log, output="update")
         timings["games"] = round(time.perf_counter() - t, 2)
         update_players = None
+        progress(None, 2, 4, "refitting the players")
         if players:
             t = time.perf_counter()
             try:
@@ -643,6 +647,7 @@ def run_injury_update(
             timings["players"] = round(time.perf_counter() - t, 2)
         else:
             notes.append("players not re-projected (--no-players)")
+        progress(None, 3, 4, "comparing with Tuesday's numbers")
 
         # the save-time rule (P06 Sol review): a game that kicked off while the models
         # refit gets no new numbers, so the cutoff is taken after the refits

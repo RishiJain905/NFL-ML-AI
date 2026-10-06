@@ -3,6 +3,7 @@
 
 import { NavLink, Navigate, useParams } from 'react-router-dom';
 import { useMeta, useWeekDetail, useWeeks } from '../api/client';
+import { InjuryUpdateLog } from '../components/run/InjuryUpdate';
 import { WeekHeader } from '../components/WeekHeader';
 import { EmptyState } from '../components/ui';
 import { comma } from '../lib/format';
@@ -23,8 +24,10 @@ export function WeekPage() {
   const meta = useMeta();
   const detail = useWeekDetail(season, week);
 
-  if (!TABS.some(([k]) => k === tab)) return <Navigate to={`/week/${season}/${week}/pipeline`} replace />;
-  const entry = weeks.data?.season === season ? weeks.data.weeks.find((w) => w.week === week) : undefined;
+  if (!TABS.some(([k]) => k === tab))
+    return <Navigate to={`/week/${season}/${week}/pipeline`} replace />;
+  const entry =
+    weeks.data?.season === season ? weeks.data.weeks.find((w) => w.week === week) : undefined;
   const d = detail.data;
   const isCurrent = Boolean(d?.is_current ?? entry?.is_current);
   const lastPublishedWeek = d?.last_published_week ?? null;
@@ -37,7 +40,13 @@ export function WeekPage() {
 
   return (
     <>
-      <WeekHeader season={season} week={week} entry={entry} calendar={meta.data?.calendar} detail={d} />
+      <WeekHeader
+        season={season}
+        week={week}
+        entry={entry}
+        calendar={meta.data?.calendar}
+        detail={d}
+      />
       {/* plain route links (NavLink sets aria-current="page"), not ARIA tabs (Sol review, CR00) */}
       <nav className="tabs" aria-label="Week sections">
         {TABS.map(([k, label]) => (
@@ -52,6 +61,8 @@ export function WeekPage() {
         ))}
       </nav>
       <section className="view" aria-label={TABS.find(([k]) => k === tab)?.[1]}>
+        {/* the Saturday injury update's live log, on every tab of its week (CR02) */}
+        <InjuryUpdateLog season={season} week={week} />
         {tab === 'pipeline' ? <PipelineTab season={season} week={week} detail={d} /> : null}
         {tab === 'digest' ? <DigestTab {...props} /> : null}
         {tab === 'games' ? <GamesTab {...props} /> : null}
@@ -60,8 +71,9 @@ export function WeekPage() {
         {tab === 'graph' ? <GraphTab {...props} /> : null}
         {tab === 'mlops' ? (
           <EmptyState glyph="ML" title="Health · W&B runs · Artifacts">
-            Run health, data freshness, ingest and quality checks, drift; the week's W&amp;B runs with their charts
-            redrawn; artifact versions and where production points. Coming in CR03.
+            Run health, data freshness, ingest and quality checks, drift; the week's W&amp;B runs
+            with their charts redrawn; artifact versions and where production points. Coming in
+            CR03.
           </EmptyState>
         ) : null}
       </section>

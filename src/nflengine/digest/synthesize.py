@@ -11,6 +11,7 @@ ships, and the footer and W&B say which writer wrote it.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -19,6 +20,7 @@ from nflengine.digest.facts import FactIndex
 from nflengine.digest.llm.base import LLMClient, LLMError
 from nflengine.digest.payload import Payload
 from nflengine.digest.prompt import PromptBundle
+from nflengine.ops import events
 
 
 @dataclass
@@ -62,6 +64,48 @@ def _clean(raw: dict[str, str], expected: list[str]) -> dict[str, str]:
     return {k: str(raw.get(k) or "").strip() for k in expected}
 
 
+def _llm_event(phase: str, client: LLMClient, t0: float | None = None, calls: int = 0) -> None:
+    """CR02: what the live view can know about an LLM call (`ops/events.py`; a no-op without
+    an events writer). The call itself is unchanged: the provider, time, counts and cost are
+    read from the client's `calls` record once it returns."""
+    routing = getattr(client, "routing", None) or {}
+    route = routing.get("order") or routing.get("only") or []
+    new = list(getattr(client, "calls", None) or [])[calls:]
+    last = new[-1] if new else {}
+    usage = (
+        {
+            "prompt": last.get("prompt_tokens"),
+            "completion": last.get("completion_tokens"),
+            "reasoning": last.get("reasoning_tokens"),
+        }
+        if last
+        else None
+    )
+    events.llm(
+        phase,
+        writer=getattr(client, "name", None),
+        model=getattr(client, "model", None),
+        route=[str(r) for r in route] if isinstance(route, list) else [],
+        provider=last.get("provider") if last else None,
+        seconds=None if t0 is None else time.monotonic() - t0,
+        usage=usage,
+        cost=last.get("cost") if last else None,
+    )
+
+
+def _call(llm: LLMClient, system: str, data: dict[str, Any], spec: dict[str, Any]):
+    before = len(getattr(llm, "calls", None) or [])
+    _llm_event("rewrite" if spec.get("previous") is not None else "start", llm, calls=before)
+    t0 = time.monotonic()
+    try:
+        out = llm.generate(system, data, spec)
+    except Exception:
+        _llm_event("failed", llm, t0, before)
+        raise
+    _llm_event("done", llm, t0, before)
+    return out
+
+
 def _generate(
     llm: LLMClient,
     fallback: LLMClient | None,
@@ -71,14 +115,14 @@ def _generate(
     notes: list[str],
 ) -> tuple[dict[str, str], str]:
     try:
-        return llm.generate(system, data, spec), llm.name
+        return _call(llm, system, data, spec), llm.name
     except Exception as e:  # any provider failure: fall back rather than publish nothing
         if fallback is None:
             raise
         # LLMError text is sanitized by construction; anything else is reported by type only
         detail = f"{type(e).__name__}: {e}" if isinstance(e, LLMError) else type(e).__name__
         notes.append(f"{llm.name} failed ({detail[:200]}); used {fallback.name}")
-        return fallback.generate(system, data, spec), fallback.name
+        return _call(fallback, system, data, spec), fallback.name
 
 
 def length_feedback(
@@ -145,6 +189,7 @@ def synthesize(
     raw, writer = _generate(llm, fallback, prompt.system, data, spec, notes)
     first_out = with_fixed(raw)
     first = run_checks(first_out, facts, budgets=llm_budgets, lexicon=lexicon)
+    events.progress(None, 85, 100, "checks " + ("passed" if first.passed else "failed: rewriting"))
     if first.passed:
         return Synthesis(first_out, first, first, False, [first_out], [writer], notes)
     feedback = first.feedback() + length_feedback(first_out, llm_budgets, llm_budgets)

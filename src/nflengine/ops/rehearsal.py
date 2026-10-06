@@ -13,8 +13,13 @@ it were the Tuesday before it:
   the canonical backtests the weekly refits continue from. Weeks rehearsed into the same
   folder chain like live weeks (week 20's report card grades week 19's rehearsed picks);
 - **nothing shared is touched**: no W&B (`WANDB_MODE=disabled`), no graph write and no graph
-  sections (the live Neo4j graph is shared), no lock, no run records, no alias moves; the
-  placeholder writer unless `llm` names another.
+  sections (the live Neo4j graph is shared), no run records, no alias moves; the
+  placeholder writer unless `llm` names another. It doesn't take the weekly-run lock: it takes
+  its own, one per rehearsal folder (`.<folder>.rehearsal.lock` beside it, CR02), so two
+  rehearsals can't share a folder and the control room can tell one is running;
+- **progress events** (CR02, `ops/events.py`) go to the rehearsed week's `events/` folder under
+  the rehearsal folder, so `nfl app --rehearsal` can draw the run live. `fail_at` (`--fail-at`,
+  hidden) makes one step fail on purpose: the control room's failure-and-resume proof.
 
 Left out on purpose: `ingest`, `curate` and `ratings` refresh season-wide shared files (the
 ratings step also rebuilds `curated/nfl.duckdb`'s views), and `graph` would replace the live
@@ -206,6 +211,29 @@ def _wandb_off() -> Iterator[None]:
                 os.environ[k] = v
 
 
+def _earlier_steps(state: dict | None, order: tuple[str, ...]) -> dict[str, Any]:
+    """Steps of an earlier sitting that come before this one's first step (a resume)."""
+    if not state:
+        return {}
+    weekly_order = ("ingest", "ready", "curate", "ratings", "game", "graph", "player", "digest")
+    first = weekly_order.index(order[0]) if order and order[0] in weekly_order else 0
+    out: dict[str, Any] = {}
+    for name in weekly_order[:first]:
+        st = (state.get("steps") or {}).get(name)
+        if st:
+            out[name] = {"status": st.get("status"), "seconds": _secs(st)}
+    return out
+
+
+def _secs(step: dict) -> float | None:
+    try:
+        a = dt.datetime.fromisoformat(step["started"])
+        b = dt.datetime.fromisoformat(step["finished"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return round((b - a).total_seconds(), 1)
+
+
 def _marker_text() -> str:
     return (
         "# Rehearsal folder\n\n"
@@ -213,6 +241,12 @@ def _marker_text() -> str:
         "steps run on a past or current week with the clock pinned to the Tuesday before it. "
         "Nothing here is live. Safe to delete (`--fresh` wipes it).\n"
     )
+
+
+def lock_file(root: Path) -> Path:
+    """The rehearsal folder's own lock, beside it (a `--fresh` wipe never deletes it)."""
+    root = Path(root)
+    return root.parent / f".{root.name}.rehearsal.lock"
 
 
 def run_rehearsal(
@@ -227,22 +261,88 @@ def run_rehearsal(
     launched_by: str | None = "rehearsal",
     log: Callable[[str], None] = print,
     funcs: dict[str, Callable[..., str]] | None = None,
+    run_id: str | None = None,
+    via: str | None = None,
+    fail_at: str | None = None,
 ) -> RehearsalResult:
     """Run `steps` (a subset of `STEPS`, kept in their order) for `season` / `week` into the
     rehearsal folder. A failing step stops the rehearsal like it stops a live run; the
-    result (also `rehearsal.json` in the week's run folder) says which and why."""
-    from nflengine import clock
-    from nflengine import weekly as W
-    from nflengine.digest.run import read_games, tuesday_before
-    from nflengine.ops.calendar import load_schedules, plan_for
-    from nflengine.paths import redirect_data_root
+    result (also `rehearsal.json` in the week's run folder) says which and why. Raises
+    `ops.lock.LockHeld` if another rehearsal is using the folder."""
+    from nflengine.ops.lock import run_lock
 
     unknown = [s for s in steps if s not in STEPS]
     if unknown:
         raise ValueError(f"steps {unknown} can't be rehearsed; choose from {', '.join(STEPS)}")
+    if fail_at is not None and fail_at not in steps:
+        raise ValueError(f"--fail-at {fail_at!r} isn't one of the rehearsed steps")
     order = tuple(s for s in STEPS if s in steps)
     live = ensure_data_root()
     out_root = check_root(root if root is not None else default_root(live, season), live)
+    out_root.parent.mkdir(parents=True, exist_ok=True)
+    command = f"nfl weekly rehearse --season {season} --week {week} --steps {','.join(order)}"
+    from nflengine.ops import events
+
+    run_id = run_id if events.valid_run_id(run_id) else events.new_run_id()
+    with run_lock(lock_file(out_root), command, run_id=run_id):
+        return _rehearse(
+            season,
+            week,
+            order=order,
+            llm=llm,
+            live=live,
+            out_root=out_root,
+            at=at,
+            fresh=fresh,
+            launched_by=launched_by,
+            log=log,
+            funcs=funcs,
+            run_id=run_id,
+            via=via,
+            fail_at=fail_at,
+            command=command,
+        )
+
+
+def _failing(name: str) -> Callable[..., str]:
+    """The `--fail-at` hook: report some progress, then fail like a real step would."""
+
+    def step(o: Any, step_log: Callable[[str], None]) -> str:
+        from nflengine import weekly as W
+        from nflengine.ops import events
+
+        events.progress(name, 1, 2, "rehearsal test hook: failing here on purpose")
+        step_log(f"[red]{name}: failing on purpose (rehearsal test hook, --fail-at)[/]")
+        raise W.StepFailed(name, "injected failure (rehearsal test hook, --fail-at)")
+
+    return step
+
+
+def _rehearse(
+    season: int,
+    week: int,
+    *,
+    order: tuple[str, ...],
+    llm: str | None,
+    live: DataPaths,
+    out_root: Path,
+    at: dt.datetime | None,
+    fresh: bool,
+    launched_by: str | None,
+    log: Callable[[str], None],
+    funcs: dict[str, Callable[..., str]] | None,
+    run_id: str | None,
+    via: str | None,
+    fail_at: str | None,
+    command: str,
+) -> RehearsalResult:
+    from nflengine import clock
+    from nflengine import weekly as W
+    from nflengine.digest.run import read_games, tuesday_before
+    from nflengine.ops import events
+    from nflengine.ops.calendar import load_schedules, plan_for
+    from nflengine.paths import redirect_data_root
+
     if fresh:
         wipe(out_root)
     out_root.mkdir(parents=True, exist_ok=True)
@@ -278,22 +378,53 @@ def run_rehearsal(
 
         return step
 
-    step_funcs = {n: tracked(n, f) for n, f in {**W.STEP_FUNCS, **(funcs or {})}.items()}
+    hook = {fail_at: _failing(fail_at)} if fail_at else {}
+    step_funcs = {n: tracked(n, f) for n, f in {**W.STEP_FUNCS, **(funcs or {}), **hook}.items()}
+    rid = run_id or events.new_run_id()
     with _wandb_off(), redirect_data_root(paths), clock.pinned(when):
         seed(live, paths, log)
         state_file = paths.run_dir(season, week) / "weekly_run.json"
-        try:
-            state = W.run_weekly(
-                opts,
-                log=log,
-                funcs=step_funcs,
-                state_file=state_file,
-                steps=order,
+        earlier = _earlier_steps(W.read_state(state_file), order)
+        with events.writing(events.events_dir(paths.run_dir(season, week)) / f"{rid}.jsonl", rid):
+            log = events.tee(log)
+            events.run_start(
+                kind="rehearsal",
+                command=command,
+                season=season,
+                week=week,
+                steps=list(order),
+                from_step=order[0] if earlier else None,
+                launched_by=launched_by,
+                via=via,
+                plan=[f"rehearsal as of {when:%a %Y-%m-%d %H:%M} UTC; special: {special}"],
+                earlier=earlier,
             )
-        except W.StepFailed as e:
-            result.status, result.error = "failed", f"{e.step}: {e.detail}"
-            state = W.read_state(state_file)
-        report = paths.report_path(season, week)
+            try:
+                state = W.run_weekly(
+                    opts,
+                    log=log,
+                    funcs=step_funcs,
+                    state_file=state_file,
+                    steps=order,
+                )
+            except W.StepFailed as e:
+                result.status, result.error = "failed", f"{e.step}: {e.detail}"
+                state = W.read_state(state_file)
+            report = paths.report_path(season, week)
+            ran_steps = {n: s for n, s in (state or {}).get("steps", {}).items() if n in ran}
+            degraded = any(s.get("status") == "degraded" for s in ran_steps.values())
+            wrote = (ran_steps.get("digest") or {}).get("status") == "ok" and report.exists()
+            status = "failed" if result.status == "failed" else "degraded" if degraded else "ok"
+            failed = next((n for n, s in ran_steps.items() if s.get("status") == "failed"), None)
+            events.run_end(
+                status=status,
+                exit_code=1 if status == "failed" else 0,
+                message=f"rehearsal of {season} week {week:02d}: {status}"
+                + (f" ({result.error})" if result.error else "")
+                + ("; digest written to the rehearsal folder" if wrote else ""),
+                published=False,
+                failed_step=failed,
+            )
     # only the steps this rehearsal ran (the state file keeps an earlier rehearsal's steps),
     # and a digest only if this run wrote one
     result.steps = {

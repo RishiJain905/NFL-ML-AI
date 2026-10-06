@@ -199,14 +199,32 @@ def control_room(
     rehearsal: bool = typer.Option(
         False,
         "--rehearsal",
-        help="The Run button (CR02) runs `nfl weekly rehearse` instead of the live week.",
+        help="The Run button rehearses the newest published week (`nfl weekly rehearse`) into "
+        "rehearsals/control-room instead of running the live week.",
+    ),
+    fail_at: str | None = typer.Option(
+        None,
+        "--fail-at",
+        hidden=True,  # CR02's failure-and-resume proof: only with --rehearsal
     ),
 ) -> None:
     """Open the control room: a local web app for the weekly pipeline (127.0.0.1 only)."""
+    from nflengine.app.preflight import REHEARSAL_STEPS
     from nflengine.app.serve import serve
 
+    if fail_at is not None and (not rehearsal or fail_at not in REHEARSAL_STEPS):
+        raise typer.BadParameter(
+            f"--fail-at needs --rehearsal and one of {', '.join(REHEARSAL_STEPS)}"
+        )
     raise typer.Exit(
-        serve(port=port, open_browser=not no_browser, dev=dev, rehearsal=rehearsal, log=print)
+        serve(
+            port=port,
+            open_browser=not no_browser,
+            dev=dev,
+            rehearsal=rehearsal,
+            fail_at=fail_at,
+            log=print,
+        )
     )
 
 
@@ -225,6 +243,22 @@ RIDGE_ALPHA = typer.Option(None, help="Shrinkage strength in recency-weighted pl
 QB_REG = typer.Option(None, help="Extra offense pull after a week-1 QB change, 0-1.")
 EVAL_SEASONS_OPT = typer.Option("2015-2025", help="Walk-forward evaluation seasons.")
 LAUNCHED_BY = typer.Option(None, help="rishi | agent (auto-detected if omitted).")
+# CR02: set by the control room when it launches a command (its run id names the events
+# file, and every W&B run gets a `via:control-room` tag, D103). Hidden: not for people.
+APP_RUN = typer.Option(None, "--app-run", hidden=True)
+
+
+def _app_run(app_run: str | None) -> str | None:
+    """Check `--app-run` and mark this process as launched by the control room."""
+    if app_run is None:
+        return None
+    from nflengine.ops.events import valid_run_id
+    from nflengine.tracking import set_launch_via
+
+    if not valid_run_id(app_run):
+        raise typer.BadParameter("--app-run takes a run id like 20261006T140012Z-a1b2")
+    set_launch_via("control-room")
+    return app_run
 
 
 def _params(half_life, prior_regression, ridge_alpha, qb_change_regression):
@@ -873,17 +907,29 @@ def weekly_run(
     no_wandb: bool = typer.Option(
         False, "--no-wandb", help="Skip the pipeline and dashboard W&B runs (steps still log)."
     ),
+    expect_week: int | None = typer.Option(
+        None,
+        "--expect-week",
+        min=1,
+        max=22,
+        help="With --auto: stop before any step (exit 6, nothing written) unless the "
+        "calendar's week is this one (CR02; the control room's Run button sends it).",
+    ),
     launched_by: str | None = LAUNCHED_BY,
+    app_run: str | None = APP_RUN,
 ) -> None:
     """ingest -> readiness -> curate -> ratings -> game -> graph -> player -> digest
     (resumable), then the run summary, drift checks and dashboard. Exit codes: 0 done
     (or nothing to do), 1 failed, 2 usage error, 3 not ready (retry later), 4 another run
-    holds the lock, 5 data drive missing."""
+    holds the lock, 5 data drive missing, 6 the calendar's week isn't --expect-week."""
     from nflengine.paths import DataRootError
     from nflengine.weekly import EXIT_NO_DRIVE, escape, parse_as_of, run_pipeline
 
     if not auto and (season is None or week is None):
         raise typer.BadParameter("give --season and --week, or --auto")
+    if expect_week is not None and not auto:
+        raise typer.BadParameter("--expect-week only works with --auto")
+    run_id = _app_run(app_run)
     try:
         when = parse_as_of(as_of) if as_of else None
         out = run_pipeline(
@@ -899,6 +945,9 @@ def weekly_run(
             force=force,
             use_wandb=not no_wandb,
             log=console.print,
+            expect_week=expect_week,
+            run_id=run_id,
+            via="control-room" if run_id else None,
         )
     except DataRootError as e:
         console.print(f"[red]{e}[/]")
@@ -906,7 +955,13 @@ def weekly_run(
     except ValueError as e:
         console.print(f"[red]{e}[/]")
         raise typer.Exit(1) from None
-    style = {"ok": "green", "already_done": "green", "idle": "green", "planned": "cyan"}
+    style = {
+        "ok": "green",
+        "already_done": "green",
+        "idle": "green",
+        "planned": "cyan",
+        "week_mismatch": "red",
+    }
     console.print(f"[{style.get(out.status, 'yellow')}]{out.status}: {escape(out.message)}[/]")
     if out.status in ("failed", "not_ready") and out.week is not None:
         if out.status == "failed":
@@ -976,28 +1031,55 @@ def weekly_injury_update(
         False, "--no-players", help="Skip the player refit (~1 min); games and statuses only."
     ),
     no_wandb: bool = typer.Option(False, "--no-wandb", help="Skip the W&B run."),
+    expect_week: int | None = typer.Option(
+        None,
+        "--expect-week",
+        min=1,
+        max=22,
+        help="With --auto: stop before anything (exit 6) unless the calendar's week is this one "
+        "(CR02; the control room's Saturday button sends it).",
+    ),
     launched_by: str | None = LAUNCHED_BY,
+    app_run: str | None = APP_RUN,
 ) -> None:
     """Saturday injury update: re-ingest injuries, news and lines, re-predict the week, and
-    publish a short addendum only if something material changed (documentation/06)."""
+    publish a short addendum only if something material changed (documentation/06). Exit
+    codes: 0 done, 1 failed, 4 another run holds the lock, 5 data drive missing, 6 the
+    calendar's week isn't --expect-week."""
+    from nflengine.ops import events
     from nflengine.ops.calendar import load_schedules, plan_week
     from nflengine.ops.injury_update import run_injury_update
     from nflengine.ops.lock import LockHeld, lock_path, run_lock
     from nflengine.ops.records import append_history, history_path, iso, utc_now
     from nflengine.paths import DataRootError, ensure_data_root
-    from nflengine.weekly import EXIT_LOCKED, EXIT_NO_DRIVE, escape, scrub
+    from nflengine.weekly import EXIT_LOCKED, EXIT_NO_DRIVE, EXIT_WEEK_MISMATCH, escape, scrub
+
+    if expect_week is not None and not auto:
+        raise typer.BadParameter("--expect-week only works with --auto")
+    run_id = _app_run(app_run)
 
     try:
-        paths = ensure_data_root()
+        # no standard folders created before the --expect-week guard (Sol review); after it
+        # the update creates them as before
+        paths = ensure_data_root(create_dirs=expect_week is None)
     except DataRootError as e:
         console.print(f"[red]{e}[/]")
         raise typer.Exit(EXIT_NO_DRIVE) from None
     if auto:
         plan = plan_week(load_schedules(paths))
         season, week = plan.season, plan.week
+        if expect_week is not None and week != expect_week:  # before any write (Sol review)
+            found = f"week {week}" if week is not None else "no week (offseason)"
+            console.print(
+                f"[red]the calendar's week is {found}, not week {expect_week} (--expect-week): "
+                "nothing was run[/]"
+            )
+            raise typer.Exit(EXIT_WEEK_MISMATCH)
         if week is None:
             console.print("offseason: nothing to update")
             raise typer.Exit(0)
+        if expect_week is not None:
+            paths = ensure_data_root()
     if season is None or week is None:
         raise typer.BadParameter("give --season and --week, or --auto")
     hist = history_path(paths.runs, season)
@@ -1021,25 +1103,54 @@ def weekly_injury_update(
             },
         )
 
+    command = f"nfl weekly injury-update --season {season} --week {week}"
+    rid = run_id or events.new_run_id(started)
     try:
-        with run_lock(
-            lock_path(paths.runs), f"nfl weekly injury-update --season {season} --week {week}"
+        with (
+            run_lock(lock_path(paths.runs), command, run_id=rid),
+            events.writing(events.events_dir(paths.run_dir(season, week)) / f"{rid}.jsonl", rid),
         ):
+            log = events.tee(console.print)  # each console line is also a `log` event (CR02)
+            events.run_start(
+                kind="injury_update",
+                command="nfl weekly injury-update --auto" if auto else command,
+                season=season,
+                week=week,
+                steps=["injury_update"],
+                launched_by=launched_by,
+                via="control-room" if run_id else None,
+            )
+            events.step_start("injury_update")
             try:
                 res = run_injury_update(
                     season,
                     week,
                     launched_by=launched_by,
-                    log=console.print,
+                    log=log,
                     use_wandb=not no_wandb,
                     ingest=not no_ingest,
                     players=not no_players,
                 )
-            except Exception:
+            except Exception as e:
                 record("failed")
+                why = scrub(f"{type(e).__name__}: {e}")
+                events.step_end(
+                    "injury_update", "failed", (utc_now() - started).total_seconds(), why
+                )
+                events.run_end(status="failed", exit_code=1, message=f"injury update failed: {why}")
                 raise
             degraded = any("failed" in n or "incomplete" in n for n in res.notes)
             record("degraded" if degraded else "ok", res.finished)
+            status = "degraded" if degraded else "ok"
+            outcome = (
+                "material change: addendum published"
+                if res.material
+                else "nothing material changed: no addendum published"
+            )
+            events.step_end(
+                "injury_update", status, (res.finished - started).total_seconds(), outcome
+            )
+            events.run_end(status=status, exit_code=0, message=outcome, material=res.material)
     except LockHeld as e:
         console.print(f"[red]{escape(str(e))}[/]")
         raise typer.Exit(EXIT_LOCKED) from None
@@ -1083,17 +1194,24 @@ def weekly_rehearse(
         "the Tuesday before the week's first kickoff.",
     ),
     fresh: bool = typer.Option(False, "--fresh", help="Wipe the rehearsal folder first."),
+    app_run: str | None = APP_RUN,
+    fail_at: str | None = typer.Option(None, "--fail-at", hidden=True),
 ) -> None:
     """Run the live Tuesday steps on a past or current week in a scratch copy (P10): the
     playoff check, the pre-season week-1 dry run. Reads the real data; writes only under the
-    rehearsal folder; no W&B, no graph write, no run records. Exit 1 if a week failed."""
+    rehearsal folder; no W&B, no graph write, no run records. Exit 1 if a week failed, 4 if
+    another rehearsal is using the folder."""
+    from nflengine.ops.lock import LockHeld
     from nflengine.ops.rehearsal import run_rehearsal
     from nflengine.paths import DataRootError
-    from nflengine.weekly import EXIT_NO_DRIVE, escape, parse_as_of
+    from nflengine.weekly import EXIT_LOCKED, EXIT_NO_DRIVE, escape, parse_as_of
 
     todo = _week_range(weeks)
     if at and len(todo) > 1:
         raise typer.BadParameter("--at pins one week; rehearse one week at a time with it")
+    run_id = _app_run(app_run)
+    if run_id and len(todo) > 1:
+        raise typer.BadParameter("--app-run rehearses one week")
     failed = 0
     try:
         for i, wk in enumerate(todo):
@@ -1106,6 +1224,9 @@ def weekly_rehearse(
                 at=parse_as_of(at) if at else None,
                 fresh=fresh and i == 0,
                 log=console.print,
+                run_id=run_id,
+                via="control-room" if run_id else None,
+                fail_at=fail_at,
             )
             style = {"ok": "green", "degraded": "yellow"}.get(res.status, "red")
             detail = f" ({escape(res.error)})" if res.error else ""
@@ -1116,6 +1237,9 @@ def weekly_rehearse(
     except DataRootError as e:
         console.print(f"[red]{e}[/]")
         raise typer.Exit(EXIT_NO_DRIVE) from None
+    except LockHeld as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(EXIT_LOCKED) from None
     except ValueError as e:
         console.print(f"[red]{e}[/]")
         raise typer.Exit(2) from None

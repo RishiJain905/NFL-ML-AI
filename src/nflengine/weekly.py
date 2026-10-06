@@ -35,11 +35,13 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from nflengine.ops import events
 from nflengine.paths import ensure_data_root
 
 STEPS = ("ingest", "ready", "curate", "ratings", "game", "graph", "player", "digest")
@@ -99,7 +101,9 @@ def _curate(o: WeeklyOptions, log: Callable[[str], None]) -> str:
     from nflengine.curate.build import build_all
     from nflengine.curate.quality import BLOCK, run_quality_checks
 
-    built = build_all(log=log)
+    with events.portion(0.0, 0.85):
+        built = build_all(log=log)
+    events.progress(None, 85, 100, "quality checks")
     blocked = [c.name for c in run_quality_checks() if not c.passed and c.level == BLOCK]
     if blocked:
         raise StepFailed("curate", f"blocking quality checks failed: {blocked}")
@@ -155,6 +159,7 @@ def _player(o: WeeklyOptions, log: Callable[[str], None]) -> str:
 
     notes: list[str] = []
     if o.week > 1:
+        events.progress(None, 0, 100, f"scoreboard: grading weeks 1-{o.week - 1}")
         try:
             board = score_weeks(o.season, range(1, o.week), o.launched_by, log=log)
             live = board.filter(board["mode"] == "live").height
@@ -163,17 +168,21 @@ def _player(o: WeeklyOptions, log: Callable[[str], None]) -> str:
             notes.append(f"scoreboard skipped ({type(e).__name__})")
             log(f"[yellow]scoreboard skipped ({type(e).__name__})[/]")
     try:
-        out = run_train(
-            o.season, o.week, o.launched_by, promote=o.promote, log=log, use_wandb=o.use_wandb
-        )
+        with events.portion(0.08, 0.88):  # the refits report target by target
+            out = run_train(
+                o.season, o.week, o.launched_by, promote=o.promote, log=log, use_wandb=o.use_wandb
+            )
     except Exception as e:
         write_status(ensure_data_root().run_dir(o.season, o.week), "degraded", type(e).__name__)
         raise StepDegraded(
             "player", f"{type(e).__name__}; the digest uses the heuristic watch list"
         ) from e
     notes.append(f"{out['table'].height} projections -> {out['predictions']}; W&B {out['url']}")
+    events.progress(None, 88, 100, "team stat totals")
     teams = _team_fit(o, log, notes)
+    events.progress(None, 94, 100, "consistency layer")
     table = _consistency(o, out["table"], teams, Path(out["predictions"]), log, notes)
+    events.progress(None, 96, 100, "projections into the graph")
     if not o.graph:
         notes.append("graph write skipped (rehearsal)")
         return "; ".join(notes)
@@ -330,10 +339,13 @@ def read_state(path: Path) -> dict[str, Any] | None:
 
 
 def _write_state(path: Path, state: dict[str, Any]) -> None:
-    """Atomic: a crash mid-write never leaves a truncated state file."""
+    """Atomic: a crash mid-write never leaves a truncated state file. The replace retries
+    briefly while another process (the control room) has the file open (CR02)."""
+    from nflengine.fsutil import replace_file
+
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(state, indent=2))
-    tmp.replace(path)
+    replace_file(tmp, path)
 
 
 def state_path(season: int, week: int) -> Path:
@@ -382,6 +394,8 @@ def run_weekly(
     state["last_started"] = _now()
     start = steps.index(from_step) if from_step else 0
     for name in steps[start:]:
+        events.step_start(name)  # CR02: no-op unless the run records events
+        t0 = time.monotonic()
         log(f"[bold]== {name} ==[/]")
         state["steps"][name] = {"status": "running", "started": _now()}
         _write_state(path, state)
@@ -391,20 +405,24 @@ def run_weekly(
             e.detail = scrub(e.detail)
             state["steps"][name].update(status="degraded", finished=_now(), detail=e.detail)
             _write_state(path, state)
+            events.step_end(name, "degraded", time.monotonic() - t0, e.detail)
             log(f"[yellow]{name}: degraded ({escape(e.detail)}); continuing[/]")
             continue
         except StepFailed as e:
             e.detail = scrub(e.detail)
             state["steps"][name].update(status="failed", finished=_now(), detail=e.detail)
             _write_state(path, state)
+            events.step_end(name, "failed", time.monotonic() - t0, e.detail)
             raise
         except Exception as e:
             detail = scrub(f"{type(e).__name__}: {e}")
             state["steps"][name].update(status="failed", finished=_now(), detail=detail)
             _write_state(path, state)
+            events.step_end(name, "failed", time.monotonic() - t0, detail)
             raise StepFailed(name, detail) from e
         state["steps"][name].update(status="ok", finished=_now(), detail=detail)
         _write_state(path, state)
+        events.step_end(name, "ok", time.monotonic() - t0, detail)
         log(f"[green]{name}: {detail}[/]")
     state["last_finished"] = _now()
     _write_state(path, state)
@@ -415,6 +433,7 @@ def run_weekly(
 
 SIM_STEPS = ("ready", "digest")
 EXIT_OK, EXIT_FAILED, EXIT_NOT_READY, EXIT_LOCKED, EXIT_NO_DRIVE = 0, 1, 3, 4, 5
+EXIT_WEEK_MISMATCH = 6  # CR02: `--expect-week N` and the calendar's week isn't N
 
 
 @dataclass
@@ -526,20 +545,28 @@ def run_pipeline(
     schedules: Any = None,
     post_steps: bool = True,
     now: dt.datetime | None = None,
+    expect_week: int | None = None,
+    run_id: str | None = None,
+    via: str | None = None,
 ) -> PipelineOutcome:
     """One weekly run with the P07 wrapping (see the module docstring). Raises
     `DataRootError` if the data drive is missing (the CLI turns it into exit 5).
 
     Order: plan (read-only) → dry run returns here → **take the lock** → schedule refreshes
-    (they write snapshots, so only under the lock) → resolve the week → already published?
-    → steps → run records. Runs that stop before the steps (idle, already done, locked) write
-    no records; everything else, a not-ready included, goes through `_post_run`."""
+    (they write snapshots, so only under the lock) → resolve the week → `expect_week` (CR02:
+    a different week stops here, exit 6) → already published? → steps → run records. Runs
+    that stop before the steps (idle, week mismatch, already done, locked) write no records
+    and no events; everything else, a not-ready included, goes through `_post_run` and writes
+    `events/<run_id>.jsonl` in the week's run folder (`ops/events.py`; `run_id` defaults to
+    the start time; `via` names the launcher, e.g. "control-room")."""
     from nflengine.ops.calendar import load_schedules, plan_week
     from nflengine.ops.lock import LockHeld, lock_path, run_lock
     from nflengine.ops.records import utc_now
     from nflengine.settings import get_config
 
-    paths = ensure_data_root()  # DataRootError: stop before writing anything
+    # DataRootError: stop before writing anything; with --expect-week, no standard folders are
+    # created until the week is confirmed (Sol review, CR02)
+    paths = ensure_data_root(create_dirs=expect_week is None)
     cfg = get_config()
     ops = cfg.ops
     real_now = now or utc_now()  # `now`: tests pin the clock
@@ -553,8 +580,13 @@ def run_pipeline(
     if dry_run:  # read-only: no refresh, no lock
         res = _resolve(plan, schedules, auto, season, week, when, lag, simulate, cfg, log)
         if isinstance(res, PipelineOutcome):
-            return res
+            return _week_mismatch(res, expect_week, log) or res
         plan, season, week = res
+        mismatch = _week_mismatch(
+            PipelineOutcome("planned", EXIT_OK, season, week, "", plan), expect_week, log
+        )
+        if mismatch is not None:
+            return mismatch
         steps = SIM_STEPS if simulate else STEPS
         start = steps.index(from_step) if from_step else 0
         ready = plan.previous_complete and plan.slate is not None
@@ -567,9 +599,11 @@ def run_pipeline(
 
     if auto:
         command = "nfl weekly run --auto" + (f" --as-of {as_of.isoformat()}" if simulate else "")
+        command += f" --expect-week {expect_week}" if expect_week is not None else ""
     else:
         command = f"nfl weekly run --season {season} --week {week}"
-    lock = run_lock(lock_path(paths.runs), command)
+    rid = run_id if events.valid_run_id(run_id) else events.new_run_id(utc_now())
+    lock = run_lock(lock_path(paths.runs), command, run_id=rid)
     try:
         held = lock.__enter__()
     except LockHeld as e:
@@ -587,8 +621,15 @@ def run_pipeline(
             plan, schedules = _refresh_and_replan(plan, schedules, paths, when, None, log)
         res = _resolve(plan, schedules, auto, season, week, when, lag, simulate, cfg, log)
         if isinstance(res, PipelineOutcome):
-            return res
+            return _week_mismatch(res, expect_week, log) or res
         plan, season, week = res
+        mismatch = _week_mismatch(
+            PipelineOutcome("planned", EXIT_OK, season, week, "", plan), expect_week, log
+        )
+        if mismatch is not None:  # before any step, record or event; the lock is released
+            return mismatch
+        if expect_week is not None:
+            paths = ensure_data_root()  # the week is confirmed: the standard folders as before
         kind = "simulation" if simulate else "main"
         run_root = paths.runs / "digest-backtests" if simulate else paths.runs
         run_dir = run_root / str(season) / f"week{week:02d}"
@@ -612,63 +653,172 @@ def run_pipeline(
             season, week, launched_by, promote, llm, as_of=as_of if simulate else None, kind=kind
         )
         started = utc_now()
-        status, code, error = "ok", EXIT_OK, None
-        state: dict[str, Any] | None = None
-        try:
-            state = run_weekly(
-                opts,
+        shown = command
+        if not auto:
+            shown += (f" --from-step {from_step}" if from_step else "") + (
+                " --promote" if promote else ""
+            )
+        with events.writing(events.events_dir(run_dir) / f"{rid}.jsonl", rid):
+            log = events.tee(log)  # the console is unchanged; each line also becomes an event
+            events.run_start(
+                kind="simulation" if simulate else "resume" if from_step else "weekly",
+                command=shown,
+                season=season,
+                week=week,
+                steps=list(steps[steps.index(from_step) :] if from_step in steps else steps),
                 from_step=from_step,
-                log=log,
-                funcs={
-                    **(_sim_funcs(plan) if simulate else STEP_FUNCS),
-                    **(funcs or {}),
-                    # the pre-check's answer wins: the week isn't final / scheduled
-                    **({"ready": _calendar_ready(plan)} if precheck else {}),
-                },
+                launched_by=launched_by,
+                via=via,
+                plan=plan.describe(),
+                earlier=_earlier(state_file, steps, from_step),
+            )
+            outcome, state = _steps_and_records(
+                opts,
+                plan=plan,
+                simulate=simulate,
+                precheck=precheck,
+                funcs=funcs,
+                from_step=from_step,
                 state_file=state_file,
                 steps=steps,
-            )
-        except StepFailed as e:
-            status = "not_ready" if e.exit_code == EXIT_NOT_READY else "failed"
-            code, error = e.exit_code, e.detail
-        except Exception as e:  # outside any step (state file, bad options)
-            status, code, error = "failed", EXIT_FAILED, scrub(f"{type(e).__name__}: {e}")
-        if state is None:
-            state = read_state(state_file)  # None if missing or unreadable (Sol 7)
-        if status == "ok" and state is not None:
-            degraded = [
-                n
-                for n, s in state.get("steps", {}).items()
-                if s.get("status") == "degraded" and _ran_since(s, started)
-            ]
-            status = "degraded" if degraded else "ok"
-        outcome = PipelineOutcome(
-            status, code, season, week, error or f"{season} week {week:02d}: {status}", plan
-        )
-        if post_steps:
-            try:
-                _post_run(
-                    outcome,
+                started=started,
+                post_steps=post_steps,
+                post=dict(
                     paths=paths,
                     kind=kind,
                     run_root=run_root,
                     run_dir=run_dir,
-                    state=state,
-                    started=started,
                     now=when,
                     launched_by=launched_by,
                     as_of=as_of if simulate else None,
                     from_step=from_step,
-                    error=error,
                     took_over=held.took_over,
                     use_wandb=use_wandb,
-                    log=log,
-                )
-            except Exception as e:  # the records never change the run's result
-                log(f"[yellow]run records incomplete ({type(e).__name__})[/]")
+                ),
+                log=log,
+            )
+            ran = {
+                n: s
+                for n, s in ((state or {}).get("steps") or {}).items()
+                if _ran_since(s, started)
+            }
+            failed = next((n for n, s in ran.items() if s.get("status") == "failed"), None)
+            events.run_end(
+                status=outcome.status,
+                exit_code=outcome.exit_code,
+                message=outcome.message,
+                published=already_published(state_file, report),
+                failed_step=failed if outcome.status == "failed" else None,
+            )
         return outcome
     finally:
         lock.__exit__(None, None, None)
+
+
+def _steps_and_records(
+    opts: WeeklyOptions,
+    *,
+    plan,
+    simulate: bool,
+    precheck: bool,
+    funcs,
+    from_step: str | None,
+    state_file: Path,
+    steps: tuple[str, ...],
+    started: dt.datetime,
+    post_steps: bool,
+    post: dict[str, Any],
+    log: Callable[[str], None],
+) -> tuple[PipelineOutcome, dict[str, Any] | None]:
+    """The steps, then the run records (`_post_run`, recorded as the `records` step)."""
+    season, week = opts.season, opts.week
+    status, code, error = "ok", EXIT_OK, None
+    state: dict[str, Any] | None = None
+    try:
+        state = run_weekly(
+            opts,
+            from_step=from_step,
+            log=log,
+            funcs={
+                **(_sim_funcs(plan) if simulate else STEP_FUNCS),
+                **(funcs or {}),
+                # the pre-check's answer wins: the week isn't final / scheduled
+                **({"ready": _calendar_ready(plan)} if precheck else {}),
+            },
+            state_file=state_file,
+            steps=steps,
+        )
+    except StepFailed as e:
+        status = "not_ready" if e.exit_code == EXIT_NOT_READY else "failed"
+        code, error = e.exit_code, e.detail
+    except Exception as e:  # outside any step (state file, bad options)
+        status, code, error = "failed", EXIT_FAILED, scrub(f"{type(e).__name__}: {e}")
+    if state is None:
+        state = read_state(state_file)  # None if missing or unreadable (Sol 7)
+    if status == "ok" and state is not None:
+        degraded = [
+            n
+            for n, s in state.get("steps", {}).items()
+            if s.get("status") == "degraded" and _ran_since(s, started)
+        ]
+        status = "degraded" if degraded else "ok"
+    outcome = PipelineOutcome(
+        status, code, season, week, error or f"{season} week {week:02d}: {status}", plan
+    )
+    if post_steps:
+        events.step_start("records")
+        t0 = time.monotonic()
+        rec_status = "ok"
+        try:
+            _post_run(outcome, state=state, started=started, error=error, log=log, **post)
+        except Exception as e:  # the records never change the run's result
+            rec_status = "degraded"
+            log(f"[yellow]run records incomplete ({type(e).__name__})[/]")
+        if outcome.summary_path is None:
+            rec_status = "degraded"
+        events.step_end(
+            "records",
+            rec_status,
+            time.monotonic() - t0,
+            "run_summary.json · pipeline_history.parquet · drift checks · W&B pipeline run"
+            if rec_status == "ok"
+            else "run records incomplete (see the log)",
+        )
+    return outcome, state
+
+
+def _earlier(state_file: Path, steps: tuple[str, ...], from_step: str | None) -> dict:
+    """A resume's steps before `from_step`, as the week's state file has them (for events)."""
+    if not from_step or from_step not in steps:
+        return {}
+    st = (read_state(state_file) or {}).get("steps") or {}
+    out = {}
+    for name in steps[: steps.index(from_step)]:
+        s = st.get(name) or {}
+        try:
+            a = dt.datetime.fromisoformat(s["started"])
+            b = dt.datetime.fromisoformat(s["finished"])
+            secs = round((b - a).total_seconds(), 1)
+        except (KeyError, TypeError, ValueError):
+            secs = None
+        if s:
+            out[name] = {"status": s.get("status"), "seconds": secs}
+    return out
+
+
+def _week_mismatch(
+    outcome: PipelineOutcome, expect_week: int | None, log: Callable[[str], None]
+) -> PipelineOutcome | None:
+    """CR02 `--expect-week N`: the calendar resolved another week (or none). The run stops
+    before any step, writes no records and releases the lock (exit 6)."""
+    if expect_week is None or outcome.week == expect_week:
+        return None
+    found = f"week {outcome.week}" if outcome.week is not None else "no week (offseason)"
+    msg = f"the calendar's week is {found}, not week {expect_week} (--expect-week): nothing was run"
+    log(f"[red]{escape(msg)}[/]")
+    return PipelineOutcome(
+        "week_mismatch", EXIT_WEEK_MISMATCH, outcome.season, outcome.week, msg, outcome.plan
+    )
 
 
 def _refresh_and_replan(plan, schedules, paths, when, season, log):

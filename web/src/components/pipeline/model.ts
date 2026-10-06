@@ -1,6 +1,6 @@
 // The step model the three pipeline views share (mockup: STEPS, finalModel, simModel).
-// CR01 builds it from a finished run or the plan (`toModel`); CR02's live stream will update
-// the same shape step by step, so the views take a model and never re-mount to animate.
+// CR01 builds it from a finished run or the plan (`toModel`); CR02's live stream updates the same
+// shape step by step (`liveModel`, live.ts), so the views take a model and never re-mount to animate.
 
 import type { PipelineResponse, StepName, StepStatus } from '../../api/types';
 import { duration } from '../../lib/format';
@@ -49,6 +49,8 @@ export interface ViewStep {
   /** 0–1: 1 when finished, 0 when pending; part-way while running (CR02) or where it failed. */
   progress: number;
   wandbUrl: string | null;
+  /** Live mode: a short form of `detail` for the pipeline map's sub-line (it cuts at 34 characters). */
+  brief?: string;
 }
 
 export type Outcome = 'published' | 'failed' | 'stopped' | 'plan' | 'live';
@@ -56,7 +58,7 @@ export type Outcome = 'published' | 'failed' | 'stopped' | 'plan' | 'live';
 export interface PipelineModel {
   season: number;
   week: number;
-  /** finished / failed / stopped: a past run · plan: the current week before its run · live: CR02 */
+  /** published / failed / stopped: a past run · plan: the current week before its run · live: a run in progress (CR02) */
   outcome: Outcome;
   steps: ViewStep[]; // always 9, in STEP_DEFS order
   /** The running step's index; -1 when nothing runs. */
@@ -69,6 +71,8 @@ export interface PipelineModel {
   remaining: number;
   /** Plan mode: the scorebug's "Waiting" line. */
   idleLabel: string | null;
+  /** A rehearsal's run (CR02): its digest is written to the rehearsal folder, never published. */
+  rehearsal?: boolean;
 }
 
 function stepDetail(status: StepStatus, detail: string | null, expected: number): string {

@@ -74,11 +74,32 @@ export const WEEKS: WeeksResponse = {
   ],
 };
 
-/** Stub fetch for the API paths the shell calls. */
+/** A mocked answer with a status other than 200 (`mockApi({'POST /api/run': withStatus(409, ...)})`). */
+export interface MockReply {
+  __status: number;
+  body: unknown;
+}
+export const withStatus = (status: number, body: unknown): MockReply => ({ __status: status, body });
+
+/** Stub fetch for the API paths the shell calls. Keys are paths for GETs and `'POST <path>'` for
+ *  POSTs; a value may be a function of the request body (POSTs) and/or a `withStatus` reply. */
 export function mockApi(responses: Record<string, unknown> = { '/api/meta': META, '/api/weeks': WEEKS }) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = typeof input === 'string' ? input : input.toString();
-    if (path in responses) return new Response(JSON.stringify(responses[path]), { status: 200 });
+    const method = (init?.method ?? 'GET').toUpperCase();
+    const key = method === 'GET' ? path : `${method} ${path}`;
+    if (key in responses) {
+      let value = responses[key];
+      if (typeof value === 'function') {
+        const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+        value = (value as (b: unknown) => unknown)(body);
+      }
+      const reply = value as MockReply;
+      if (reply && typeof reply === 'object' && '__status' in reply) {
+        return new Response(JSON.stringify(reply.body), { status: reply.__status });
+      }
+      return new Response(JSON.stringify(value), { status: 200 });
+    }
     return new Response(JSON.stringify({ error: { code: 'not_found', message: path } }), { status: 404 });
   });
   vi.stubGlobal('fetch', fetchMock);

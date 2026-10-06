@@ -32,6 +32,7 @@ from nflengine.graph.gds import GdsResult, run_gds_jobs
 from nflengine.graph.published import log_path, recent_from_graph
 from nflengine.graph.queries import LIBRARY, QueryResult, run_library
 from nflengine.graph.tables import GraphKey, build_tables, load_inputs
+from nflengine.ops import events
 from nflengine.paths import DataPaths, ensure_data_root
 
 if TYPE_CHECKING:
@@ -126,6 +127,7 @@ def build_graph(
     root = run_roots(paths, key.mode)
     run_dir = week_dir(root, key.season, key.week)
 
+    events.progress(None, 0, 100, "reading the week's tables")  # CR02 (no-op without events)
     t0 = time.perf_counter()
     inp = load_inputs(
         paths,
@@ -144,6 +146,7 @@ def build_graph(
         f"{sum(df.height for df in tables.rels.values()):,} relationships"
     )
 
+    events.progress(None, 2, 100, "wiping last week's graph")
     t0 = time.perf_counter()
     driver.verify_connectivity()
     L.wipe(driver)
@@ -152,7 +155,19 @@ def build_graph(
     L.apply_schema(driver)
     timings["schema_s"] = time.perf_counter() - t0
     t0 = time.perf_counter()
-    per_table = L.load_tables(driver, tables, on_step=on_step)
+    n_tables = sum(1 for df in [*tables.nodes.values(), *tables.rels.values()] if df.height)
+    loaded = 0
+
+    def on_table(name: str, seconds: float, rows: int) -> None:
+        nonlocal loaded
+        loaded += 1
+        with events.portion(0.34, 0.92):
+            events.progress(None, loaded, n_tables, f"loading {loaded}/{n_tables} · {name}")
+        if on_step is not None:
+            on_step(name, seconds, rows)
+
+    events.progress(None, 34, 100, f"loading nodes and relationships (0/{n_tables})")
+    per_table = L.load_tables(driver, tables, on_step=on_table)
     timings["load_s"] = time.perf_counter() - t0
     t0 = time.perf_counter()
     counts = L.graph_counts(driver)
@@ -166,11 +181,13 @@ def build_graph(
         raise GraphCountMismatch(sorted(mismatches))
 
     # GDS jobs (doc 05's build order: after the load, before the queries); fail-soft
+    events.progress(None, 93, 100, "GDS: PageRank and KNN")
     t0 = time.perf_counter()
     gds = run_gds_jobs(driver, key, log=log)
     timings["gds_s"] = time.perf_counter() - t0
     log(f"graph: {gds.summary}")
 
+    events.progress(None, 96, 100, "running the query library")
     t0 = time.perf_counter()
     queries = run_library(driver, key.season, key.week)
     timings["queries_s"] = time.perf_counter() - t0

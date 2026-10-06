@@ -8,6 +8,7 @@ command checks the drive is connected before touching anything.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -186,3 +187,42 @@ def configure_tool_env(paths: DataPaths) -> None:
     import nflreadpy.config
 
     nflreadpy.config.update_config(cache_mode="filesystem", cache_dir=paths.cache_nflreadpy)
+
+
+def root_pattern(root: Path) -> re.Pattern[str]:
+    """The data root in any text: either slash style, any case; group 1 = the path below it."""
+    parts = [re.escape(p) for p in re.split(r"[\\/]+", str(root).rstrip("\\/")) if p]
+    return re.compile(r"[\\/]+".join(parts) + r"(?:[\\/]+([^\s;,'\"<>()]*))?", re.IGNORECASE)
+
+
+def relative_paths(text: str, root: Path) -> str:
+    """Replace the data root (either slash style, any case) with the path below it, so a text
+    that names a file under the root reads `runs/...` (NFL_DATA_ROOT's value never travels)."""
+    if not text:
+        return text
+    text = root_pattern(root).sub(lambda m: (m.group(1) or "").replace("\\", "/") or ".", text)
+    return strip_partial_root(text, root)
+
+
+ELLIPSIS = "\u2026"  # what `ops.summary.scrub` ends a capped text with
+
+
+def strip_partial_root(text: str, root: Path) -> str:
+    """Remove the start of the data root's path where a cap cut it off: a text capped upstream
+    (a step detail, a summary error) can end in the first characters of the root's path + the
+    ellipsis, which the full-path pattern can't match (Sol review, CR02). Any slash style, any
+    case; only right before an ellipsis, and only two characters or more of the root."""
+    if ELLIPSIS not in text:
+        return text
+    want = str(root).replace("\\", "/").rstrip("/").lower()
+    out = []
+    pieces = text.split(ELLIPSIS)
+    for i, piece in enumerate(pieces):
+        if i < len(pieces) - 1:  # this piece is followed by an ellipsis
+            norm = piece.replace("\\", "/").lower()
+            for k in range(min(len(want), len(norm)), 1, -1):
+                if norm.endswith(want[:k]):
+                    piece = piece[: len(piece) - k]
+                    break
+        out.append(piece)
+    return ELLIPSIS.join(out)

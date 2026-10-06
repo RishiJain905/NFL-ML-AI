@@ -57,9 +57,14 @@ def make_client(
     dev: bool = False,
     data_root: Any = None,
     web_dist: Path | None = None,
+    **extra: Any,
 ) -> TestClient:
+    """`extra` goes to `AppSettings` (CR02: `runner`, `keys_set`, `rehearsal`, ...). Keys are
+    reported set by default: no test reads the real env file."""
     paths = make_paths(root)
     table = raw_sched() if sched is None else sched
+    extra.setdefault("keys_set", lambda names: dict.fromkeys(names, True))
+    extra.setdefault("stream_poll_s", 0.01)
     settings = AppSettings(
         port=8765,
         token=TOKEN,
@@ -70,6 +75,7 @@ def make_client(
         now=lambda: now,
         current_season=lambda: 2026,
         services=FakeStatus(),
+        **extra,
     )
     return TestClient(create_app(settings), base_url=BASE)
 

@@ -13,6 +13,8 @@ from nflengine.paths import DataRootError
 SCANNED_GETS = [
     "/api/meta",
     "/api/weeks",
+    "/api/preflight",
+    "/api/run/current",
     "/api/team-info",
     "/api/weeks/2026/5",
     *[

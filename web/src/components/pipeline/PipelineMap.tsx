@@ -48,7 +48,7 @@ function glyphFill(status: StepStatus): string {
 function subLine(st: ViewStep): string {
   switch (st.status) {
     case 'running':
-      return clip(st.detail);
+      return clip(st.brief ?? st.detail);
     case 'ok':
     case 'degraded':
       return duration(st.seconds);
@@ -183,13 +183,13 @@ export function PipelineMap({ model }: { model: PipelineModel }) {
               letterSpacing=".04em"
               style={{ fill: pubDone ? 'var(--on-accent)' : 'var(--ink-3)' }}
             >
-              {pubDone ? 'LIVE' : 'DIGEST'}
+              {pubDone && !model.rehearsal ? 'LIVE' : 'DIGEST'}
             </text>
             <text x={px} y={py + 60} textAnchor="middle" fontSize={12.5} fontWeight={700} style={{ fill: 'var(--ink)' }}>
-              Published
+              {model.rehearsal ? 'Rehearsal digest' : 'Published'}
             </text>
             <text x={px} y={py + 75} textAnchor="middle" fontSize={10.5} style={{ fill: 'var(--ink-3)' }}>
-              {pubDone ? `week${String(model.week).padStart(2, '0')}-digest.md` : 'not yet'}
+              {!pubDone ? 'not yet' : model.rehearsal ? 'written, not published' : `week${String(model.week).padStart(2, '0')}-digest.md`}
             </text>
           </g>
         </svg>

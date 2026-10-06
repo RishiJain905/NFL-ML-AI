@@ -25,6 +25,8 @@ from typing import Any
 
 import polars as pl
 
+from nflengine.fsutil import replace_file
+
 SNAPSHOT_RE = re.compile(r"^snapshot=(\d{4}-\d{2}-\d{2})$")
 
 
@@ -70,7 +72,7 @@ class SnapshotStore:
         path = d / f"{part}.parquet"
         tmp = path.with_suffix(".parquet.tmp")
         df.write_parquet(tmp, compression="zstd")
-        tmp.replace(path)
+        replace_file(tmp, path)
         self._update_manifest(d, path.name, {"rows": df.height, "cols": df.width})
         return path
 

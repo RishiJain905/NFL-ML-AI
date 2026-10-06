@@ -19,6 +19,8 @@ from typing import Any
 
 import polars as pl
 
+from nflengine.fsutil import replace_file
+
 RUN_SUMMARY_FILE = "run_summary.json"
 HISTORY_FILE = "pipeline_history.parquet"
 
@@ -69,7 +71,7 @@ def append_history(path: Path, row: dict[str, Any]) -> pl.DataFrame:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".parquet.tmp")
     new.write_parquet(tmp, compression="zstd")
-    tmp.replace(path)  # atomic: a crash mid-write never leaves a broken history file
+    replace_file(tmp, path)  # atomic: a crash mid-write never leaves a broken history file
     return new
 
 

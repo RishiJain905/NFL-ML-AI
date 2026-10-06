@@ -85,7 +85,9 @@ export function DriveChart({ model }: { model: PipelineModel }) {
         </div>
         <div className="now">
           <span className="k">{now.k}</span>
-          <span className="v">{now.v}</span>
+          <span className="v" title={now.v}>
+            {now.v}
+          </span>
         </div>
         <div>
           <span className="k">Clock</span>

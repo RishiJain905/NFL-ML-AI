@@ -79,10 +79,12 @@ export function scorebugNow(model: PipelineModel): { k: string; v: string } {
       return { k: 'Turnover', v: f ? `Fumble at the ${f.key} step` : 'Fumble' };
     }
     if (model.outcome === 'stopped') return { k: 'Stopped', v: 'Stopped before the digest' };
-    return { k: 'Final', v: 'Touchdown · digest published' };
+    return { k: 'Final', v: model.rehearsal ? 'Touchdown · digest written (rehearsal)' : 'Touchdown · digest published' };
   }
   const running = model.idx >= 0 ? model.steps[model.idx] : undefined;
-  return { k: 'Now', v: running ? (running.detail ? `${running.label} — ${running.detail}` : running.label) : 'Between steps' };
+  // the short form while live (the GLM wait's long line wouldn't fit the scorebug)
+  const words = running?.brief ?? running?.detail;
+  return { k: 'Now', v: running ? (words ? `${running.label} — ${words}` : running.label) : 'Between steps' };
 }
 
 const GOLD = '#E8C547'; // the mockup's goalpost yellow, before the extra point is tried
@@ -159,7 +161,8 @@ export function timelineLayout(model: PipelineModel): TimelineLayout {
   let start = 0;
   const rows: TimelineRow[] = model.steps.map((st) => {
     const planned = st.status === 'pending' || st.status === 'skipped';
-    const hasBar = st.status !== 'none';
+    // no bar for a step the run never had (a rehearsal's other five steps expect nothing)
+    const hasBar = st.status !== 'none' && !(st.status === 'skipped' && st.expected === 0);
     const seconds = hasBar ? num(planned ? st.expected : st.seconds) : 0;
     const row = { key: st.key, label: st.label, status: st.status, planned, hasBar, seconds, left: start, width: seconds };
     start += seconds;

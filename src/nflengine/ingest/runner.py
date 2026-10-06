@@ -10,6 +10,7 @@ import polars as pl
 from nflengine import schedule as sched
 from nflengine.ingest.base import DatasetResult, SnapshotStore, write_run_manifest
 from nflengine.ingest.http import PoliteClient
+from nflengine.ops import events
 from nflengine.paths import DataPaths, configure_tool_env, ensure_data_root
 from nflengine.settings import get_config
 
@@ -47,10 +48,12 @@ def run_ingest(
         log("nflverse:")
         from nflengine.ingest.nflverse import ingest_nflverse
 
-        # seasons=None -> each dataset pulls its first season .. current
-        results += ingest_nflverse(
-            raw, research, season, seasons, nflverse_datasets, refresh_history, log
-        )
+        # seasons=None -> each dataset pulls its first season .. current; progress events
+        # (CR02) map nflverse's datasets onto the first 75% of the step
+        with events.portion(0.0, 0.75):
+            results += ingest_nflverse(
+                raw, research, season, seasons, nflverse_datasets, refresh_history, log
+            )
 
     schedules = latest_schedules(raw)
     if schedules is None:
@@ -64,16 +67,19 @@ def run_ingest(
     flags = cfg.sources
     with PoliteClient(cache_dir=paths.cache_http, cache_ttl_s=6 * 3600) as client:
         if "espn" in sources and flags.get("espn", True):
+            events.progress(None, 76, 100, "espn: scoreboard, news, injuries")
             log("espn:")
             from nflengine.ingest.espn import ingest_espn
 
             results += ingest_espn(raw, client, season, weeks_to_pull, done, log)
         if "ngs_site" in sources and flags.get("ngs_site", True):
+            events.progress(None, 82, 100, "Next Gen Stats site")
             log("ngs_site:")
             from nflengine.ingest.ngs_site import ingest_ngs_site
 
             results += ingest_ngs_site(raw, client, season, log)
         if "weather" in sources and flags.get("open_meteo", True):
+            events.progress(None, 88, 100, "Open-Meteo: weather for the week's games")
             log("open_meteo:")
             from nflengine.ingest.weather import ingest_weather
 
@@ -85,6 +91,7 @@ def run_ingest(
             from nflengine.ingest.odds_api import ingest_odds_api
 
             if flags.get("odds_api", False):
+                events.progress(None, 94, 100, "The Odds API: lines")
                 log("odds_api:")
                 results += ingest_odds_api(raw, client, season, log)
             else:

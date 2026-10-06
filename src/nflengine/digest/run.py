@@ -72,6 +72,7 @@ from nflengine.digest.report_card import (
 )
 from nflengine.digest.synthesize import Synthesis, synthesize
 from nflengine.models.player_watch import select_watchlist
+from nflengine.ops import events
 from nflengine.ops.calendar import round_name
 from nflengine.paths import DataPaths, ensure_data_root
 from nflengine.settings import get_config, load_followed_teams
@@ -626,6 +627,7 @@ def run_digest(
     if state.status == "unavailable":
         log(f"[yellow]graph sections skipped: {state.note}[/]")
     log(f"building the payload for {season} week {week} ({mode}, as of {ctx.run_time}) ...")
+    events.progress(None, 1, 100, "building payload.json")  # CR02 (no-op without events)
     built = build_payload(ctx, games, log, graph=state)
     payload = built.payload
     ctx.run_dir.mkdir(parents=True, exist_ok=True)
@@ -637,6 +639,7 @@ def run_digest(
     fallback = get_llm("placeholder") if llm.name != "placeholder" else None
     facts = build_fact_index(payload)
     log(f"writing the prose with {llm.name} ({llm.model}) ...")
+    events.progress(None, 6, 100, f"writing the prose with {llm.name}")
     synth = synthesize(
         payload,
         facts,
@@ -674,6 +677,7 @@ def run_digest(
         llm_model=llm.model if final_writer == llm.name else "templates (fallback)",
         fallback=bool(synth.fallback_notes) and final_writer != llm.name,
     )
+    events.progress(None, 95, 100, "rendering digest.md")
     md = render_digest(payload, synth.sections, info, synth.banner)
     digest_path = ctx.run_dir / "digest.md"
     digest_path.write_text(md, encoding="utf-8")

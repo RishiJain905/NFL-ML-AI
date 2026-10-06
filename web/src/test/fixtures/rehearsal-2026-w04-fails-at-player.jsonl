@@ -1,0 +1,20 @@
+{"seq": 1, "t": "2026-10-06T01:34:16-04:00", "run_id": "20261006T055000Z-bb02", "type": "run_start", "kind": "rehearsal", "command": "nfl weekly rehearse --season 2026 --week 4 --steps ready,game,player,digest", "season": 2026, "week": 4, "steps": ["ready", "game", "player", "digest"], "from_step": null, "launched_by": "rehearsal", "via": "control-room", "plan": ["rehearsal as of Tue 2026-09-29 14:00 UTC; special: thursday, neutral_site, international, morning_kickoff"], "earlier": {}}
+{"seq": 2, "t": "2026-10-06T01:34:25-04:00", "run_id": "20261006T055000Z-bb02", "type": "step_start", "step": "ready"}
+{"seq": 3, "t": "2026-10-06T01:34:25-04:00", "run_id": "20261006T055000Z-bb02", "type": "log", "step": "ready", "text": "== ready ==", "cls": "acc"}
+{"seq": 4, "t": "2026-10-06T01:34:25-04:00", "run_id": "20261006T055000Z-bb02", "type": "step_end", "step": "ready", "status": "ok", "seconds": 0.0, "detail": "2026 week 3: READY (16/16 games final, 16/16 in play-by-play)"}
+{"seq": 5, "t": "2026-10-06T01:34:25-04:00", "run_id": "20261006T055000Z-bb02", "type": "log", "step": null, "text": "ready: 2026 week 3: READY (16/16 games final, 16/16 in play-by-play)", "cls": "ok"}
+{"seq": 6, "t": "2026-10-06T01:34:25-04:00", "run_id": "20261006T055000Z-bb02", "type": "step_start", "step": "game"}
+{"seq": 7, "t": "2026-10-06T01:34:25-04:00", "run_id": "20261006T055000Z-bb02", "type": "log", "step": "game", "text": "== game ==", "cls": "acc"}
+{"seq": 8, "t": "2026-10-06T01:34:27-04:00", "run_id": "20261006T055000Z-bb02", "type": "log", "step": "game", "text": "building features as of 2026-w04 ...", "cls": ""}
+{"seq": 9, "t": "2026-10-06T01:34:27-04:00", "run_id": "20261006T055000Z-bb02", "type": "log", "step": "game", "text": "  qb features: 8,320 team-weeks", "cls": ""}
+{"seq": 10, "t": "2026-10-06T01:34:27-04:00", "run_id": "20261006T055000Z-bb02", "type": "log", "step": "game", "text": "  extras: injury load 9,270 team-games", "cls": ""}
+{"seq": 11, "t": "2026-10-06T01:34:31-04:00", "run_id": "20261006T055000Z-bb02", "type": "log", "step": "game", "text": "predictions -> rehearsals/control-room/runs/2026/week04/predictions_games.parquet", "cls": ""}
+{"seq": 12, "t": "2026-10-06T01:34:31-04:00", "run_id": "20261006T055000Z-bb02", "type": "log", "step": "game", "text": "models -> rehearsals/control-room/models/game-model/2026-w04; W&B artifact game-model:2026-w04 aliases ['2026-w04']", "cls": ""}
+{"seq": 13, "t": "2026-10-06T01:34:31-04:00", "run_id": "20261006T055000Z-bb02", "type": "step_end", "step": "game", "status": "ok", "seconds": 6.6, "detail": "predictions rehearsals/control-room/runs/2026/week04/predictions_games.parquet; W&B None; aliases ['2026-w04']"}
+{"seq": 14, "t": "2026-10-06T01:34:31-04:00", "run_id": "20261006T055000Z-bb02", "type": "log", "step": null, "text": "game: predictions rehearsals/control-room/runs/2026/week04/predictions_games.parquet; W&B None; aliases ['2026-w04']", "cls": "ok"}
+{"seq": 15, "t": "2026-10-06T01:34:31-04:00", "run_id": "20261006T055000Z-bb02", "type": "step_start", "step": "player"}
+{"seq": 16, "t": "2026-10-06T01:34:31-04:00", "run_id": "20261006T055000Z-bb02", "type": "log", "step": "player", "text": "== player ==", "cls": "acc"}
+{"seq": 17, "t": "2026-10-06T01:34:31-04:00", "run_id": "20261006T055000Z-bb02", "type": "progress", "step": "player", "done": 1, "total": 2, "fraction": 0.5, "label": "rehearsal test hook: failing here on purpose"}
+{"seq": 18, "t": "2026-10-06T01:34:31-04:00", "run_id": "20261006T055000Z-bb02", "type": "log", "step": "player", "text": "player: failing on purpose (rehearsal test hook, --fail-at)", "cls": "err"}
+{"seq": 19, "t": "2026-10-06T01:34:31-04:00", "run_id": "20261006T055000Z-bb02", "type": "step_end", "step": "player", "status": "failed", "seconds": 0.0, "detail": "injected failure (rehearsal test hook, --fail-at)"}
+{"seq": 20, "t": "2026-10-06T01:34:31-04:00", "run_id": "20261006T055000Z-bb02", "type": "run_end", "status": "failed", "exit_code": 1, "message": "rehearsal of 2026 week 04: failed (player: injected failure (rehearsal test hook, --fail-at))", "published": false, "failed_step": "player", "material": null}

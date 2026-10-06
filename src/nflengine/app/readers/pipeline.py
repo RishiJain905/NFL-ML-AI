@@ -11,6 +11,9 @@
 A week can have several sittings (a run, then resumes): `sittings` counts the gaps between
 one step's finish and the next one's start, and the rebuilt log shows a `--from-step` line
 for each resume.
+
+From CR02 every run writes `events/<run-id>.jsonl` (`ops/events.py`): when each sitting has
+one, the log is the runs' own console lines (`log_source: "events"`) instead of the rebuilt one.
 """
 
 from __future__ import annotations
@@ -199,6 +202,71 @@ def _rebuilt_log(
     return lines
 
 
+def events_log(paths: DataPaths, run_dir, sittings: int) -> list[dict[str, str]] | None:
+    """The week's runs as their console printed them (CR02 events files, oldest first), or
+    None when some sitting has no events file (it ran before CR02)."""
+    from nflengine.app.runner import read_events
+
+    folder = run_dir / "events"
+    try:
+        files = sorted(folder.glob("*.jsonl")) if folder.exists() else []
+    except OSError:
+        files = []
+    runs = [evs for f in files if (evs := read_events(f))]
+    runs = [evs for evs in runs if any(e.get("type") == "step_start" for e in evs)]
+    if not runs or len(runs) < sittings:
+        return None
+    lines: list[dict[str, str]] = []
+    for evs in runs:
+        for e in evs:
+            kind = e.get("type")
+            ts = _clock(e.get("t"))
+            if kind == "run_start":
+                note = "   (resumed)" if e.get("from_step") else ""
+                text = f"$ {clean(e.get('command'), paths, 200)}{note}"
+                lines.append({"ts": ts, "text": text, "cls": "acc"})
+            elif kind == "log":
+                cls = e.get("cls") if e.get("cls") in ("ok", "err", "warn", "dim", "acc") else ""
+                lines.append({"ts": ts, "text": clean(e.get("text"), paths, 600) or "", "cls": cls})
+            elif kind == "run_end":
+                ok = e.get("status") in ("ok", "degraded")
+                code = e.get("exit_code")
+                lines.append(
+                    {
+                        "ts": ts,
+                        "text": f"{e.get('status')}: {clean(e.get('message'), paths, 300)} "
+                        f"(exit {code})",
+                        "cls": "ok" if ok else "warn" if e.get("status") == "not_ready" else "err",
+                    }
+                )
+    return lines
+
+
+def _latest_started(steps: dict[str, Any]) -> str | None:
+    timed = [
+        (t, i, name)
+        for i, name in enumerate(STEP_NAMES)
+        if (t := _parse((steps.get(name) or {}).get("started"))) is not None
+    ]
+    return max(timed)[2] if timed else None
+
+
+def latest_failure(steps: dict[str, Any], running: bool) -> str | None:
+    """The step the week's **latest** invocation failed at: of the `failed` steps and those a
+    dead run left `running` (interrupted), the one that started last. An older sitting's failure
+    that a later retry went past (or died before reaching) is not the one to resume from (Sol
+    review, CR02)."""
+    failing = []
+    for i, name in enumerate(STEP_NAMES):
+        st = steps.get(name) or {}
+        status = st.get("status")
+        if status == "failed" or (status == "running" and not running):
+            failing.append(
+                (_parse(st.get("started")) or dt.datetime.min.replace(tzinfo=dt.UTC), i, name)
+            )
+    return max(failing)[2] if failing else None
+
+
 def _et(t: dt.datetime | None, fmt: str = "%a %Y-%m-%d %H:%M ET") -> str:
     return t.astimezone(EASTERN).strftime(fmt) if t else "—"
 
@@ -325,6 +393,9 @@ def get_pipeline(
         failed = [k for k, v in steps.items() if (v or {}).get("status") == "failed"]
         ready_detail = str((steps.get("ready") or {}).get("detail") or "")
         not_ready = failed == ["ready"] and bool(NOT_READY_TEXT.search(ready_detail))
+    # an older sitting's not-ready stop doesn't describe a later retry that went past it or
+    # died (Sol review, CR02): only when `ready` is the latest step to have started
+    not_ready = not_ready and _latest_started(steps) == "ready"
 
     base = {
         "season": season,
@@ -398,9 +469,7 @@ def get_pipeline(
 
     secs, records_s = step_times(paths, season, week)
     sum_steps = (summary or {}).get("steps") or {}
-    failed_step = next(
-        (n for n in STEP_NAMES if (steps.get(n) or {}).get("status") == "failed"), None
-    )
+    failed_step = latest_failure(steps, running)
     if not_ready:
         failed_step = None
     rows = []
@@ -427,7 +496,6 @@ def get_pipeline(
         detail = st.get("detail")
         if status == "running" and not running:  # a run that died without finishing the step
             status, detail = "failed", "interrupted: the run stopped before this step finished"
-            failed_step = failed_step or name
         if status == "failed" and not_ready and name == "ready":
             status = "skipped"  # "not ready" isn't a failure (weekly.run_weekly records it so)
         if status == "failed":
@@ -477,6 +545,8 @@ def get_pipeline(
     else:
         state_name = "partial"
     finished_secs = [r["seconds"] for r in rows[:-1] if r["seconds"] is not None]
+    sittings = len(_sittings(steps))
+    from_events = events_log(paths, run_dir, sittings)
     return {
         **base,
         "state": state_name,
@@ -486,8 +556,10 @@ def get_pipeline(
         "step_seconds": round(sum(finished_secs), 1) if finished_secs else None,
         "failed_step": failed_step,
         "error": clean((summary or {}).get("error"), paths, 300),
-        "log": _rebuilt_log(paths, season, week, steps, published, checks, failed_step),
-        "log_source": "rebuilt",
+        "log": from_events
+        if from_events is not None
+        else _rebuilt_log(paths, season, week, steps, published, checks, failed_step),
+        "log_source": "events" if from_events is not None else "rebuilt",
         "tiles": _tiles(run_dir, checks, secs),
         "no_run_records": summary is None and not stale_summary,
     }

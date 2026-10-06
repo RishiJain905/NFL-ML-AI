@@ -1,18 +1,29 @@
 // The header above a week's tabs (mockup: renderTop). The current week shows the countdown to
 // its first kickoff and the retry window; a past week shows when it was published, whether
 // that was before the first kickoff, and a link to its digest run in W&B. Slate tags come
-// from the calendar's plan for that week (`detail.plan`), so past weeks have them too.
+// from the calendar's plan for that week (`detail.plan`), so past weeks have them too. The
+// current week also has the Saturday injury update button (CR02, run/InjuryUpdate.tsx).
 
 import { useGames, useTeamInfo } from '../api/client';
 import type { Calendar, WeekDetail, WeekEntry } from '../api/types';
-import { countdown, daysRange, fmtET, kickoffLabel, seasonEyebrow, specialChips, weekTitle } from '../lib/format';
+import {
+  countdown,
+  daysRange,
+  fmtET,
+  kickoffLabel,
+  seasonEyebrow,
+  specialChips,
+  weekTitle,
+} from '../lib/format';
 import { useNow } from '../lib/useNow';
+import { InjuryUpdateButton } from './run/InjuryUpdate';
 import { TeamChip } from './TeamChip';
 import { Chip, WeekStatusChip } from './ui';
 
+// until pre-flight answers for this week (it has the real reason: Saturday ET, last kickoff)
 function injuryUpdateReason(entry: WeekEntry): string {
   if (entry.status !== 'published') return "Needs this week's Tuesday run first";
-  return 'Opens on Saturday (CR02)';
+  return 'Opens on Saturday';
 }
 
 function FirstKickoff({ season, week }: { season: number; week: number }) {
@@ -42,7 +53,9 @@ export function WeekHeader({
   const now = useNow();
   const teams = useTeamInfo().data?.teams;
   const isCurrent = Boolean(
-    detail?.is_current ?? entry?.is_current ?? (calendar && calendar.season === season && calendar.week === week),
+    detail?.is_current ??
+    entry?.is_current ??
+    (calendar && calendar.season === season && calendar.week === week),
   );
   const plan = detail?.plan ?? (isCurrent ? calendar : null);
   const left = countdown(now, isCurrent ? plan?.deadline : null);
@@ -63,7 +76,11 @@ export function WeekHeader({
         </span>
         <h1>{detail?.title ?? weekTitle(week, plan?.game_type)}</h1>
         <div className="chips">
-          {status ? <WeekStatusChip status={status.status} label={status.label} /> : <Chip tone="ghost">No run</Chip>}
+          {status ? (
+            <WeekStatusChip status={status.status} label={status.label} />
+          ) : (
+            <Chip tone="ghost">No run</Chip>
+          )}
           {!isCurrent && detail?.on_time === false ? (
             <Chip tone="warn" icon="!" title="Published after the week's first kickoff">
               Late run{detail.first_live_week ? ' · first live week' : ''}
@@ -79,7 +96,9 @@ export function WeekHeader({
               <Chip>
                 {plan.games} games{plan.days.length ? ` · ${daysRange(plan.days)}` : ''}
               </Chip>
-              {specialChips(plan.special.filter((s) => s !== 'international' && s !== 'neutral_site')).map((s) => (
+              {specialChips(
+                plan.special.filter((s) => s !== 'international' && s !== 'neutral_site'),
+              ).map((s) => (
                 <Chip key={s}>{s}</Chip>
               ))}
               {plan.international.map((g) => (
@@ -117,7 +136,9 @@ export function WeekHeader({
         ) : publishedAt ? (
           <div className="clock">
             <span className="small">Published</span>
-            <span className="big">{fmtET(publishedAt, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+            <span className="big">
+              {fmtET(publishedAt, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
+            </span>
             <span className="small">
               {fmtET(publishedAt, { month: 'short', day: 'numeric' })} ET
               {detail?.on_time === false ? " · after the week's first kickoff" : ''}
@@ -125,15 +146,20 @@ export function WeekHeader({
           </div>
         ) : null}
         {status && isCurrent ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
-            <button type="button" className="btn sm" aria-disabled="true" disabled title="Runs on Saturday, after the week's Tuesday run">
-              Saturday injury update
-            </button>
-            <span className="reason">{injuryUpdateReason(status)}</span>
-          </div>
+          <InjuryUpdateButton
+            season={season}
+            week={week}
+            fallbackReason={injuryUpdateReason(status)}
+          />
         ) : null}
         {!isCurrent && detail?.wandb_url ? (
-          <a className="btn sm" href={detail.wandb_url} target="_blank" rel="noopener noreferrer" title="The week's digest run in W&B">
+          <a
+            className="btn sm"
+            href={detail.wandb_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="The week's digest run in W&B"
+          >
             Open week {week} in W&amp;B ↗
           </a>
         ) : null}

@@ -1,0 +1,42 @@
+/* Live mode of the Pipeline tab (CR02). The now-bar itself is styled in styles/app.css (kept in
+   step with the mockup); these are the additions a run that takes 40 minutes needs. */
+
+.nowbar .nowmid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* a step running longer than it usually does: the bar breathes so the page never looks frozen */
+.progress b.overrun {
+  animation: nowbar-breathe 1.6s ease-in-out infinite;
+}
+@keyframes nowbar-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* the scorebug's "now" box holds a line that changes every few seconds: cut it, with the whole line on hover */
+.scorebug > div.now {
+  min-width: 0;
+}
+.scorebug > div.now .v {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nowbar .sub {
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress b.overrun {
+    animation: none;
+  }
+}

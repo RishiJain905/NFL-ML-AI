@@ -27,7 +27,7 @@ from typing import Any
 import polars as pl
 
 from nflengine.ops.summary import scrub
-from nflengine.paths import DataPaths
+from nflengine.paths import DataPaths, relative_paths, root_pattern, strip_partial_root
 
 WANDB_RUN = re.compile(r"https://wandb\.ai/[\w.-]+/[\w.-]+/runs/([A-Za-z0-9]+)")
 STEP_NAMES = ("ingest", "ready", "curate", "ratings", "game", "graph", "player", "digest")
@@ -68,16 +68,7 @@ def curated(paths: DataPaths, table: str, columns: list[str] | None = None) -> p
     return read_parquet(paths.curated / f"{table}.parquet", columns)
 
 
-def _root_pattern(root: Path) -> re.Pattern[str]:
-    parts = [re.escape(p) for p in re.split(r"[\\/]+", str(root).rstrip("\\/")) if p]
-    return re.compile(r"[\\/]+".join(parts) + r"(?:[\\/]+([^\s;,'\"<>()]*))?", re.IGNORECASE)
-
-
-def relative_paths(text: str, root: Path) -> str:
-    """Replace the data root (either slash style, any case) with the path below it."""
-    if not text:
-        return text
-    return _root_pattern(root).sub(lambda m: (m.group(1) or "").replace("\\", "/") or ".", text)
+_root_pattern = root_pattern  # one definition, shared with the progress events (CR02)
 
 
 def strip_root(obj: Any, root: Path) -> Any:
@@ -88,7 +79,8 @@ def strip_root(obj: Any, root: Path) -> Any:
 
     def walk(o: Any) -> Any:
         if isinstance(o, str):
-            return pattern.sub(lambda m: (m.group(1) or "").replace("\\", "/") or ".", o)
+            o = pattern.sub(lambda m: (m.group(1) or "").replace("\\", "/") or ".", o)
+            return strip_partial_root(o, root)
         if isinstance(o, dict):
             return {k: walk(v) for k, v in o.items()}
         if isinstance(o, list | tuple):

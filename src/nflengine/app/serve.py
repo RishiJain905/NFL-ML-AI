@@ -26,6 +26,7 @@ def serve(
     dev: bool = False,
     rehearsal: bool = False,
     log: Callable[[str], None] = print,
+    fail_at: str | None = None,
 ) -> int:
     """Start the server and block until Ctrl+C. Returns an exit code."""
     import uvicorn
@@ -43,7 +44,7 @@ def serve(
         log(f"Port {port} on {HOST} is in use (is the control room already running?).")
         return EXIT_PORT_IN_USE
     settings = srv.AppSettings(
-        port=port, dev=dev, rehearsal=rehearsal, web_dist=None if dev else dist
+        port=port, dev=dev, rehearsal=rehearsal, web_dist=None if dev else dist, fail_at=fail_at
     )
     app = srv.create_app(settings)
     url = f"http://{HOST}:{port}/"
@@ -58,7 +59,13 @@ def serve(
             threading.Timer(1.5, webbrowser.open, args=(url,)).start()
     if rehearsal:
         log(
-            "Rehearsal mode: the Run button (CR02) runs `nfl weekly rehearse`, never the live week."
+            "Rehearsal mode: the Run button runs `nfl weekly rehearse` into "
+            "rehearsals/control-room, never the live week."
+            + (
+                f" The first rehearsal fails at {fail_at} on purpose (--fail-at)."
+                if fail_at
+                else ""
+            )
         )
     try:
         uvicorn.Server(uvicorn.Config(app, host=HOST, port=port, log_level="warning")).run()
