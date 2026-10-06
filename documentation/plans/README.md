@@ -4,6 +4,7 @@ This folder turns the design docs (`documentation/01`–`11`) into an ordered, *
 
 - **[PROGRESS.md](PROGRESS.md)** is the live tracker: current phase, status of every phase, session log, the log of steps Rishi ran.
 - One file per phase (`P00`–`P10` for the main build, `T00`–`T04` for Track 2), plus [STRETCH.md](STRETCH.md) for unscheduled extras.
+- **Control room track** (`CR00`–`CR03`, the local web app): its spec, phase files and approved mockup live in their own folder, [`../control-room/`](../control-room/README.md); its status rows are in PROGRESS.md like every other phase.
 
 ## Phase map
 
@@ -20,6 +21,10 @@ This folder turns the design docs (`documentation/01`–`11`) into an ordered, *
 | [P08](P08-models-v2.md) | Models v2 + advanced graph | P07 | LightGBM game model v1 evaluated, **v0 kept** (D79); 12 new player targets (TD / sack / INT chances, QB TDs, CB/S coverage) and 4 team stat totals shipped; consistency layer; Q5b–Q10 incl. GDS PageRank + KNN, a Wikipedia-built coaching seed |
 | [P09](P09-llm-connection.md) | Connect a real LLM | P04 (any time after) | GLM 5.3 Flash via OpenRouter (wired in P04, D56) re-checked on today's digest: fact-checked backtests, prompt v2 + check fixes, reasoning-safe routing, `nfl doctor` routing check; no native adapters (D87) |
 | [P10](P10-season-operations.md) | Season operations and offseason | P07 | Built and rehearsed in week 5 (D89): `nfl weekly rehearse` (D90), playoff weeks (D91), `nfl season weeks|review`, runbook sections; the dated steps (season log, playoff check, review, retune, ✋ 2027) on PROGRESS → Season calendar |
+| [CR00](../control-room/CR00-foundations.md) | Control room: foundations | P10 | `nfl app` (FastAPI on 127.0.0.1), the React shell, both themes, the safety rules and their tests |
+| [CR01](../control-room/CR01-week-archive.md) | Control room: the week archive | CR00 | Every week tab from real files (read-only), the three pipeline views and the per-week picker |
+| [CR02](../control-room/CR02-run-control.md) | Control room: run control | CR01 | `--expect-week`, progress events, pre-flight + Run / Resume / injury update, live views; the first Tuesday run from the app |
+| [CR03](../control-room/CR03-mlops-and-season.md) | Control room: MLOps and season pages | CR01 | MLOps → Health · W&B runs · Artifacts, Scorecard, Teams, Models, Alerts, Health |
 | [T00](T00-bdb-data-and-baselines.md) | BDB data + baselines | P00 (recommended after P04) | BDB 2026 on D:, splits, constant-velocity and physics baselines |
 | [T01](T01-bdb-gbt.md) | BDB gradient-boosted model | T00 | LightGBM displacement model |
 | [T02](T02-bdb-sequence.md) | BDB sequence model | T01 | GRU / Transformer trajectory model (GPU) |
@@ -31,6 +36,8 @@ flowchart LR
     P00 --> P01 --> P02 --> P03 --> P04 --> P05 --> P06 --> P07 --> P08
     P04 -.any time.-> P09
     P07 --> P10
+    P10 --> CR00 --> CR01 --> CR02
+    CR01 --> CR03
     P00 -.-> T00
     P04 -.recommended start.-> T00
     T00 --> T01 --> T02 --> T03 --> T04
@@ -65,7 +72,7 @@ The full step-by-step routine (probing before building, verification, review, qu
 5. **At 🧑 / ✋ steps:** follow the working model above.
 6. **At the end of every session**, even mid-phase:
    - update PROGRESS.md: status, a session log entry (what got done, where you stopped, exact next step, any deviations)
-   - commit with a `[Pxx]` prefix, then push to `origin dev_rishi`
+   - commit with a `[Pxx]` prefix (`[CRxx]` for the control room), then push to `origin dev_rishi`
 7. **Phase done** = every task ticked, every exit criterion verified (with the commands run and their results noted in the session log), the ✋ end-of-phase checkpoint approved by Rishi. Only then start the next phase.
 
 ## Ground rules for all phases

@@ -77,6 +77,7 @@ flowchart LR
 | Checks | Number provenance, entity binding, banned language, length | On failure: regenerate once, then publish with a warning banner. See [06](06-weekly-digest.md). |
 | Delivery | Write Markdown to `reports/`, optionally send email or a notification | |
 | Tracking | Log experiments and every production run to W&B | See [08](08-experiment-tracking.md). |
+| Control room (planned, CR00–CR03) | Local web app: run the week with one button (`nfl weekly run --auto --expect-week N`), watch the steps live, read each week's results and the MLOps / season views | Localhost only; FastAPI in `src/nflengine/app/` + a Vite / React app in `web/`. Spec: [control-room/](control-room/README.md) (D94–D96) |
 
 ## Tech stack
 

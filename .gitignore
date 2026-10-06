@@ -32,3 +32,6 @@ notebooks/.ipynb_checkpoints/
 Thumbs.db
 .vscode/
 .idea/
+
+# Browser-preview tool output (found 2026-10-05)
+.playwright-mcp/

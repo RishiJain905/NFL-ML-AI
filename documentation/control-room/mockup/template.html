@@ -1,0 +1,32 @@
+<meta charset="utf-8">
+<title>NFL Control Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+{{CSS}}
+</style>
+
+<div class="mockbar" id="mockbar" aria-label="Mockup controls">
+  <span class="tag">MOCKUP CONTROLS · not part of the app</span>
+  <div class="grp"><span class="lbl">Week 5 state</span><span class="seg" id="statePick"><button type="button" data-v="notready">Not ready</button><button type="button" data-v="ready">Ready</button><button type="button" data-v="running">Running</button><button type="button" data-v="failed">Failed</button><button type="button" data-v="published">Published</button></span></div>
+  <span class="hint">In the app: theme and mode under the gear by "Control Room"; the pipeline view on each week's Pipeline tab.</span>
+</div>
+
+<div class="app">
+  <aside class="side" id="side"></aside>
+  <main>
+    <header class="top" id="top"></header>
+    <nav class="tabs" id="tabs" role="tablist" aria-label="Week sections"></nav>
+    <section class="view" id="view"></section>
+  </main>
+</div>
+
+<div id="tip" role="tooltip" hidden></div>
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+
+<script id="data" type="application/json">{{DATA}}</script>
+<script>
+{{JS}}
+</script>

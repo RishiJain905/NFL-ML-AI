@@ -9,14 +9,14 @@ Ideas that aren't on the critical path. Pick them up only after the relevant pha
 | Play-level nodes in the graph | P08 | ~45k plays/season; enables play-pattern queries (e.g. play-action success vs specific defenses) |
 | HTML email rendering of the digest | P07 | Simple Markdown → HTML template |
 | Ratings and graph history before 2018 / 2010 | P08 | More history for coaching trees and player careers |
-| **Pipeline control room (web app):** run the weekly pipeline from a button and watch every stage live, plus the digest archive and scoreboards | All P phases (at least P07/P08); before T00 | Local only; Rishi's idea for later, not to be started without him. Notes below |
+| ~~**Pipeline control room (web app)**~~ **Promoted on 2026-10-05** to its own track, CR00–CR03: [`../control-room/`](../control-room/README.md) (D94–D96) | All P phases | The notes below are the original idea, kept for the record; the plan and the approved mockup are in the control-room folder |
 | Kicker / punter targets | P08 | Low priority |
 | Uncertainty-aware game simulation (simulating the season to project playoff odds) | P08 | Uses the game model's distributions; fun season-long output |
 | Big Data Bowl 2027 track | T04 | If announced and relevant |
 
 ## Pipeline control room (web app): notes for later
 
-Rishi's idea, captured on 2026-10-03 at the end of P04. Pick it up only when he says so.
+Rishi's idea, captured on 2026-10-03 at the end of P04. **Promoted on 2026-10-05:** the spec, the phases and the mockup are in [`../control-room/`](../control-room/README.md); what was decided differs in places (for example the W&B charts are redrawn, not embedded, and the Run button only runs `--auto --expect-week`).
 
 - **Goal:** a clean local web app.
   - One button runs `nfl weekly run`; others resume from a step or generate a backtest digest.

@@ -4,7 +4,8 @@
 
 **Current phase:** P10 closed ✅ (season operations: built and rehearsed in week 5; its dated steps are on the **Season calendar** below, D89). Every main-path phase P00–P10 is done; Track 2 (T00) starts whenever Rishi wants.
 **Next step:** Tuesday 2026-10-06, 10:00 ET or later: `uv run nfl weekly run --auto` (week 5). New since P10: the game step now refreshes `features/game_features.parquet` (before, week 5's player and team projections would have had no market numbers: P10 found it), the graph uses `config/head_coach_fixes.csv` (2026 ATL / ARI / BUF / LV coaches, D92); everything else as before: the first live run with P08's targets and graph, P09's prompt `7a529f64c5a6` with BaseTen-first routing (check the footer, `calls[].provider`, `raw_llm_output.json` → `reasoning_tokens` > 0, read the prose once against `payload.json`), `pipeline-2026-w05`, the graph's `gds/status`, the `player` step's detail line ("team: …", "consistency: …") and the TD / Sack chance columns. Then add the week's line to the **Season log** (`uv run nfl season weeks --season 2026`). Saturday 2026-10-10: `uv run nfl weekly injury-update --auto`. Runs stay manual (D71); the runbook is `documentation/runbook.md`.
-**Last updated:** 2026-10-05, P09 closed (approved), P10 built, rehearsed and closed
+**Control room track (planned, D94–D96):** the local web app's spec, its four phases (CR00–CR03) and the approved mockup are in [`../control-room/`](../control-room/README.md) ([mockup](https://claude.ai/artifact/1z7AapJzJwKusNtWzXYfQw)). Not started: it begins when Rishi says (confirm the 🧑 / ✋ waivers at the kickoff). Big Data Bowl (T00) is on hold meanwhile (Rishi, 2026-10-05).
+**Last updated:** 2026-10-05, control-room track planned (CR00–CR03); earlier the same day P09 closed (approved), P10 built, rehearsed and closed
 
 Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ blocked · ✅ done
 
@@ -28,6 +29,10 @@ Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ b
 | T02 | BDB sequence model | ⬜ | | | |
 | T03 | BDB interaction model | ⬜ | | | |
 | T04 | Track 2 → Track 1 bridge | ⬜ | | | |
+| CR00 | Control room: foundations | ⬜ | | | Planned 2026-10-05 (D94–D96): `nfl app`, FastAPI on 127.0.0.1 + the React shell, both themes, safety rules and tests. Phase files in `documentation/control-room/` |
+| CR01 | Control room: the week archive (read-only) | ⬜ | | | Every week tab from real files; the three pipeline views + per-week picker |
+| CR02 | Control room: run control and the live pipeline | ⬜ | | | `--expect-week`, progress events, pre-flight / Run / Resume / injury update, live views; ends with the first Tuesday run from the app (🧑) |
+| CR03 | Control room: MLOps, W&B and the season pages | ⬜ | | | MLOps → Health · W&B runs · Artifacts; Scorecard, Teams, Models, Alerts, Health; closes the track |
 
 ## Rishi-run steps log
 
@@ -101,6 +106,38 @@ One line per live week (`uv run nfl season weeks --season 2026`), plus any drift
 - week 04: published ✓ (digest found, no run record: before P07's run records), checks passed after one regeneration
 
 ## Session log (newest first)
+
+### 2026-10-05: The control room planned as its own track (CR00–CR03, D94–D96)
+- **Ask (Rishi):** P00–P10 are done and the Big Data Bowl is on hold. Build a local web dashboard (React, not Streamlit) that runs the weekly pipeline from a button for the right week, keeps every past week as a track record, and shows both the MLOps side (the pipeline live, W&B charts and artifacts) and the NFL side (digest, results vs last week). "First, just talk to me"; then an HTML mockup with colour and pipeline-view options; then phase files.
+- **Agreed:**
+  - Vite + React + TS with a FastAPI backend in `nflengine` (`nfl app`, localhost only);
+  - charts redrawn locally and linked to W&B;
+  - the Run button runs only `nfl weekly run --auto` with a new `--expect-week N` guard: no week picker; `--auto` already refuses until last week is final;
+  - pre-flight with the button greyed out and the reason; a confirm dialog; resume only from the current week's failed step; a Saturday injury-update button;
+  - themes **Turf & Pylon** and **Playbook** (dark / light / system; Floodlight and Sideline Tablet dropped);
+  - all **three pipeline views** (drive chart, pipeline map, timeline), picked per week with "Surprise me";
+  - **MLOps** as three sections (Health · W&B runs · Artifacts);
+  - season pages Scorecard, Teams & rankings, Models, Alerts, Health;
+  - **not P11:** its own folder and track.
+- **Mockup** (the visual spec): [artifact](https://claude.ai/artifact/1z7AapJzJwKusNtWzXYfQw), version 2. Rishi on version 1: "I love this it is literally perfect"; version 2 adds the agreed changes.
+  - Built from real data: 2026 week 4, the week-5 slate, Elo / ratings, the 2025 backtests, the week-4 ingest manifest and quality file, and the live W&B artifact list.
+  - Sample data is labelled: the week-4 Results tab, the simulated week-5 run's numbers, the Health statuses.
+  - Its source is committed in `documentation/control-room/mockup/`. `build_mockup.py` rebuilds it from the data root into `cache/control-room-mockup/`, so no data is committed.
+- **Docs:**
+  - `documentation/control-room/README.md`: the spec (what was agreed, every screen with its data source and phase, architecture, API sketch, safety rules, repo layout, quality gates, findings);
+  - `CR00-foundations.md`, `CR01-week-archive.md`, `CR02-run-control.md`, `CR03-mlops-and-season.md`;
+  - D94–D96;
+  - STRETCH (the idea marked as promoted), the plans README (phase map), this file (CR rows), the docs index, 02 (components), 09 (roadmap), CLAUDE.md and AGENTS.md (pointers, the expected guide and skill), and the `phase-workflow` skill (CR phases).
+- **Found while building the mockup** (in the spec's §9):
+  - week 4 has no run records (pre-P07);
+  - `predictions_games.parquet` marks every QB source `schedule`, so QB changes must come from `payload.json`;
+  - curated blank values turn into `NaN`, which breaks JSON in a browser;
+  - the live W&B artifacts: `game-model` v0–v4, `production` on v4; `player-model` v1; `digest` v0–v8; `team-model` and `injury-update` first appear on Tuesday / Saturday;
+  - week 4's digest was ~90% of its run (39 min of GLM on DeepInfra);
+  - the browser-preview tool writes `.playwright-mcp/` into the repo root (now git-ignored).
+- **Data on D:** only `cache/control-room-mockup/control-room.html` (the rebuilt mockup). Nothing live touched; no W&B writes (read-only artifact listing).
+- **Tests:** no code under `src/` changed. `uv run ruff check` covers the new `build_mockup.py`.
+- **Next:** Tuesday 2026-10-06, the week-5 run from the terminal as planned (unchanged). The control room starts with CR00 when Rishi says; ask about the 🧑 / ✋ waivers at that kickoff.
 
 ### 2026-10-05: P09 approved; P10 built, rehearsed and closed ✅ (season operations, D89–D93)
 - **Kickoff.** Rishi: "P09 is approved, so close it" (it was already ✅; the row now records the approval), then start P10 with opus-high / sonnet-xhigh if useful, a Sol review (`/sol-qa`) before the commit, all docs and skills updated, the phase marked complete; "this is the first official season ... maybe not go super deep". P10 is mostly calendar work (weekly runs to February, a review after the Super Bowl, a summer retune), so I asked once (AskUserQuestion): **"Build + rehearse, then close (Recommended)"** → D89: build and prove every tool now, put the dated steps on the **Season calendar** above, mark P10 ✅. The ✋ close is waived by "marking the phase complete"; the 🧑 season review and 🧑 retune keep their dates.

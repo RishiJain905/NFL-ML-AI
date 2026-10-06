@@ -2,13 +2,17 @@
 
 A personal ML system that produces a weekly NFL digest during the season. It shows game win probabilities and predicted scores, team trends, a look back at last week's tracking stats, projections for offensive and defensive players, and insights from a knowledge graph. It tracks its own accuracy every week. A separate research track models player movement on the NFL Big Data Bowl tracking data.
 
-Last updated: 2026-10-05 (P10: season operations, rehearsals, playoffs).
+Last updated: 2026-10-05 (P10: season operations, rehearsals, playoffs; the control-room track planned).
 
 ## Start here
 
 - **Building something?** Go to **[plans/README.md](plans/README.md)** (how the phases work) and **[plans/PROGRESS.md](plans/PROGRESS.md)** (where the build currently stands).
 - **Want to understand the design?** Read the docs below in order.
 - **Running the weekly digest?** Use the **[runbook](runbook.md)**: the weekly commands, exit codes, what each alert means, how to rerun, resume, roll back, simulate or rehearse a week, the playoffs, the end of the season and the pre-season checklist.
+
+## Control room (the local web app, planned)
+
+[`control-room/`](control-room/README.md) is its own track, CR00–CR03 (D94–D96). It's a localhost web app to run the week with one button, watch every step live, read the digest and results, and see the MLOps side (run health, W&B runs and charts, artifacts) and season views. The folder holds the spec, the four phase files and the source of the [approved mockup](https://claude.ai/artifact/1z7AapJzJwKusNtWzXYfQw) (its visual spec).
 
 ## Design documents
 
