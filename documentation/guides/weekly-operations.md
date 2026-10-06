@@ -219,7 +219,8 @@ The week-10 run raised a `calibration` alert (ECE 0.053 over 135 games against t
 | `src/nflengine/ops/dashboard.py` | The dashboard run and the W&B Report (§8) |
 | `src/nflengine/ops/injury_update.py` | The Saturday update (§9) |
 | `src/nflengine/weekly.py` | `run_pipeline` (calendar, lock, steps, records), simulations, the `graph` step's Neo4j start |
-| `src/nflengine/cli.py` | `nfl weekly run --auto / --as-of / --dry-run / --force / --no-wandb`, `nfl weekly status`, `nfl weekly injury-update`, `nfl dashboard build / update` |
+| `src/nflengine/cli.py` | `nfl weekly run --auto / --as-of / --dry-run / --force / --no-wandb / --expect-week` (CR02), `nfl weekly status`, `nfl weekly injury-update`, `nfl dashboard build / update` |
+| `src/nflengine/ops/events.py`, `src/nflengine/fsutil.py` | CR02: progress events (§11a); the replace retry |
 | `src/nflengine/models/game_runs.py`, `player_runs.py` | `run_train(..., output="update")` for the injury update |
 | `config/settings.yaml` | `ops:`, `drift:`, `injury_update:` blocks; `flags.injury_update_enabled: true` |
 
@@ -233,6 +234,27 @@ The week-10 run raised a `calibration` alert (ECE 0.053 over 135 games against t
 | `ops.promote_auto` | true | `--auto` moves the `production` alias to each live fit (D72) |
 | `drift.*` | doc 08 | §7 |
 | `injury_update.*` | 0.05, true | §9 |
+
+## 11a. Progress events and `--expect-week` (CR02)
+
+The control room (CR02) draws a run live, so every run now writes a short diary of itself, and the Run button needs a guard against running the wrong week. Both help at the terminal too.
+
+**`--expect-week N`** (with `--auto`; `nfl weekly injury-update --auto` takes it too): the run stops before anything (no step, no record, no event; the lock is released) with **exit 6** if the calendar's week isn't N. The check comes after the calendar has resolved the week (including the schedule-only refresh under the lock), so it catches a week that moved between the page and the run. Dry runs check it too. Live check on 2026-10-06 01:25 ET: `--expect-week 6 --dry-run` and `--expect-week 6` both said "the calendar's week is week 5, not week 6 (--expect-week): nothing was run", exit 6; only the lock note was written and emptied.
+
+**Progress events** (`src/nflengine/ops/events.py`): one file per run, resume, Saturday update or rehearsal, `runs\<season>\week<NN>\events\<run-id>.jsonl`, one JSON object per line:
+
+| Type | When | Carries |
+|---|---|---|
+| `run_start` | First | What kind of run, the command, the steps it will do, the step a resume starts from and the steps an earlier sitting finished (`earlier`), who launched it (`via: control-room` from the app), the calendar's plan lines |
+| `step_start` / `step_end` | Around each step, and the run records (`records`) | The step; at the end its status, seconds and detail |
+| `progress` | Inside a step | `fraction` (0–1 of the step), a label: "dataset 12/30 · nflverse · pbp", "table 17 · plays", "loading 5/23 · node:Player", "refitting 7/23 · rec_yds-wrte", "building payload.json" |
+| `llm` | Around the digest's LLM call | `start` / `rewrite`, then `done` (or `failed`) with the provider, seconds, reasoning count and cost. The call isn't streamed (P09's rule), so nothing comes in between |
+| `log` | Every console line | The text (colour markup removed), its class, the step it belongs to |
+| `run_end` | Last | Status, exit code, message, published, the failed step, `material` (Saturday) |
+
+A 2026 week-4 rehearsal wrote 104 events (22 KB): 61 log lines, 31 progress events, the four steps, the LLM's start and done, start and end. Every text is scrubbed; each line is written whole; and **a failure to write an event never changes the run** (the writer goes quiet; a test makes the events folder a file and the run still ends `ok`). Runs that stop before any step (offseason, exit 6, already published, locked) write none.
+
+**Two small changes that came with it:** the pipeline's atomic writers (`weekly_run.json`, the history, the prediction files, curated and ratings tables, raw snapshots) now retry their final replace for about two seconds if another process has the file open (on Windows a replace fails while someone reads), because the control room reads a run's files while it's live; and a rehearsal now holds its own lock on its folder (`.<folder>.rehearsal.lock`), so two rehearsals can't share one.
 
 ## 12. Limits and what's next
 

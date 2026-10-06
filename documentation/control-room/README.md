@@ -1,6 +1,6 @@
 # Control room: the local web app for the weekly pipeline
 
-Status → see the **Control room** rows in [plans/PROGRESS.md](../plans/PROGRESS.md). Decisions: D94–D102 in the [decisions log](../10-decisions-log.md).
+Status → see the **Control room** rows in [plans/PROGRESS.md](../plans/PROGRESS.md). Decisions: D94–D104 in the [decisions log](../10-decisions-log.md).
 
 The control room is a web app that runs on Rishi's machine (localhost only). On Tuesday he opens it and presses **one button** to run the week's pipeline. He watches every step happen, then reads the digest and checks last week's results. He can also look at the MLOps side (run health, W&B runs and charts, artifacts) and at season-long views.
 
@@ -223,6 +223,15 @@ The plan is read-only first (useful from day one with no risk to the live pipeli
 - **The published digest has CRLF line ends** (written on Windows): read without newline translation to stay byte for byte.
 - **`scrub()` masks `"…key…": value`-shaped JSON**, so API field names avoid those words (D100).
 
+**Checked in CR02 (2026-10-06).**
+- **Where a step can report progress** without changing its results: ingest loops over nflverse's datasets, then ESPN, the NGS site, Open-Meteo and The Odds API; curate writes ~32 tables, then the quality checks; the graph reads, wipes (48 s of week 4's 144 s), loads 23 tables (88 s), runs GDS and the query library; the player step scores the season, refits 23 targets (the bulk of its 95–140 s), then team totals, the consistency layer and the graph write; the digest builds the payload, then waits on the LLM, checks, renders. Every step already takes a `log=` function; the events ride beside it in a context variable (`ops/events.py`), so no step's signature changed.
+- **The LLM call:** OpenRouter *does* stream reasoning on the current route (a tiny probe: 167 reasoning chunks from 6 s, served by Novita while BaseTen was skipped), but streaming changes the call, which P09's rule allows only after a real-LLM re-check. The live view waits with the elapsed time and the route; provider, time, reasoning count and cost arrive with the response (D103).
+- **`--launched-by`** was auto-detected (`agent` inside a Claude Code session, else `rishi`); the app passes `rishi` and tags every W&B run `via:control-room`.
+- **Windows processes:** a child started with a new process group and a hidden console of its own (out of the app's job when allowed) outlived its parent and held the OS run lock; the parent saw the lock held, and free once the child ended. The lock note's pid is the child's own when the app runs `python -m nflengine.cli` with its interpreter (with `uv run` it would be uv's), which ties a held lock to the app's record.
+- **The schedule snapshot was stale** at 01:20 ET on Tuesday 2026-10-06 (week 4 at 1/16 final): the dry run said exit 3; `--expect-week 6` (dry and live) said exit 6 with nothing written (only the lock note was written and emptied).
+- **The pipeline is unchanged** by the events: a week-4 rehearsal (`game`, `player`, clock pinned to the published run) with the pre-CR02 code (`git archive HEAD`) and with the new code gave identical game (32 rows) and team (120) predictions and identical player projections (4,283 rows: every quantile, mean and chance); only the player baselines differed, by at most 7e-18 (floating-point summation order, in code CR02 didn't touch).
+- **A rehearsal of week 4 with events** (placeholder writer): 104 events, 22 KB, 2.5 minutes (player 141 s); a failure injected at `player` and its resume (`--steps player,digest`) chain correctly.
+
 ## 10. As built
 
 Each phase adds what it built and any differences from this spec here, with decision numbers.
@@ -265,3 +274,19 @@ Each phase adds what it built and any differences from this spec here, with deci
   - the pipeline map's Game model → Knowledge graph edge starts below the label (the mockup's crossed it);
   - Players: "Show every stat" and "Show all N"; Graph: a "why not" column and 15 rows before "Show all"; Digest: Saturday's addendum as a card under the digest, writers listed once.
 - **Sol review:** 7 findings (0 high), all fixed (D102).
+
+**CR02 (2026-10-06, D103–D104).**
+- **What runs:** the Run button. On the current week's Pipeline tab, the **pre-flight** panel (eight checks: calendar, last week final, not published, lock, data drive, Neo4j (warn), keys by name, `seasons.current`; the dry run's log), **Run week N** (greyed out with the reason while blocked; **Check again**), the confirm dialog, then the run **live** in the three views with the now-bar and the streaming log; on a failure, the banner and **Resume week N from <step>**; the **Saturday injury update** in the header with its own confirm and live log; toasts and a browser notification when a run ends; `nfl app --rehearsal` (a past week into `rehearsals/control-room`).
+- **Endpoints added:** `GET /api/preflight`, `POST /api/run` (`{kind, expect_week}`, launch token + Origin; 202 / 403 `not_allowed` / 409 `locked` or `running` / 422), `GET /api/run/current`, `GET /api/run/stream` (SSE).
+- **Pipeline additions** (they help the terminal too): `nfl weekly run --auto --expect-week N` (exit 6), progress events in `runs/<S>/week<NN>/events/<run-id>.jsonl` for every run, resume, injury update and rehearsal, the replace retry in the pipeline's writers, rehearsals' own lock and `--fail-at`, the `via:control-room` W&B tag.
+- **Differences from §2–§5 and the CR02 tasks** (D103 lists them in full):
+  - the events add a `log` type (the console's lines) and `run_start.earlier` (a resume's done steps);
+  - the GLM call isn't streamed (no live token counter; the mockup's is a deliberate difference);
+  - "last week final" from a stale snapshot only warns; it blocks for 30 minutes after a not-ready run;
+  - the app's resume adds `--promote` (it finishes an `--auto` run);
+  - the runner runs `python -m nflengine.cli` with the app's interpreter, not `uv run`;
+  - rehearsal mode rehearses the newest published week (the current one can't be rehearsed before its previous week is in the data); rehearsals take their own lock;
+  - a finished week's log comes from its events files when every sitting has one;
+  - the SSE module is `app/stream.py`.
+- **The first live Tuesday run from the app** is Rishi's (🧑), moved to PROGRESS's Next step: 2026 week 5 (D103's checks are in the runbook's "Run the week from the control room").
+- **Sol review:** 10 findings (0 high), all fixed; a verification pass completed five of the fixes and found one more, fixed too (D104). The ones that change this spec's rules: the injury update also carries `--expect-week`; SSE ids are `<run id>:<seq>`; the lock's note names the run holding it (`run_id`), and the app ties a held lock to its own launch by that id only; a launch still starting counts as running across an app restart; a Sunday-only slate's Saturday is the one before it; a text cut by any cap can't keep part of the data root's path (`strip_partial_root`).

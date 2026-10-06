@@ -8,9 +8,9 @@ How to run the weekly NFL digest, what normal looks like, and what to do when so
 
 | When | Command | What it does | Normal result |
 |---|---|---|---|
-| **Tuesday, 10:00 ET or later** (after Monday Night Football; nflverse updates overnight) | `uv run nfl weekly run --auto` | Works out the season and week from the calendar, then ingest → ready → curate → ratings → game → graph → player → digest, then the run records (summary, history, drift checks, W&B pipeline run, season dashboard) | Exit 0, last line `ok: 2026 week 05: ok`, the digest at `D:\nfl-ml-data\reports\2026\week05-digest.md`, about 5 minutes plus the LLM (2–40 minutes) |
+| **Tuesday, 10:00 ET or later** (after Monday Night Football; nflverse updates overnight) | `uv run nfl weekly run --auto`, or **Run week N** in the control room (`uv run nfl app`; [Run the week from the control room](#run-the-week-from-the-control-room-cr02), the same command with `--expect-week N`) | Works out the season and week from the calendar, then ingest → ready → curate → ratings → game → graph → player → digest, then the run records (summary, history, drift checks, W&B pipeline run, season dashboard) | Exit 0, last line `ok: 2026 week 05: ok`, the digest at `D:\nfl-ml-data\reports\2026\week05-digest.md`, about 5 minutes plus the LLM (2–40 minutes) |
 | Any time | `uv run nfl weekly status` | What the calendar says now, each step's state for this week and last, the lock, the last 5 runs | Read only |
-| **Saturday, 10:00 ET or later** (final injury designations come out Friday) | `uv run nfl weekly injury-update --auto` | Re-pulls injuries, news, lines and depth charts, re-predicts the week's games and players, compares with Tuesday | "nothing material changed" or "addendum published → `reports\2026\week05-injury-update.md`". Material = a win probability moved ≥ 5 points, or a watch-list player's status changed to or from Doubtful / Out / IR (a plain Questionable tag doesn't count, D73). One `pipeline_history` row per update (`ok`, `degraded` or `failed`) |
+| **Saturday, 10:00 ET or later** (final injury designations come out Friday) | `uv run nfl weekly injury-update --auto`, or **Saturday injury update** in the control room's week header | Re-pulls injuries, news, lines and depth charts, re-predicts the week's games and players, compares with Tuesday | "nothing material changed" or "addendum published → `reports\2026\week05-injury-update.md`". Material = a win probability moved ≥ 5 points, or a watch-list player's status changed to or from Doubtful / Out / IR (a plain Questionable tag doesn't count, D73). One `pipeline_history` row per update (`ok`, `degraded` or `failed`) |
 | After either run | W&B: the newest `weekly-pipeline` run and the **2026 Season Dashboard** report (every chart explained: [W&B guide](guides/weights-and-biases.md#the-season-dashboard-p07-every-chart-explained)) | Step times, freshness, checks, drift; the season charts | The 2-minute checklist in the [W&B guide §5](guides/weights-and-biases.md#what-to-check-each-week-in-2-minutes) |
 
 Before the first run of a session it doesn't hurt to run `uv run nfl doctor` (every line OK).
@@ -29,6 +29,7 @@ Before the first run of a session it doesn't hurt to run `uv run nfl doctor` (ev
 | 3 | `not_ready` | Last week's games aren't all final and in nflverse's play-by-play yet | Run again later (every few hours). Before a full ingest, `--auto` refreshes only the schedule; if last week still has games without a final score it stops at once (no full ingest, no Odds API calls). After the retry window (Wednesday 18:00 ET, or the first kickoff if earlier) it raises an alert |
 | 4 | `locked` | Another weekly run or injury update is running | Wait for it ([The lock](#the-lock)) |
 | 5 | — | The data drive isn't connected (or `NFL_DATA_ROOT` is wrong); nothing was written | Connect D:, run `uv run nfl doctor`, run again |
+| 6 | `week_mismatch` | `--expect-week N` was given (the control room always gives it) and the calendar's week isn't N: it stopped before any step, wrote no records and released the lock (CR02, D103) | Nothing ran. Reload the control room (its week comes from the calendar) or check `uv run nfl weekly status` |
 
 ## What `--auto` decides
 
@@ -53,7 +54,7 @@ late run: week 4's first game kicked off already; games that started keep their 
 already_done: 2026 week 04 is already published; nothing to do
 ```
 
-Add `--dry-run` to see the plan without running anything (it exits 3 if last week isn't final yet).
+Add `--dry-run` to see the plan without running anything (it exits 3 if last week isn't final yet). Add `--expect-week N` to make the run stop (exit 6, nothing written) unless the calendar's week is N; it only works with `--auto`.
 
 ## How to ...
 
@@ -62,12 +63,43 @@ Add `--dry-run` to see the plan without running anything (it exits 3 if last wee
 The failed step and its reason are printed, and recorded in `runs\<season>\week<NN>\weekly_run.json` and `run_summary.json`. Fix the cause, then resume from that step (earlier steps are kept):
 
 ```powershell
-uv run nfl weekly run --season 2026 --week 5 --from-step game
+uv run nfl weekly run --season 2026 --week 5 --from-step game --promote
 ```
+
+`--promote` moves W&B's `production` alias to this resume's fits, as the `--auto` run being finished would have done (a manual run doesn't promote without it). The control room's **Resume week N from <step>** button runs exactly this command, for the current week's failed run only (D103).
 
 Steps, in order: `ingest`, `ready`, `curate`, `ratings`, `game`, `graph`, `player`, `digest`. Every step is idempotent, so re-running an earlier one is safe; games that already kicked off keep their earlier predictions (D55).
 
 **Since P08** the `player` step refits 23 player targets (the 11 P06 ones plus TDs, interceptions, QB rushing, sacks, QB hits and CB/S coverage, D82), then the shipped team stat totals into `predictions_teams.parquet` (D80), then the consistency layer (receptions ≤ targets; the yards gaps go to `consistency.json`, D81). The team fit and the consistency layer never degrade the step: a failure shows as "team fit skipped (…)" / "consistency skipped (…)" in its detail line. The game step still fits v0 (`game_model.version`; v1 evaluated, not promoted, D79).
+
+### Run the week from the control room (CR02)
+
+The control room (`uv run nfl app`, the [guide](guides/control-room.md)) runs the same commands as above, with the same lock and records. The terminal commands keep working as before.
+
+1. **Start it:** `uv run nfl app` (opens `http://127.0.0.1:8765/` on the current week's Pipeline tab). Leave its terminal open.
+2. **Pre-flight** (the panel at the top of the Pipeline tab) checks the calendar week, last week final, not published yet, the run lock, the data drive, Neo4j, the keys (by name) and `seasons.current`.
+   - **Run week N** is greyed out with the reason while a blocking check fails.
+   - "Last week isn't final" from an old schedule snapshot is only a **warning**: the run refreshes the schedule first and stops with exit 3 if it really isn't final. After such a not-ready run the button stays greyed for 30 minutes ("Try again after …"), then **Check again** turns it back on.
+   - Neo4j down is a warning: the run starts it.
+3. **Press Run week N, read the confirm dialog** (week from the calendar, last week, deadline, steps, what gets published, the command `nfl weekly run --auto --expect-week N`) and confirm.
+4. **Watch it:** the now-bar (step x of 9, what it's doing, elapsed, about how long is left), the run in the drive chart / pipeline map / timeline, and the log streaming. The digest's GLM step shows "waiting for the model" with the elapsed time and the route for its whole length (3–40 minutes); the provider, time, reasoning count and cost appear when the call returns. **Closing the tab or the browser doesn't stop the run**; reopen the page and it picks the run up again (even one started from a terminal).
+5. **When it ends:** a toast and a browser notification ("Week 5 published · …" or the failure), the sidebar and tabs refresh. Then do the usual checks (the digest's footer, `pipeline-2026-w05` in W&B, the Season log line).
+
+| What you see | What it means | What to do |
+|---|---|---|
+| Greyed **Run week N**, "Week N is already published" | `--auto` would only say `already_done` | Nothing. A re-run of a published week stays in the terminal (`--force`) |
+| Greyed, "Another run holds the lock" | A run (or an injury update) is going, maybe from a terminal | Watch it in the app; wait |
+| Greyed, "Try again after 10:32 AM" | The last run stopped as not ready a few minutes ago | Wait, then **Check again** |
+| Greyed, a key "not set" | A required variable (by name) isn't in the env file | Rishi fixes the env file; `uv run nfl doctor` |
+| Red banner "The player step failed." + **Resume week N from player** | A step failed; nothing was published | Fix the cause, then press Resume (it runs `--from-step player --promote` for the current week only) |
+| Toast "The calendar's week changed: nothing ran" | Exit 6: the week moved between the page and the run | Reload the page |
+| Toast "Week N−1 isn't final yet: try again later" | Exit 3 | Wait and try again (the retry window is in the header) |
+
+**Saturday:** the week header's **Saturday injury update** button opens on Saturday (ET) once the week's Tuesday run is published, until the week's last kickoff; otherwise it's greyed out with the reason. It runs `nfl weekly injury-update --auto --expect-week N` (exit 6, nothing written, if the calendar's week moved on before it started), shows its own live log under the header, and its toast says whether an addendum was published (the Digest tab then shows it).
+
+**What stays in the terminal:** re-running a published week (`--force`), `--as-of` simulations, graph rebuilds, resumes of older weeks, anything that deletes. The app runs exactly three commands (D103).
+
+**Rehearsal mode:** `uv run nfl app --rehearsal` points the Run button at `nfl weekly rehearse` of the newest published week, into `rehearsals/control-room` (nothing live is touched: no W&B, no graph write, no records; a banner says so). Use it to try the live views. `--fail-at <step>` (a hidden option, rehearsal only) makes the first rehearsal fail at that step on purpose, to try the failure and Resume buttons.
 
 ### Re-publish only the digest
 
@@ -162,7 +194,7 @@ It regenerates once with the list of failures; if that fails too, it publishes w
 
 ### Rehearse a week (P10)
 
-A **rehearsal** runs the real Tuesday steps (`ready`, `game`, `player`, `digest`) on a past or current week, with the clock pinned to 10:00 ET on the Tuesday before it, into a scratch folder. Nothing live is touched: no W&B, no graph write or graph sections, no run records, no alias moves, no lock. Use it before anything risky (a dependency upgrade, a new step), for the playoff check every January and for the pre-season dry run.
+A **rehearsal** runs the real Tuesday steps (`ready`, `game`, `player`, `digest`) on a past or current week, with the clock pinned to 10:00 ET on the Tuesday before it, into a scratch folder. Nothing live is touched: no W&B, no graph write or graph sections, no run records, no alias moves, and not the weekly-run lock (since CR02 a rehearsal holds its own lock on its folder, `.<folder>.rehearsal.lock` beside it, so two rehearsals can't share a folder). Use it before anything risky (a dependency upgrade, a new step), for the playoff check every January and for the pre-season dry run.
 
 ```powershell
 uv run nfl weekly rehearse --season 2025 --weeks 19-22 --fresh   # last season's playoffs, round by round
@@ -171,7 +203,8 @@ uv run nfl weekly rehearse --season 2025 --week 19 --steps digest --llm openrout
 ```
 
 - Output: `D:\nfl-ml-data\rehearsals\<season>\` (its own `runs\`, `models\`, `reports\`, seeded with copies of the feature tables and the canonical backtests; `rehearsal.json` per week says what each step did). Weeks rehearsed into the same folder chain like live weeks (week 20's report card grades week 19's rehearsed picks). `--fresh` wipes the folder first (only a folder with its `REHEARSAL.md` marker).
-- Exit 0 when every week ran (`ok` or `degraded`), 1 if a week failed.
+- Exit 0 when every week ran (`ok` or `degraded`), 1 if a week failed, 4 if another rehearsal is using the folder.
+- Since CR02 it also writes progress events (`runs\<season>\week<NN>\events\<run-id>.jsonl` under the rehearsal folder), which is how the control room's rehearsal mode draws it live.
 - **What it proves, and what it doesn't:** the code path, end to end. Not the accuracy: it reads today's data, so closing lines and final injury reports leak into a past week's numbers. `ingest`, `curate`, `ratings` and `graph` aren't rehearsed (they rewrite shared files); it reads their current output.
 - How long: a regular-season week takes about the live time without ingest (the player step dominates: about 95 s in week 4, longer each week); a playoff week about 10 minutes (the player refits walk through weeks 1–18 first).
 
@@ -256,7 +289,9 @@ Every alert's full text (with the numbers) is in that week's `run_summary.json` 
 | The injury update's comparison | `runs\<season>\week<NN>\injury_update.json` |
 | Simulations | `runs\digest-backtests\<season>\...` (same file names) |
 | The lock | `runs\.weekly.lock` |
-| W&B | group `weekly-pipeline` (`pipeline`, `injury-update`, `simulation`, `main` = the digest), group `season-dashboard`, the report "2026 Season Dashboard" |
+| A run's progress events (CR02): every step, progress, the GLM call, each log line | `runs\<season>\week<NN>\events\<run-id>.jsonl` (one file per run, resume or injury update) |
+| What the control room launched, and each command's output | `cache\control-room\runs\<run-id>.json`, `cache\control-room\logs\<run-id>.log` |
+| W&B | group `weekly-pipeline` (`pipeline`, `injury-update`, `simulation`, `main` = the digest), group `season-dashboard`, the report "2026 Season Dashboard"; runs launched from the control room carry the tag `via:control-room` |
 
 ## Scheduling later (not now)
 

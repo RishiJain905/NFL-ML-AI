@@ -1,6 +1,6 @@
 ---
 name: weekly-ops
-description: How the weekly pipeline is operated (P07+): `nfl weekly run --auto` and its exit codes, the calendar (target week, deadline, special weeks), the run lock, Neo4j / Docker start-up, run records (run_summary.json, pipeline_history.parquet, the `weekly-pipeline` / `pipeline` W&B run), alerts, drift checks, the season dashboard and its W&B Report, the Saturday injury update, `--as-of` time-travel simulations, P10 rehearsals (`nfl weekly rehearse`, the pinned clock), playoff weeks, the season log and season review (`nfl season weeks|review`), the season calendar and pre-season checklist, and how to test or extend any of it. Use when running, resuming, debugging or changing the weekly run, adding a pipeline step, reading an alert, or preparing to schedule the pipeline.
+description: How the weekly pipeline is operated (P07+): `nfl weekly run --auto` and its exit codes (`--expect-week`, exit 6), the progress events (`events/<run-id>.jsonl`, CR02), the calendar (target week, deadline, special weeks), the run lock, Neo4j / Docker start-up, run records (run_summary.json, pipeline_history.parquet, the `weekly-pipeline` / `pipeline` W&B run), alerts, drift checks, the season dashboard and its W&B Report, the Saturday injury update, `--as-of` time-travel simulations, P10 rehearsals (`nfl weekly rehearse`, the pinned clock), playoff weeks, the season log and season review (`nfl season weeks|review`), the season calendar and pre-season checklist, and how to test or extend any of it. Use when running, resuming, debugging or changing the weekly run, adding a pipeline step, reading an alert, or preparing to schedule the pipeline.
 ---
 
 # Weekly operations (P07+)
@@ -17,6 +17,7 @@ The operator's page is `documentation/runbook.md`; how each piece works is `docu
 |---|---|
 | `uv run nfl weekly run --auto` | The weekly run. Works out season / week; skips a published week |
 | `uv run nfl weekly run --auto --dry-run` | Plan only; exit 3 if last week isn't final |
+| `uv run nfl weekly run --auto --expect-week N` | CR02: stop before anything (exit 6) unless the calendar's week is N (the control room always sends it; dry runs check it too) |
 | `uv run nfl weekly status [--as-of T]` | Calendar plan, step states for weeks N−1 and N, the lock, the last 5 runs |
 | `uv run nfl weekly run --season S --week N --from-step <step>` | Resume / repair a specific week |
 | `uv run nfl weekly run --auto --as-of 2025-11-04T10:00` | Simulate a past moment (ET without an offset) |
@@ -26,7 +27,7 @@ The operator's page is `documentation/runbook.md`; how each piece works is `docu
 | `uv run nfl season weeks --season S [--simulations]` | P10: one line per week for PROGRESS → Season log |
 | `uv run nfl season review --season S [--out FILE] [--through-week N]` | P10: the season review Markdown from the run records |
 
-Exit codes of `nfl weekly run`: **0** ok, degraded, already_done, idle, planned · **1** failed · **2** usage error · **3** not ready (retry later) · **4** another run holds the lock · **5** data drive missing (nothing written). `injury-update`: 0 / 1 / 4 / 5.
+Exit codes of `nfl weekly run`: **0** ok, degraded, already_done, idle, planned · **1** failed · **2** usage error · **3** not ready (retry later) · **4** another run holds the lock · **5** data drive missing (nothing written) · **6** `--expect-week` and the calendar's week differ (nothing run, no records, lock released; CR02). `injury-update`: 0 / 1 / 4 / 5 / 6 (`--auto --expect-week N`, CR02's Sol review). `rehearse`: 0 / 1 / 2 / 4 (another rehearsal holds the folder) / 5. Since CR02 the lock note carries the run's `run_id` (its events file's name): `run_lock(path, command, run_id=...)`.
 
 ## 3. How `run_pipeline` is put together
 1. `ensure_data_root()` (exit 5 on `DataRootError`; 2 is click's usage error), schedules from the newest raw snapshot (`ops.calendar.load_schedules`).
@@ -38,6 +39,13 @@ Exit codes of `nfl weekly run`: **0** ok, degraded, already_done, idle, planned 
 - `--auto` promotes (`ops.promote_auto`, D72); manual runs only with `--promote`.
 - **The `--auto` pre-check:** if the schedule says week N−1 isn't final, refresh only the schedule (`refresh_schedule`), re-plan, and if it's still not final run just a calendar `ready` step (`_calendar_ready`): a recorded `not_ready` with no full ingest.
 - Simulations (`--as-of` more than an hour in the past): steps `ready` (calendar time travel: `kickoff + ops.data_lag_hours`) and `digest` (backtest mode, `run_time = as_of`, placeholder writer, `graph="off"` so the live graph is never wiped, no digest W&B run); files only under `runs/digest-backtests/` and `reports/backtests/`; W&B `weekly-pipeline` / `simulation`; no dashboard.
+
+## 3b. Progress events (CR02, D103; `ops/events.py`)
+- Every invocation that runs steps writes `events/<run-id>.jsonl` beside the week's other files (`runs/<S>/week<NN>/`; a rehearsal under its folder; simulations under `runs/digest-backtests/`): `run_start` (kind, command, steps, `from_step`, `earlier`, `via`, the plan lines), `step_start` / `progress` / `step_end` (from `run_weekly`, which every path shares), `llm` (from `digest.synthesize._call`), `log` (each console line, via `events.tee(log)`), the `records` step, `run_end` (status, exit code, message, `published`, `failed_step`, `material`). Runs that stop before any step (idle, exit 6, already done, locked) write none.
+- **Adding progress to a step:** `events.progress(None, done, total, label)` (`None` = the running step); wrap a sub-part in `with events.portion(lo, hi):` so its own 0–1 maps onto part of the step (the player step: scoreboard 0–0.08, refits 0.08–0.88, team 0.88, consistency 0.94, graph 0.96). Labels read like the mockup ("refitting 7/23 · rec_yds-wrte"). It's a no-op without a writer, throttled to ~4/s per step (a new kind of label always goes), and **can never raise into the step** (a broken file silences the writer).
+- **Never stream the LLM call for the UI** (P09: a call change needs a real-LLM re-check): `llm` events read the client's `calls` record after it returns.
+- `--app-run <run-id>` (hidden; `weekly run`, `injury-update`, `rehearse`) names the events file and sets `tracking.LAUNCH_VIA = "control-room"`: every W&B run of that process gets a `via:control-room` tag. The control room passes it with `--launched-by rishi`.
+- **The pipeline's atomic writers retry the replace** (`fsutil.replace_file`, ~2 s on `PermissionError`): the control room reads the run's files while it's live. New writers that replace a file the app reads should use it too.
 
 ## 4. Testing it
 - `tests/ops/test_pipeline.py` is the pattern: `run_pipeline(schedules=<fixture>, now=<pinned clock>, funcs={name: fake}, use_wandb=False, log=...)` with `monkeypatch.setattr(nflengine.weekly, "ensure_data_root", lambda *a, **k: DataPaths(tmp_path))`. The schedule fixture is `tests/fixtures/schedules_2024_2026.csv` (a column subset of nflverse's schedule as of 2026-10-04).
@@ -66,7 +74,8 @@ Exit codes of `nfl weekly run`: **0** ok, degraded, already_done, idle, planned 
 - **Never rehearse** `ingest`, `curate`, `ratings` or `graph`: the ratings build rewrites `curated/nfl.duckdb`'s views (pointing them at the scratch features), the graph build replaces the live graph.
 - **Prove "the live path is unchanged"** after a change to the steps: `nfl weekly rehearse --season 2026 --week 4 --steps game,player --at <the published file's created_at> --out D:/nfl-ml-data/rehearsals/check-2026-w04 --fresh`, then compare with the published `predictions_games` / `predictions_players` (unstarted games; the published player file holds only the targets live at the time). P10's comparison script is in the session log.
 - **A rehearsed past week reads today's data:** closing lines and final injury reports leak in; it proves the code path, not accuracy. A rehearsal of a backtested season (2025) logs "game context: 2026 walk-forward" (the context refit is for the data's last season; 2025's comes from the canonical backtest): expected.
-- Tests: `tests/ops/test_rehearsal.py` (fake step funcs record the clock, the paths type, `WANDB_MODE` and the options), `tests/ops/test_season_cli.py`.
+- Tests: `tests/ops/test_rehearsal.py` (fake step funcs record the clock, the paths type, `WANDB_MODE` and the options), `tests/ops/test_season_cli.py`, `tests/ops/test_events.py` (CR02: the lock, events, `--fail-at`, a resume's `earlier`).
+- **CR02:** a rehearsal holds its own OS lock, `.<folder>.rehearsal.lock` **beside** the folder (taken before `--fresh` wipes it; `LockHeld` → exit 4); it writes progress events; `--fail-at STEP` (hidden) replaces that step with one that reports some progress and fails ("injected failure"), for the control room's failure / resume proof; a resume is `--steps <failed step onward>` without `--fresh` (the earlier steps stay in the folder's `weekly_run.json`, and `run_start.earlier` names them).
 
 ## 5d. Playoff weeks (P10, D91)
 - The calendar, readiness, the game model and the digest's report card always handled weeks 19–22. P10 added: player rows for the round (`features.player_data.with_playoff_week`; regular-season form, no retraining), playoff box scores for grading (`load_inputs(playoffs=True)`: `score_weeks` and the watch-list look-back only), the playoff role rule (`player_runs._role_ok`: last-3-games snap share and 3+ games; `role_change` off for playoff rows), the round's name (`ops.calendar.round_name` → `Meta.playoff_round` → the title), trends / under-the-hood limited to the slate's teams, under-the-hood reading this season's playoff rows. Team stat totals stay regular season (0 rows, a note, not `degraded`).
@@ -74,6 +83,8 @@ Exit codes of `nfl weekly run`: **0** ok, degraded, already_done, idle, planned 
 - ESPN's per-week scoreboard / QBR ingest stays `seasontype=2` (nothing reads them; the news isn't per-week). NGS numbers the Super Bowl one week after nflverse (23 vs 22; 22 vs 21 before 2021); `under_hood.source_weeks` reads it as nflverse's, and counts playoff weeks, so freshness doesn't call NGS / PFR / FTN stale in the playoffs.
 
 ## 6. Known quirks
+- **CR02's Run button runs the same commands** (`nfl weekly run --auto --expect-week N --launched-by rishi`, a resume `--season S --week N --from-step X --promote`, `nfl weekly injury-update --auto`) with the same lock and records; §1's rule holds for it: agents press Run (or call `POST /api/run`) only when Rishi asks in the current session; `nfl app --rehearsal` is always fine.
+- **A terminal resume of an `--auto` run should add `--promote`** (D103): a manual run doesn't promote without it, and the `--auto` run it finishes would have.
 - `weekly_run.json` timestamps are local time with an offset since P07 (naive local before); `_ran_since` handles both.
 - `run_summary.json` → `steps[*].this_run` tells which steps ran in this invocation; a resumed run keeps earlier steps' rows.
 - nflverse lists some neutral-site games under the home team's stadium (2025: all international games); `stadiums.yaml` → `game_venues` fixes them, and the calendar reads it first.

@@ -78,6 +78,7 @@ Run names aren't unique: re-running a week makes a second `train-2026-w04`. The 
 | Tag | On which runs | Meaning |
 |---|---|---|
 | `launched-by:rishi` / `launched-by:agent` | Every run | Who started it |
+| `via:control-room` | Every run made by a command the control room launched (CR02, D103): the weekly run's steps, the `pipeline` run, the dashboard, an injury update | Started from the app's Run / Resume / injury-update buttons, not from a terminal. Terminal runs have no `via:` tag |
 | `season:YYYY`, `week:NN` | Weekly fit, graph builds, digests | The week the run is about. Backtests and tuning runs don't have them |
 | `prod` | Live digests only | The run behind a published digest |
 | `prod-candidate` | Weekly fits (`train`) | A live fit (promoted or not; see the `production` alias in §8) |
@@ -90,7 +91,7 @@ Run names aren't unique: re-running a week makes a second `train-2026-w04`. The 
 | `player`, `group:<qb, rb, wrte, edge or lbs>`, `target:<name>`, `scoreboard`, `smoke` | Player-model runs (P06) | Position group and target of a backtest or sweep; `scoreboard` on the live scoring run; `smoke` on a test backtest (`--smoke`, nothing saved) |
 | `digest`, `llm:<writer>`, `graph:<status>` | Digests | Writer (`openrouter` or `placeholder`) and whether the graph sections were in (`ok`, `unavailable`, `off`) |
 
-**Useful filters:** "everything for 2026 week 4" = tags `season:2026` + `week:04`. "Only what was published" = tag `prod` (digests only) or group `weekly-pipeline`. "Only Rishi's runs" = tag `launched-by:rishi`.
+**Useful filters:** "everything for 2026 week 4" = tags `season:2026` + `week:04`. "Only what was published" = tag `prod` (digests only) or group `weekly-pipeline`. "Only Rishi's runs" = tag `launched-by:rishi`. "Only runs started from the control room" = tag `via:control-room`.
 
 ### What's in a local run folder
 

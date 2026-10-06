@@ -37,7 +37,8 @@ uv run nfl curate                  # curated tables + DuckDB views + quality che
 uv run nfl data-status             # newest week per source, row counts, join rates (P01)
 
 npm --prefix web ci; npm --prefix web run build   # once: build the control room's web app (CR00)
-uv run nfl app                     # the control room on http://127.0.0.1:8765 (local only; documentation/guides/control-room.md)
+uv run nfl app                     # the control room on http://127.0.0.1:8765: the Run button for the week (CR02; local only; documentation/guides/control-room.md)
+uv run nfl app --rehearsal         # the Run button rehearses the newest published week instead (nothing live touched)
 uv run nfl ingest --check-ready --week N   # are week N's games final and in play-by-play?
 
 uv run nfl ratings build           # team_ratings / team_elo / team_trends tables (P02)
@@ -67,6 +68,7 @@ uv run nfl consistency                           # receptions vs targets, receiv
 
 uv run nfl weekly run --auto                    # THE weekly command (P07): calendar picks the week; exit 3 = not ready yet
 uv run nfl weekly run --auto --dry-run          # show the calendar plan, run nothing
+uv run nfl weekly run --auto --expect-week 5    # stop (exit 6, nothing written) unless the calendar's week is 5 (CR02)
 uv run nfl weekly status                        # calendar now, step states, lock, recent runs
 uv run nfl weekly injury-update --auto          # Saturday: re-pull injuries / lines, addendum only if material
 uv run nfl weekly run --auto --as-of 2025-11-04T10:00   # simulate a past week (ET; writes only backtest folders)
