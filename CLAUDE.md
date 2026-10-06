@@ -47,7 +47,7 @@ A personal ML system that produces a weekly NFL digest (win probabilities, predi
 - **Guides:** `documentation/guides/`, one plain-language guide per major technology or component (knowledge graph, W&B tracking, the LLM writer, ...). **Model cards:** `documentation/model_cards/`, one per trained or tuned model. See "Documentation" below.
 - **Build plan:** `documentation/plans/README.md`. **Where work stands:** `documentation/plans/PROGRESS.md`.
 - **Decisions:** `documentation/10-decisions-log.md`. If implementation needs to differ from a doc, update the doc and log the decision in the same commit.
-- **Control room (the local web app):** its own track, `documentation/control-room/` (spec `README.md`, phases `CR00`–`CR03`, the approved mockup's source in `mockup/`; D94–D98). The mockup is the visual spec: design changes go mockup first, then the spec, then the code. Its status rows are in PROGRESS like every phase.
+- **Control room (the local web app):** its own track, `documentation/control-room/` (spec `README.md`, phases `CR00`–`CR03`, the approved mockup's source in `mockup/`; D94–D102). The mockup is the visual spec: design changes go mockup first, then the spec, then the code. Its status rows are in PROGRESS like every phase.
 
 ## Documentation: what every phase must leave behind
 

@@ -1,6 +1,6 @@
 # Control room: the local web app for the weekly pipeline
 
-Status → see the **Control room** rows in [plans/PROGRESS.md](../plans/PROGRESS.md). Decisions: D94–D96 in the [decisions log](../10-decisions-log.md).
+Status → see the **Control room** rows in [plans/PROGRESS.md](../plans/PROGRESS.md). Decisions: D94–D102 in the [decisions log](../10-decisions-log.md).
 
 The control room is a web app that runs on Rishi's machine (localhost only). On Tuesday he opens it and presses **one button** to run the week's pipeline. He watches every step happen, then reads the digest and checks last week's results. He can also look at the MLOps side (run health, W&B runs and charts, artifacts) and at season-long views.
 
@@ -211,6 +211,18 @@ The plan is read-only first (useful from day one with no risk to the live pipeli
 - **Week 4's digest took 39 minutes** (two GLM calls on DeepInfra: 24.7 and 13.9 minutes), about 90% of the run. The live view has to keep showing progress (elapsed time, provider) through a long LLM step.
 - **The preview tool writes `.playwright-mcp/` into the repo root.** It's git-ignored since 2026-10-05.
 
+**Checked again in CR01 (2026-10-05).**
+- **The files a week has** (`runs/<S>/week<NN>/`):
+  - **2026 week 4** (before run records): `weekly_run.json`, `checks.json`, `digest.md`, `payload.json`, `raw_llm_output.json`, `graph_results.json`, `predictions_games.parquet` (16 games × market / model-only rows), `predictions_players.parquet` (1,860 rows, 11 stats), `watchlist.parquet` (8 picks, no `side`), `player_status.json`, `ratings_sanity.md`; plus `reports/2026/week04-digest.md`. No `run_summary.json`, no `predictions_teams.parquet`, no `consistency.json`.
+  - **A full week from week 5** adds `run_summary.json`, P08's `predictions_teams.parquet` (128 team rows, 4 stats) and `consistency.json`, 23 player stats (2,586 rows in the 2026 week-1 rehearsal; yes/no stats like TD have no quantiles, only `p_ge1`) and a watch list of 10 offense + 10 defense picks with `side`.
+  - **A Saturday injury update** adds `injury_update.json` (always), `predictions_games_update.parquet` / `predictions_players_update.parquet`, and `reports/<S>/week<NN>-injury-update.md` when the change is material.
+  - Full weeks with run summaries exist on D: only as P07's simulations (`runs/digest-backtests/2025/week10`–`12`); rehearsals (`rehearsals/<S>/`) have no summary and no graph.
+- **Results' sources** (D101): week N+1's `payload.json` → `report_card` for the published numbers, the saved predictions + curated finals through `grade_games` / `week_metrics` for game by game and the market's Brier, `watch_lookback` + `watchlist.parquet` for the watch list, `accuracy_scoreboard.parquet` for the groups. Recomputed = published on 2025 weeks 9, 10 and 13.
+- **The payload fields** are as expected: `qb_changes` (5 in week 4, `game_id` + `team` + `text`), `tough_spots` (3), `starters_out` (39); `players_to_watch` carries the digest's own display strings.
+- **Step details name absolute data-root paths** (`D:\nfl-ml-data\runs\...`) and W&B run URLs: the readers make the paths relative and pull the URLs out as links (D100).
+- **The published digest has CRLF line ends** (written on Windows): read without newline translation to stay byte for byte.
+- **`scrub()` masks `"…key…": value`-shaped JSON**, so API field names avoid those words (D100).
+
 ## 10. As built
 
 Each phase adds what it built and any differences from this spec here, with decision numbers.
@@ -232,3 +244,24 @@ Each phase adds what it built and any differences from this spec here, with deci
   - the data root's path never reaches the browser;
   - the lock check doesn't probe the lock unless a run has written its note;
   - the week tabs are navigation links.
+
+**CR01 (2026-10-05/06, D100–D102).**
+- **What runs:** every week tab except MLOps reads the week's real files: Pipeline (finished run or the plan, in the three views with the per-week picker), Digest, Games, Players, Results, Graph; the week header for any week. Guide §2a explains each tab and the files it reads.
+- **Endpoints added:** `/api/team-info`, `/api/weeks/{season}/{week}` (header), `/api/weeks/{season}/{week}/{pipeline,digest,games,players,results,graph}` (`players?stats=all`). Season 1999–2100 and week 1–22 are validated; a bad value gets a 422 that doesn't echo it.
+- **Differences from §3–§5 and the CR01 tasks** (CR01's "As built" lists them in full):
+  - curated finals and team names come from `curated/<table>.parquet` in one short read, not a DuckDB connection to `nfl.duckdb`; Parquet is never memory-mapped (D100);
+  - the app's data root never creates folders (`ensure_data_root(create_dirs=False)`), and the root's path is removed from every text before it's capped (D102);
+  - field names avoid `key` / `token` / `auth` (the step model's `step`, `usage.{prompt, completion, reasoning}`);
+  - "Open in W&B" links the week's digest run;
+  - the current week's log is the calendar's plan; the dry run is CR02's;
+  - Results: the published report card's numbers plus game by game recomputed with the report card's own code, and a `consistent` flag (D101);
+  - a `running` week state, and a step left `running` without the lock shows as interrupted;
+  - a stale `run_summary.json` (from an earlier sitting) is set aside (D102).
+- **Mockup parity** (week 4's Pipeline in all three views, Digest, Games, Players, Results, Graph; week 5's Pipeline and Games; the graded Results on P07's simulated 2025 week 10; Turf & Pylon dark and Playbook light), differences kept on purpose:
+  - "Colts at Commanders abroad" (the plan has no city) for "… in London"; "Thursday game" for "Thursday opener"; week 5 "Waiting on week 4" while the local snapshot is stale (CR00's rule);
+  - a game first predicted after its kickoff reads "predicted after kickoff · final · not graded" with no hit / miss (the mockup's "Thursday's kept pick" was wrong, D102);
+  - no pre-flight panel or Run button (CR02): a notice with the terminal command;
+  - Results shows real grading or its empty state, never sample numbers; its group bars and watch list are full width (20 picks didn't fit the mockup's two columns), the watch list split Offense / Defense;
+  - the pipeline map's Game model → Knowledge graph edge starts below the label (the mockup's crossed it);
+  - Players: "Show every stat" and "Show all N"; Graph: a "why not" column and 15 rows before "Show all"; Digest: Saturday's addendum as a card under the digest, writers listed once.
+- **Sol review:** 7 findings (0 high), all fixed (D102).

@@ -2,7 +2,7 @@
 
 A personal ML system that produces a weekly NFL digest during the season. It shows game win probabilities and predicted scores, team trends, a look back at last week's tracking stats, projections for offensive and defensive players, and insights from a knowledge graph. It tracks its own accuracy every week. A separate research track models player movement on the NFL Big Data Bowl tracking data.
 
-Last updated: 2026-10-05 (P10: season operations, rehearsals, playoffs; the control-room track planned).
+Last updated: 2026-10-05 (CR01: the control room's week archive; earlier P10: season operations, rehearsals, playoffs, and the control-room track planned).
 
 ## Start here
 
@@ -10,9 +10,9 @@ Last updated: 2026-10-05 (P10: season operations, rehearsals, playoffs; the cont
 - **Want to understand the design?** Read the docs below in order.
 - **Running the weekly digest?** Use the **[runbook](runbook.md)**: the weekly commands, exit codes, what each alert means, how to rerun, resume, roll back, simulate or rehearse a week, the playoffs, the end of the season and the pre-season checklist.
 
-## Control room (the local web app, planned)
+## Control room (the local web app)
 
-[`control-room/`](control-room/README.md) is its own track, CR00–CR03 (D94–D98). **CR00 is built** (`uv run nfl app`, the app shell, both themes, the safety rules): see the [control room guide](guides/control-room.md). It's a localhost web app to run the week with one button, watch every step live, read the digest and results, and see the MLOps side (run health, W&B runs and charts, artifacts) and season views. The folder holds the spec, the four phase files and the source of the [approved mockup](https://claude.ai/artifact/1z7AapJzJwKusNtWzXYfQw) (its visual spec).
+[`control-room/`](control-room/README.md) is its own track, CR00–CR03 (D94–D102). **CR00 and CR01 are built** (`uv run nfl app`, the app shell, both themes, the safety rules; every week tab from the real files with the three pipeline views): see the [control room guide](guides/control-room.md). It's a localhost web app to run the week with one button, watch every step live, read the digest and results, and see the MLOps side (run health, W&B runs and charts, artifacts) and season views. The folder holds the spec, the four phase files and the source of the [approved mockup](https://claude.ai/artifact/1z7AapJzJwKusNtWzXYfQw) (its visual spec).
 
 ## Design documents
 
@@ -42,7 +42,7 @@ One guide per major technology or component, written for a reader who's new to i
 | [The LLM digest writer](guides/llm-digest-writer.md) | What the LLM does and doesn't do, the prompt, the checks it must pass, cost and latency, how to switch the model or provider safely, and the P09 re-check on today's digest |
 | [Player projections](guides/player-projections.md) | The player model (P06): LightGBM, quantile ranges, count distributions, SHAP drivers in a few minutes; how projections become the watch list, tough spots, the look-back and the accuracy scoreboard; files, W&B runs, commands, how to change it safely; P08: chances of a TD / sack / interception (calibrated), QB TDs and interceptions, CB/S coverage |
 | [Season operations](guides/season-operations.md) | The season beyond one week (P10): the 2026–27 calendar, the Tuesday season log, **rehearsals** (the live steps on any week in a sandbox), what playoff weeks do, the season review, roster churn, the pre-season checklist, Big Data Bowl 2027 |
-| [The control room](guides/control-room.md) | The local web app (CR00+): starting it (`uv run nfl app`), what each part of the screen shows and the week-status rules, themes and modes, how it's wired (FastAPI + React), the safety rules in plain words, troubleshooting, how to extend it safely |
+| [The control room](guides/control-room.md) | The local web app (CR00+): starting it (`uv run nfl app`), what each part of the screen shows and the week-status rules, each week tab and the files it reads (CR01), the three pipeline views, themes and modes, how it's wired (FastAPI + React), the safety rules in plain words, troubleshooting, how to extend it safely |
 | [Weekly operations](guides/weekly-operations.md) | How the weekly run is operated (P07, manual-first): the calendar (which week, the deadline, special weeks), `nfl weekly run --auto` and its exit codes, the lock, Neo4j start-up, the run records and W&B pipeline run, alerts, drift checks and their 2019–2025 replay, the season dashboard, the Saturday injury update, time-travel simulations |
 
 ## Weekly graph queries
