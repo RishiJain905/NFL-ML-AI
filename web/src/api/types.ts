@@ -609,3 +609,393 @@ export type RunEvent =
   | LlmEvent
   | LogEvent
   | RunEndEvent;
+
+// ---------------------------------------------------------------- CR03: MLOps and the season
+// GET /api/weeks/{season}/{week}/mlops/{health,wandb,artifacts}; GET /api/season/{season}/
+// scorecard?source=live|backtest; GET /api/teams?season=&week=; GET /api/models (+ /api/models/
+// card/{id}); GET /api/alerts?season=; GET /api/health. Local files first; W&B (read on the
+// server, cached) only for run lists, links, versions, aliases and lineage. `?refresh=1` on a
+// W&B-backed endpoint (and /api/health) skips the cache once. Field names still avoid "key",
+// "token", "auth", "secret" and "password" (the security scan).
+
+/** Whether W&B answered. When it can't be reached (or its variable isn't set) the page shows
+ *  a banner with `reason` and still renders everything local. */
+export interface WandbState {
+  available: boolean; // W&B data is in this answer (fresh, or from the cache)
+  reason: string | null; // why not, or why it's stale: "WANDB_API_KEY isn't set", "W&B didn't answer within 10 s"
+  fetched_at: string | null; // when the W&B part was fetched (ISO); null when nothing came from W&B
+  stale: boolean; // from an older cache because W&B can't be reached now
+  project_url: string | null; // https://wandb.ai/<entity>/<project>
+}
+
+// ---- MLOps → Health ----------------------------------------------------------------------
+
+export interface FreshnessRow {
+  source: string; // nflverse, espn, ngs_site, open_meteo, odds_api
+  dataset: string;
+  snapshot_date: string | null;
+  age_days: number | null;
+  newest_week: number | null;
+  expected_week: number | null;
+  status: string; // ok, failed, missing …
+  stale: boolean;
+  note: string | null;
+}
+
+export interface DriftRow {
+  name: string; // game_vs_elo, calibration, player_vs_baseline, player_prob_vs_baseline, data_freshness, checks
+  group: string | null; // a position group for the player signals
+  status: 'ok' | 'alert' | 'insufficient_data' | string;
+  value: number | null;
+  threshold: number | null;
+  detail: string; // the run's own sentence
+  response: string; // doc 08's response ("No action needed." when fine)
+}
+
+export interface VsRow {
+  measure: string; // "Time in steps", "GLM writing the digest", "LLM cost", "Games predicted", …
+  unit: 'seconds' | 'usd' | 'count' | 'flag';
+  this_week: number | null; // flag: 1 / 0
+  last_week: number | null;
+  trend: { week: number; value: number | null }[]; // the season so far, one point per run week
+}
+
+export interface MlopsHealthResponse {
+  season: number;
+  week: number;
+  /** full: run_summary.json · partial: only weekly_run.json (2026 week 4, before run records) · none: no run */
+  records: 'full' | 'partial' | 'none';
+  notice: string | null; // what's missing and why, for partial / none
+  tiles: {
+    run: { status: string | null; steps_ok: number; steps_total: number; degraded: number; failed_step: string | null };
+    data: { datasets: number | null; failures: number | null; snapshot_date: string | null };
+    quality: { passed: number | null; total: number | null; blocking: number | null; blocking_failed: number | null };
+    drift: { alerts: number | null; signals: number; insufficient: number };
+    projections: { players: number | null; teams: number | null; graph_written: number | null };
+  };
+  steps: { step: string; status: string; seconds: number | null }[];
+  long_pole: { step: string; share: number; seconds: number } | null; // the slowest step's share of the time in steps
+  what_ran: {
+    game_model: string | null; // "game-model-v0:2026-w05"
+    trained_through: string | null; // "2026-w04"
+    player_model: string | null; // "player-model-v1:2026-w05"
+    player_stats: number | null; // live stats projected (23)
+    team_model: string | null;
+    graph: { built_at: string | null; nodes: number | null; relationships: number | null; status: string | null } | null;
+    writer: { model: string | null; route: string | null; providers: string[]; calls: number } | null;
+    prompt_id: string | null; // the prompt hash (12 characters)
+    promoted: string[]; // artifacts given `production` by this run (`--auto` / `--promote`), e.g. ["game-model", "player-model", "team-model"]
+    command: string | null; // "nfl weekly run --auto --expect-week 5" (from the events file), when known
+    launched_by: string | null;
+    via: string | null; // "control-room" when launched from the app
+  };
+  freshness: FreshnessRow[];
+  vs_last: VsRow[];
+  ingest: {
+    manifest: string | null; // "raw/_runs/ingest-20261006T202805.json"
+    snapshot_date: string | null;
+    rows: { source: string; dataset: string; rows: number | null; status: string; detail: string | null }[];
+  };
+  quality: {
+    run_at: string | null; // the curate run whose checks are listed
+    /** this_run: the quality file is this run's · later: a later curate replaced it (only the
+     *  run summary's counts are this run's) · none: no file */
+    match: 'this_run' | 'later' | 'none';
+    checks: { name: string; level: 'block' | 'warn' | string; passed: boolean; detail: string | null }[];
+    failed: string[]; // from the run summary
+  };
+  drift: DriftRow[];
+}
+
+// ---- MLOps → W&B runs --------------------------------------------------------------------
+
+export type WandbJob =
+  | 'game'
+  | 'graph'
+  | 'scoreboard'
+  | 'player'
+  | 'team'
+  | 'digest'
+  | 'pipeline'
+  | 'dashboard'
+  | 'injury_update'
+  | 'other';
+
+export interface WandbRun {
+  id: string; // "i8fhvizy"
+  name: string; // "pipeline-2026-w05"
+  group: string; // "weekly-pipeline"
+  job_type: string; // "pipeline"
+  job: WandbJob;
+  state: string; // finished, running, crashed, failed
+  created_at: string | null;
+  url: string;
+  tags: string[];
+  current: boolean; // the newest run of its job for this week; older ones are re-runs
+}
+
+/** One redrawn chart: the W&B run it mirrors and the local file it's drawn from. */
+export interface ChartCardMeta {
+  run_name: string; // "train-2026-w05"
+  run_id: string | null;
+  url: string | null; // the run in W&B (from W&B, or from the step's detail line when W&B is down)
+  metrics: string; // the W&B names it mirrors: "slate/*", "words_per_section · check_issue_counts"
+  source: string; // the local file it's drawn from: "predictions_games.parquet"
+  note: string | null; // e.g. "Week 4 ran before the pipeline run existed (P07)"
+}
+
+export interface MlopsWandbResponse {
+  season: number;
+  week: number;
+  wandb: WandbState;
+  runs: WandbRun[]; // this week's runs, newest first (W&B; empty when unavailable)
+  local_links: { job: WandbJob; run_id: string; url: string }[]; // from the steps' detail lines (work offline)
+  dashboard: {
+    title: string | null; // "2026 Season Dashboard"
+    url: string | null; // the W&B Report
+    current_run_id: string | null; // the run the report reads (tag dashboard-current)
+    current_run_week: number | null;
+    week_run_id: string | null; // this week's dashboard run, when there is one
+  };
+  cards: {
+    game_fit: ChartCardMeta & {
+      games: { game_id: string; away: string; home: string; p_model_only: number | null; p_market: number | null }[];
+    };
+    player_scoreboard: ChartCardMeta & {
+      scored_week: number | null; // the week this run graded (week − 1)
+      mode: 'live' | 'backtest' | null; // backtest = walk-forward rows (before the live model)
+      groups: { group: string; improvement: number | null; scored: number }[];
+    };
+    player_fit: ChartCardMeta & { stats: { target: string; group: string; label: string; count: number }[] };
+    graph_build: ChartCardMeta & {
+      stages: { stage: string; seconds: number }[]; // wipe, load, gds, queries, schema, tables, counts, inputs
+      nodes: number | null;
+      relationships: number | null;
+      mismatches: number | null;
+      total_seconds: number | null;
+    };
+    digest: ChartCardMeta & {
+      words: { section: string; words: number; budget: number | null }[];
+      checks: { name: string; issues: number; level: 'fail' | 'warn' }[];
+    };
+    pipeline: ChartCardMeta & {
+      steps: { step: string; seconds: number | null; status: string }[];
+      stale_sources: number | null;
+      drift: { name: string; group: string | null; status: string }[];
+    };
+  };
+}
+
+// ---- MLOps → Artifacts -------------------------------------------------------------------
+
+export interface ArtifactVersion {
+  version: string; // "v5"
+  created_at: string | null;
+  aliases: string[]; // "production", "2026-w05", "latest"
+  logged_by: string | null; // run id
+  logged_by_url: string | null;
+  size: number | null; // bytes
+}
+
+export interface ArtifactCollection {
+  name: string; // "game-model"
+  type: string; // "model" | "graph" | "digest"
+  note: string; // "weekly game fit"
+  url: string | null; // the collection in W&B
+  total: number; // versions in all
+  versions: ArtifactVersion[]; // newest first
+  first_note: string | null; // when there are none yet: "The first one comes from Saturday's injury update"
+}
+
+export interface MlopsArtifactsResponse {
+  season: number;
+  week: number;
+  wandb: WandbState;
+  production: { name: string; version: string | null; week_alias: string | null; run_id: string | null }[]; // game-model, player-model, team-model
+  total_versions: number | null;
+  collections_count: number | null; // collections with at least one version
+  lineage: {
+    source: 'pipeline_run' | 'aliases' | 'none'; // the week's pipeline run's used artifacts (week 5 on), or the week aliases (week 4)
+    pipeline_run: string | null;
+    items: { role: 'model' | 'graph' | 'published'; name: string; version: string | null }[];
+    note: string | null;
+  };
+  collections: ArtifactCollection[];
+  local_models: Record<string, string[]> | null; // run_summary.json → models (shown when W&B is down)
+}
+
+// ---- Season → Scorecard ------------------------------------------------------------------
+
+export interface ScorecardWeek {
+  week: number; // the graded week
+  games: number | null;
+  brier_model: number | null;
+  brier_elo: number | null;
+  brier_market: number | null;
+  cum_brier_model: number | null;
+  cum_brier_elo: number | null;
+  cum_brier_market: number | null;
+  pick_accuracy: number | null;
+  cum_pick_accuracy: number | null;
+}
+
+export interface ScorecardResponse {
+  season: number;
+  source: 'live' | 'backtest';
+  label: string; // "2026 live" | "2025 backtest (example)"
+  through_week: number | null; // the newest graded week
+  tiles: {
+    brier_model: number | null;
+    brier_elo: number | null;
+    brier_market: number | null;
+    pick_accuracy: number | null;
+    ece: number | null;
+    ece_chance: number | null; // a perfectly calibrated model's ECE on the same games
+    games_graded: number;
+    weeks_published: number | null; // live only
+    checks_passed: number | null; // digests whose final checks passed (live only)
+    checks_total: number | null;
+    llm_spend: number | null; // dollars, season to date (live only)
+    player_improvement: number | null; // % MAE vs the rolling baseline, players pooled
+  };
+  weeks: ScorecardWeek[];
+  calibration: { bin: number; predicted: number; observed: number; games: number }[];
+  player_groups: { group: string; improvement: number | null; weeks: number; live_weeks: number }[]; // season to date
+  pipeline: {
+    week: number;
+    status: string;
+    on_time: boolean | null;
+    hours_before_deadline: number | null;
+    checks_passed: boolean | null;
+    regenerated: boolean | null;
+    seconds: number | null;
+    drift_alerts: number | null;
+    launched_by: string | null;
+  }[]; // live only: one row per weekly run (the last of each week)
+  dashboard: { title: string | null; url: string | null; current_run_id: string | null };
+  notes: string[];
+}
+
+// ---- Season → Teams & rankings -------------------------------------------------------------
+
+export interface TeamGameBrief {
+  week: number;
+  game_id: string;
+  away: string;
+  home: string;
+  kickoff: string | null;
+  p_home: number | null; // the model's home win chance as shown, when predicted
+  away_score: number | null;
+  home_score: number | null;
+}
+
+export interface TeamRow {
+  team: string;
+  conf: string | null;
+  div: string | null;
+  rank: number; // by Elo entering the week (all 32)
+  prev_rank: number | null;
+  elo: number;
+  elo_change: number | null; // vs entering the week before
+  elo_by_week: { week: number; elo: number }[];
+  net_epa: number | null;
+  off_epa: number | null;
+  def_epa: number | null; // EPA/play allowed (lower is better)
+  pass_epa: number | null; // net
+  rush_epa: number | null; // net
+  this_week: TeamGameBrief | null; // null = bye (or no slate)
+  next_week: TeamGameBrief | null;
+}
+
+export interface TeamsResponse {
+  season: number;
+  week: number | null; // Elo and ratings entering this week
+  weeks: number[]; // weeks with Elo this season
+  teams: TeamRow[]; // by rank
+  risers: { team: string; change: number }[]; // top 5
+  fallers: { team: string; change: number }[]; // bottom 5, most negative first
+}
+
+// ---- Models --------------------------------------------------------------------------------
+
+export interface ModelInfo {
+  id: 'game' | 'ratings' | 'player' | 'team' | 'writer';
+  title: string;
+  production: {
+    version: string | null; // "v5"
+    label: string | null; // "game-model-v0:2026-w05"
+    week_alias: string | null; // "2026-w05"
+    run_id: string | null;
+    source: 'wandb' | 'local' | null;
+  };
+  // pct = a 0–1 share ("66.3%"); improvements over a baseline are in `bars` (percent points)
+  headline: { label: string; value: number | null; unit: 'brier' | 'mse' | 'pct' | 'count'; detail: string }[];
+  bars: { label: string; value: number; metric: 'mae' | 'brier' }[] | null; // player / team: % better than the baseline per stat
+  settings: { label: string; value: string; mono?: boolean }[]; // mono: an id, a model name or a hash
+  cards: { id: string; title: string; kind: 'card' | 'guide' }[]; // GET /api/models/card/{id}
+  note: string | null;
+}
+
+export interface ModelsResponse {
+  wandb: WandbState;
+  models: ModelInfo[];
+}
+
+export interface ModelCardResponse {
+  id: string;
+  title: string;
+  markdown: string;
+}
+
+// ---- Alerts --------------------------------------------------------------------------------
+
+export interface AlertItem {
+  season: number;
+  week: number; // the run week
+  level: 'warn' | 'error' | string;
+  title: string;
+  text: string;
+  source: string; // "drift:calibration", "step:graph", …
+  run_url: string | null; // the week's pipeline run in W&B, when known
+  notes: string[]; // investigation notes from PROGRESS.md → Season log, under that week
+}
+
+export interface AlertsResponse {
+  season: number;
+  current_week: number | null;
+  alerts: AlertItem[]; // newest first
+  signals: {
+    name: string;
+    label: string; // "Brier vs Elo over rolling 4-week windows"
+    needs: string; // "6 graded weeks", "64 graded games"
+    first_week: number | null; // the first run week it can fire
+    first_text: string; // "week 10's run"
+    status_now: string | null; // the latest run's status for it
+    detail_now: string | null;
+  }[];
+  runs: { week: number; alerts: number; drift: { name: string; group: string | null; status: string }[] }[];
+  example: AlertItem | null; // the 2025 week-10 simulation's calibration alert (P07, D75)
+  example_note: string | null;
+}
+
+// ---- System → Health -----------------------------------------------------------------------
+
+export interface HealthResponse {
+  checked_at: string | null; // when the slow checks (W&B, OpenRouter, Neo4j versions) last ran
+  checking: boolean; // a check is running in the background now
+  services: { name: string; status: 'ok' | 'warn' | 'fail' | 'busy' | 'checking'; detail: string }[];
+  variables: { name: string; required: boolean; set: boolean }[]; // names only, never a value
+  recent_runs: {
+    run_id: string | null;
+    season: number;
+    week: number;
+    kind: string;
+    started: string | null;
+    finished: string | null;
+    seconds: number | null;
+    command: string | null;
+    status: string;
+    launched_by: string | null;
+    via: string | null;
+  }[];
+}

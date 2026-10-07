@@ -27,21 +27,29 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import StreamingResponse
 from starlette.staticfiles import StaticFiles
 
+from nflengine.app import wandb_api
+from nflengine.app.health import SystemChecks, get_health
 from nflengine.app.jsonsafe import SafeJSONResponse
 from nflengine.app.preflight import get_preflight, rehearsal_target
+from nflengine.app.readers import mlops
+from nflengine.app.readers.alerts import get_alerts
 from nflengine.app.readers.common import strip_root, use_data_root
 from nflengine.app.readers.digest import get_digest
 from nflengine.app.readers.games import get_games
 from nflengine.app.readers.graph import get_graph
 from nflengine.app.readers.meta import lock_dict, plan_dict
+from nflengine.app.readers.models import card as model_card
+from nflengine.app.readers.models import get_models
 from nflengine.app.readers.pipeline import get_pipeline
 from nflengine.app.readers.players import get_players
 from nflengine.app.readers.results import get_results
+from nflengine.app.readers.season import get_scorecard, get_teams
 from nflengine.app.readers.weeks import get_week, list_weeks, team_info
 from nflengine.app.runner import Runner, RunRefused, public, rehearsal_root
 from nflengine.app.security import LocalOnlyMiddleware
 from nflengine.app.status import ServiceStatus
 from nflengine.app.stream import parse_cursor, run_stream
+from nflengine.app.wandb_api import WandbReader
 from nflengine.ops.summary import scrub
 from nflengine.paths import DataPaths, DataRootError, ensure_data_root
 
@@ -116,6 +124,10 @@ class AppSettings:
     keys_set: Callable[[tuple[str, ...]], dict[str, bool]] = _keys_set
     stream_poll_s: float = 0.5
     stream_heartbeat_s: float = 15.0
+    # CR03: the cached, read-only W&B reads and the Health page's slow checks (tests inject
+    # fakes: no test reaches W&B, Neo4j, Docker or OpenRouter)
+    wandb: WandbReader | None = None
+    system_checks: SystemChecks | None = None
 
 
 class _Context:
@@ -127,8 +139,17 @@ class _Context:
         self.runner = settings.runner or Runner(
             rehearsal=settings.rehearsal, fail_at=settings.fail_at
         )
+        self.wandb = settings.wandb or WandbReader(cache_dir=self._wandb_cache)
+        self.checks = settings.system_checks or SystemChecks()
         self._sched: tuple[float, Any] | None = None
         self._lock = threading.Lock()
+
+    def _wandb_cache(self) -> Path | None:
+        """`{NFL_DATA_ROOT}/cache/control-room/wandb/`: the app's own folder (README §4)."""
+        try:
+            return self.s.data_root().cache / "control-room" / "wandb"
+        except DataRootError:
+            return None
 
     def paths(self) -> DataPaths:
         paths = self.s.data_root()
@@ -224,7 +245,9 @@ def create_app(settings: AppSettings) -> FastAPI:
                 "bad_request",
                 "A run request is {kind: weekly | resume | injury_update, expect_week: 1-22}.",
             )
-        return _error(422, "bad_request", "Season and week must be whole numbers in range.")
+        if req.url.path.startswith("/api/weeks/"):
+            return _error(422, "bad_request", "Season and week must be whole numbers in range.")
+        return _error(422, "bad_request", "A parameter is malformed or out of range.")
 
     @app.exception_handler(DataRootError)
     async def no_drive(_req: Request, _exc: DataRootError) -> SafeJSONResponse:
@@ -409,6 +432,145 @@ def create_app(settings: AppSettings) -> FastAPI:
             media_type="text/event-stream",
             headers={"x-accel-buffering": "no"},
         )
+
+    # ---- CR03: MLOps, W&B and the season pages. Local files first; W&B (cached, read-only)
+    # for run lists, links, versions, aliases and lineage. `refresh=1` skips the W&B cache once.
+
+    def week_runs(paths: DataPaths, season: int, week: int, refresh: bool) -> tuple[Any, dict]:
+        plan = ctx.plan(paths)
+        current = plan is not None and (plan.season, plan.week) == (season, week)
+        done = mlops.week_published(paths, season, week) and not current
+        return ctx.wandb.get(
+            f"runs-{season}-w{week:02d}",
+            wandb_api.fetch_week_runs(season, week),
+            ttl=wandb_api.TTL_FINISHED_S if done else wandb_api.TTL_LIVE_S,
+            refresh=refresh,
+        )
+
+    def artifacts(refresh: bool) -> tuple[Any, dict]:
+        return ctx.wandb.get(
+            "artifacts",
+            wandb_api.fetch_artifacts(ctx.wandb.peek("artifacts")),
+            ttl=wandb_api.TTL_LIVE_S,
+            refresh=refresh,
+        )
+
+    Refresh = Query(False)
+
+    @app.get("/api/weeks/{season}/{week}/mlops/health")
+    def mlops_health_route(season: int = Season, week: int = Week) -> SafeJSONResponse:
+        paths = ctx.paths()
+        body = mlops.get_health(paths, season, week, ctx.plan(paths), lock_dict(paths))
+        return week_json(paths, body)
+
+    @app.get("/api/weeks/{season}/{week}/mlops/wandb")
+    def mlops_wandb_route(
+        season: int = Season, week: int = Week, refresh: bool = Refresh
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        runs, state = week_runs(paths, season, week, refresh)
+        return week_json(paths, mlops.get_wandb(paths, season, week, runs, state))
+
+    @app.get("/api/weeks/{season}/{week}/mlops/artifacts")
+    def mlops_artifacts_route(
+        season: int = Season, week: int = Week, refresh: bool = Refresh
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        data, state = artifacts(refresh)
+        # a refresh also re-reads the week's runs: a newer pipeline run's lineage replaces the
+        # cached one's (Sol review, CR03)
+        runs, runs_state = week_runs(paths, season, week, refresh)
+        pipe = next(
+            (r for r in runs or [] if r.get("job") == "pipeline" and r.get("current")), None
+        )
+        used, used_state = None, None
+        if pipe is not None:
+            used, used_state = ctx.wandb.get(
+                f"used-{pipe['id']}",
+                wandb_api.fetch_used(pipe["id"]),
+                ttl=wandb_api.TTL_FROZEN_S
+                if pipe.get("state") == "finished"
+                else wandb_api.TTL_LIVE_S,
+                refresh=refresh,
+            )
+        # the banner covers every W&B read behind the answer, not just the artifact list
+        state = wandb_api.merge_states(
+            state, ("The week's runs", runs_state), ("The lineage", used_state)
+        )
+        body = mlops.get_artifacts(
+            paths, season, week, data, used, pipe["id"] if pipe else None, state
+        )
+        return week_json(paths, body)
+
+    @app.get("/api/season/{season}/scorecard")
+    def scorecard_route(
+        season: int = Season, source: str = Query("live", pattern="^(live|backtest)$")
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        return week_json(paths, get_scorecard(paths, season, source))
+
+    @app.get("/api/teams")
+    def teams_route(
+        season: int | None = Query(None, ge=1999, le=2100),
+        week: int | None = Query(None, ge=1, le=22),
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        plan = ctx.plan(paths)
+        season = season or (plan.season if plan is not None else settings.current_season())
+        body = get_teams(paths, season, week, ctx.schedules_or_none(paths), team_info(paths))
+        return week_json(paths, body)
+
+    @app.get("/api/models")
+    def models_route(refresh: bool = Refresh) -> SafeJSONResponse:
+        paths = ctx.paths()
+        data, state = artifacts(refresh)
+        ratings, ratings_state = ctx.wandb.get(
+            "ratings-eval",
+            wandb_api.fetch_run_summary(
+                "track1-ratings",
+                "ratings-eval",
+                ("objective_mse", "mse_base", "elo_brier", "games"),
+            ),
+            ttl=wandb_api.TTL_FROZEN_S,
+            refresh=refresh,
+        )
+        season = settings.current_season()
+        state = wandb_api.merge_states(state, ("The ratings evaluation", ratings_state))
+        return week_json(paths, get_models(paths, season, data, ratings, state))
+
+    @app.get("/api/models/card/{card_id}")
+    def model_card_route(
+        card_id: str = PathParam(pattern="^[a-z0-9-]{1,40}$"),
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        body = model_card(card_id)
+        if body is None:
+            return _error(404, "not_found", "No such model card.")
+        return week_json(paths, body)
+
+    @app.get("/api/alerts")
+    def alerts_route(season: int | None = Query(None, ge=1999, le=2100)) -> SafeJSONResponse:
+        paths = ctx.paths()
+        plan = ctx.plan(paths)
+        season = season or (plan.season if plan is not None else settings.current_season())
+        current = plan.week if plan is not None and plan.season == season else None
+        urls = {}
+        for w in range(1, 23):  # the pipeline runs' links, from the W&B cache only
+            for r in ctx.wandb.peek(f"runs-{season}-w{w:02d}") or []:
+                if r.get("job") == "pipeline" and r.get("current"):
+                    urls[w] = r.get("url")
+        body = get_alerts(paths, season, current, urls, ctx.schedules_or_none(paths))
+        return week_json(paths, body)
+
+    @app.get("/api/health")
+    def health_route(refresh: bool = Refresh) -> SafeJSONResponse:
+        paths = ctx.paths()
+        plan = ctx.plan(paths)
+        season = plan.season if plan is not None else settings.current_season()
+        body = get_health(
+            paths, season, ctx.checks, ctx.services.snapshot(), settings.keys_set, refresh
+        )
+        return week_json(paths, body)
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def api_not_found(rest: str) -> SafeJSONResponse:

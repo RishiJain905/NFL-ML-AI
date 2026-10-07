@@ -69,7 +69,7 @@ describe('WeekHeader', () => {
 });
 
 describe('WeekPage', () => {
-  it('has the seven tabs and an empty state that names the phase', async () => {
+  it('has the seven tabs and the MLOps switcher', async () => {
     mockApi();
     renderApp(<WeekPage />, { route: '/week/2026/4/mlops', path: '/week/:season/:week/:tab' });
     const tabs = screen.getByRole('navigation', { name: 'Week sections' });
@@ -77,7 +77,7 @@ describe('WeekPage', () => {
       'Pipeline', 'Digest', 'Games', 'Players', 'Results', 'MLOps', 'Graph',
     ]);
     expect(within(tabs).getByRole('link', { name: 'MLOps' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByText('Health · W&B runs · Artifacts')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'MLOps sections' })).toBeInTheDocument();
     expect(await screen.findByText('No run records')).toBeInTheDocument(); // week 4: before P07
   });
 });

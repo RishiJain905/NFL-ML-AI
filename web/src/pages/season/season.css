@@ -1,0 +1,195 @@
+/* Season and system pages (src/pages/season/, CR03): what the mockup draws inline. Tokens only. */
+.season-chart-empty {
+  padding: 30px 10px;
+}
+.season-chart-empty .glyph {
+  font-size: 36px;
+}
+
+/* Scorecard: a note under the pipeline table */
+.pipeline-note {
+  margin: 0;
+  padding: 10px 18px 12px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+}
+
+/* Teams: the row is the button (Enter / Space toggles its detail row) */
+.teamrow:focus-visible td {
+  background: var(--raised);
+}
+.teamrow:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.teamdetail .td-h {
+  display: block;
+  margin-bottom: 4px;
+}
+.teamdetail .td-v {
+  font-size: 13px;
+}
+
+/* Models: one card per model */
+.model-card .card-b {
+  display: grid;
+  gap: 12px;
+}
+.model-card .tile .v {
+  font-size: 24px;
+}
+.model-cards {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bars-h {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin: 2px 0 6px;
+}
+
+/* The model-card dialog: a wide modal whose body scrolls */
+.modal.mdcard {
+  width: min(880px, 100%);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+.modal.mdcard header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 14px;
+}
+.modal.mdcard header .btn {
+  margin-left: auto;
+}
+.modal.mdcard .mdbody {
+  overflow: auto;
+  padding: 16px 20px 22px;
+  min-height: 0;
+}
+.modal.mdcard .digest {
+  max-width: none;
+}
+.modal.mdcard .linkbtn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-ink);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.modal.mdcard .mdref {
+  border-bottom: 1px dotted var(--ink-3);
+  cursor: help;
+}
+
+/* Alerts: the "when each signal can first fire" timeline */
+.sigline {
+  position: relative;
+  padding: 6px 0 4px;
+}
+.sigline .axis-row {
+  position: relative;
+  height: 28px;
+  border-bottom: 1px solid var(--line-2);
+}
+.sigline .tick {
+  position: absolute;
+  bottom: -18px;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.sigline .now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 2px solid var(--accent);
+}
+.sigline .now-l {
+  position: absolute;
+  top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  white-space: nowrap;
+}
+.sigline .sig {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+}
+.sigline .sig.axis {
+  margin-top: 0;
+}
+.sigline .sig.axis + .sig {
+  margin-top: 26px;
+}
+.sigline .sig-track {
+  position: relative;
+  height: 14px;
+}
+.sigline .sig-bar {
+  position: absolute;
+  right: 0;
+  top: 4px;
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--s2) 35%, transparent);
+}
+.sigline .sig-dot {
+  position: absolute;
+  top: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  transform: translateX(-50%);
+  background: var(--s2);
+  box-shadow: 0 0 0 2px var(--panel);
+}
+.sigline .sig-hit {
+  position: absolute;
+  inset: -3px 0;
+  border-radius: 4px;
+  cursor: default;
+}
+.sigline .sig-hit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.alert-card .card-b {
+  display: grid;
+  gap: 10px;
+}
+.alert-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.alert-card p {
+  margin: 0;
+}
+
+/* Health */
+.checking {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+@media (max-width: 520px) {
+  .sigline .sig {
+    grid-template-columns: 120px minmax(0, 1fr);
+  }
+  .sigline .sig > .mono {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

@@ -12,8 +12,10 @@ from typing import Any
 import polars as pl
 from fastapi.testclient import TestClient
 
+from nflengine.app.health import SystemChecks
 from nflengine.app.server import AppSettings, create_app
 from nflengine.app.status import ServiceStatus
+from nflengine.app.wandb_api import WandbReader
 from nflengine.paths import DataPaths
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "schedules_2024_2026.csv"
@@ -42,6 +44,24 @@ class FakeStatus(ServiceStatus):
         pass
 
 
+def offline_wandb(cache_dir: Path | None = None) -> WandbReader:
+    """A W&B reader whose key "isn't set": every W&B part is unavailable, nothing is cached."""
+    return WandbReader(cache_dir=lambda: cache_dir, client=lambda _timeout: None)
+
+
+def fake_checks(results: dict[str, tuple[str, str]] | None = None) -> SystemChecks:
+    """The Health page's slow checks, answered at once (no Neo4j, Docker, W&B or OpenRouter)."""
+    results = results or {
+        "Neo4j": ("ok", "neo4j 5.26.31 (community), gds 2.13.13, apoc 5.26.31"),
+        "Docker": ("ok", "engine running (container nfl-neo4j)"),
+        "Weights & Biases": ("ok", "authenticated as tester; project ent/proj"),
+        "OpenRouter": ("ok", "openrouter key accepted"),
+    }
+    checks = SystemChecks(checks={k: (lambda v=v: v) for k, v in results.items()})
+    checks.snapshot(wait=5)
+    return checks
+
+
 def make_paths(root: Path) -> DataPaths:
     paths = DataPaths(root)
     for d in paths.all_dirs():
@@ -65,6 +85,9 @@ def make_client(
     table = raw_sched() if sched is None else sched
     extra.setdefault("keys_set", lambda names: dict.fromkeys(names, True))
     extra.setdefault("stream_poll_s", 0.01)
+    # CR03: never the real W&B or the doctor's network checks in a test
+    extra.setdefault("wandb", offline_wandb())
+    extra.setdefault("system_checks", fake_checks())
     settings = AppSettings(
         port=8765,
         token=TOKEN,

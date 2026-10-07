@@ -144,9 +144,14 @@ def build_dashboard_data(
     scoreboard: pl.DataFrame | None = None,
     history: pl.DataFrame | None = None,
     cfg: dict | None = None,
+    preds: pl.DataFrame | None = None,
 ) -> DashboardData:
     """The season to date for the run of `week` (graded weeks before it). Reads the same
-    files as the digest and the drift checks; a missing file leaves its series out."""
+    files as the digest and the drift checks; a missing file leaves its series out.
+
+    Every input can be passed in instead of read (`preds`: the season's saved
+    `predictions_games.parquet` rows): the control room reads them itself, without memory
+    maps (D100), and gets exactly the numbers the W&B Season Dashboard shows (CR03)."""
     cfg = drift.resolve_cfg(cfg)
     memo: dict[str, DataPaths] = {}
 
@@ -175,7 +180,8 @@ def build_dashboard_data(
     # rolling gap vs Elo and the calibration series: the graded saved predictions
     graded = pl.DataFrame()
     try:
-        preds = load_saved(root, season, range(1, week), PRED_FILE)
+        if preds is None:
+            preds = load_saved(root, season, range(1, week), PRED_FILE)
         res = games if games is not None else read_games(get_paths())
         graded = drift.graded_games(preds, res)
     except Exception:  # noqa: BLE001 - these series are optional

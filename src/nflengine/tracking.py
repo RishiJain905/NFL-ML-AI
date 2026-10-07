@@ -91,6 +91,20 @@ def _wandb_env() -> tuple[str, str | None, DataPaths]:
     return get_config().wandb.project, env.wandb_entity or None, paths
 
 
+def read_api(timeout: int = 20) -> tuple[Any, str, str] | None:
+    """A read-only W&B API client for the control room (CR03), as `(api, entity, project)`, or
+    None when the key isn't set. The key goes straight from the settings to the client (the
+    doctor's way): nothing is written to the process environment, a file or a log."""
+    env = get_env()
+    if not env.is_set("WANDB_API_KEY"):
+        return None
+    import wandb
+
+    api = wandb.Api(api_key=env.wandb_api_key.get_secret_value(), timeout=timeout)
+    entity = env.wandb_entity or api.default_entity
+    return api, entity, get_config().wandb.project
+
+
 def init_run(
     group: str,
     job_type: str,

@@ -1,0 +1,33 @@
+/* The MLOps tab's additions (src/pages/week/MlopsTab.tsx and mlops/). Theme tokens only. */
+.ml-ok { color: var(--ok); }
+.ml-warn { color: var(--warn); }
+.ml-err { color: var(--err); }
+.ml-note { margin: 10px 0 0; font-size: 12.5px; color: var(--ink-3); }
+.ml-note.tight { margin: 0; }
+.ml-small { font-size: 11.5px; color: var(--ink-3); }
+.ml-source { margin: 12px 0 0; font-size: 11.5px; color: var(--ink-3); }
+.ml-scroll { max-height: 380px; overflow: auto; }
+.ml-empty { padding: 22px 10px; }
+.ml-chips { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-top: 12px; }
+.ml-chips .chip { white-space: nowrap; }
+.ml-chips .lead { font-size: 12.5px; color: var(--ink-3); }
+.ml-stack { display: grid; gap: 10px; }
+.ml-pad { padding: 12px 18px 0; }
+.ml-title-mono { font-family: var(--font-mono); font-size: 15px; }
+.ml-meta { font-size: 11.5px; }
+.ml-spark { display: inline-flex; vertical-align: middle; }
+.ml-spark:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* drift: one block per signal; the player signals fold their position groups into status lines */
+.dr-lines { grid-column: 1 / -1; display: grid; gap: 4px; }
+.dr-line { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; font-size: 12.5px; color: var(--ink-2); }
+.dr-list { grid-column: 1 / -1; margin: 0; padding-left: 16px; font-size: 12.5px; color: var(--ink-2); }
+.signal .resp { color: var(--ink-3); }
+
+/* runs: re-runs sit under a toggle, in the same list style */
+.runs li.rerun b { font-weight: 500; }
+.runs li .state { margin-left: 6px; }
+.chip-pair { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+
+/* lineage: the published digest is the one the week is about */
+.lineage .art.pub { border-color: var(--accent); background: var(--accent-wash); }

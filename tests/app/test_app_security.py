@@ -21,6 +21,15 @@ SCANNED_GETS = [
         f"/api/weeks/2026/5/{tab}"
         for tab in ("pipeline", "digest", "games", "players", "results", "graph")
     ],
+    # CR03 (also scanned with a leaky fake W&B in test_app_cr03.py)
+    *[f"/api/weeks/2026/5/mlops/{s}" for s in ("health", "wandb", "artifacts")],
+    "/api/season/2026/scorecard?source=live",
+    "/api/season/2025/scorecard?source=backtest",
+    "/api/teams",
+    "/api/models",
+    "/api/models/card/game-model-v0",
+    "/api/alerts",
+    "/api/health",
 ]
 
 

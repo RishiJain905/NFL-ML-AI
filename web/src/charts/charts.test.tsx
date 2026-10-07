@@ -31,7 +31,9 @@ describe('LineChart', () => {
       <LineChart label="Brier" xs={[1, 2, 3]} series={SERIES} format={(v) => v.toFixed(3)} />,
     );
     expect(container.querySelectorAll('.legend span')).toHaveLength(2);
-    rerender(<LineChart label="Brier" xs={[1, 2, 3]} series={[SERIES[0]]} format={(v) => v.toFixed(3)} />);
+    rerender(
+      <LineChart label="Brier" xs={[1, 2, 3]} series={[SERIES[0]]} format={(v) => v.toFixed(3)} />,
+    );
     expect(container.querySelector('.legend')).toBeNull();
     expect(screen.getByRole('img', { name: 'Brier' })).toBeInTheDocument();
   });
@@ -46,7 +48,17 @@ describe('LineChart', () => {
         xFormat={(x) => `Week ${x}`}
       />,
     );
-    const box = { left: 0, top: 0, width: 620, height: 230, right: 620, bottom: 230, x: 0, y: 0, toJSON: () => ({}) };
+    const box = {
+      left: 0,
+      top: 0,
+      width: 620,
+      height: 230,
+      right: 620,
+      bottom: 230,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    };
     const svg = screen.getByRole('img', { name: 'Brier' });
     svg.getBoundingClientRect = () => box;
     (svg.parentElement as HTMLElement).getBoundingClientRect = () => box;
@@ -60,6 +72,67 @@ describe('LineChart', () => {
     fireEvent.pointerMove(screen.getByTestId('chart-hover'), { clientX: 60, clientY: 50 });
     expect(screen.getByRole('tooltip').style.left).toBe('74px');
     fireEvent.pointerLeave(screen.getByTestId('chart-hover'));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+});
+
+describe('LineChart keyboard', () => {
+  const chart = () =>
+    render(
+      <LineChart
+        label="Brier"
+        xs={[1, 2, 3]}
+        series={SERIES}
+        format={(v) => v.toFixed(3)}
+        xFormat={(x) => `Week ${x}`}
+      />,
+    );
+
+  it('is focusable, keeps its name and shows the newest point on focus', () => {
+    const { container } = chart();
+    const svg = screen.getByRole('img', { name: 'Brier' });
+    expect(svg).toHaveAttribute('tabindex', '0');
+    expect(svg).toHaveAccessibleDescription(/arrow keys/);
+    fireEvent.focus(svg);
+    const tip = screen.getByRole('tooltip');
+    expect(tip).toHaveTextContent('Week 3');
+    expect(tip).toHaveTextContent('0.211');
+    expect(svg).toHaveAttribute('aria-describedby', tip.id);
+    expect(container.querySelector('.xh')).not.toBeNull();
+    expect(container.querySelector('[aria-live="polite"]')).toHaveTextContent(
+      'Week 3: Model 0.211, Elo 0.222',
+    );
+  });
+
+  it('steps point by point with the arrows, Home and End, and stops at the ends', () => {
+    chart();
+    const svg = screen.getByRole('img', { name: 'Brier' });
+    fireEvent.focus(svg);
+    fireEvent.keyDown(svg, { key: 'ArrowLeft' });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Week 2');
+    expect(screen.getByRole('tooltip')).toHaveTextContent('0.215');
+    fireEvent.keyDown(svg, { key: 'ArrowLeft' });
+    fireEvent.keyDown(svg, { key: 'ArrowLeft' });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Week 1');
+    fireEvent.keyDown(svg, { key: 'ArrowRight' });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Week 2');
+    fireEvent.keyDown(svg, { key: 'End' });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Week 3');
+    fireEvent.keyDown(svg, { key: 'ArrowRight' });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Week 3');
+    fireEvent.keyDown(svg, { key: 'Home' });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Week 1');
+  });
+
+  it('hides on Escape and on blur, and an arrow brings it back', () => {
+    chart();
+    const svg = screen.getByRole('img', { name: 'Brier' });
+    fireEvent.focus(svg);
+    fireEvent.keyDown(svg, { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.keyDown(svg, { key: 'ArrowLeft' });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Week 2');
+    fireEvent.blur(svg);
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
 });

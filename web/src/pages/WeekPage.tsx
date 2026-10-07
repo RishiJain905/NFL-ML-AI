@@ -1,15 +1,15 @@
 // One week: header + tabs (mockup: renderTop / renderTabs / week4View / week5View). Every tab
-// reads its own endpoint (CR01); MLOps is CR03 and keeps its designed empty state.
+// reads its own endpoint (CR01; the MLOps tab's three sections are CR03).
 
 import { NavLink, Navigate, useParams } from 'react-router-dom';
 import { useMeta, useWeekDetail, useWeeks } from '../api/client';
 import { InjuryUpdateLog } from '../components/run/InjuryUpdate';
 import { WeekHeader } from '../components/WeekHeader';
-import { EmptyState } from '../components/ui';
 import { comma } from '../lib/format';
 import { DigestTab } from './week/DigestTab';
 import { GamesTab } from './week/GamesTab';
 import { GraphTab } from './week/GraphTab';
+import { MlopsTab } from './week/MlopsTab';
 import { PipelineTab } from './week/PipelineTab';
 import { PlayersTab } from './week/PlayersTab';
 import { ResultsTab } from './week/ResultsTab';
@@ -69,13 +69,7 @@ export function WeekPage() {
         {tab === 'players' ? <PlayersTab {...props} /> : null}
         {tab === 'results' ? <ResultsTab {...props} /> : null}
         {tab === 'graph' ? <GraphTab {...props} /> : null}
-        {tab === 'mlops' ? (
-          <EmptyState glyph="ML" title="Health · W&B runs · Artifacts">
-            Run health, data freshness, ingest and quality checks, drift; the week's W&amp;B runs
-            with their charts redrawn; artifact versions and where production points. Coming in
-            CR03.
-          </EmptyState>
-        ) : null}
+        {tab === 'mlops' ? <MlopsTab {...props} /> : null}
       </section>
     </>
   );
