@@ -341,7 +341,7 @@ The app can't be reached from other computers, and other websites open in your b
 ## 8. Limits and what's next
 
 - **CR01 (done):** every week tab from the real files, the three pipeline views for finished runs and the plan, the week header for any week.
-- **CR02 (done):** the Run button (`nfl weekly run --auto --expect-week N`), pre-flight checks, the live view and log, resume after a failure, the Saturday injury update, toasts and notifications, rehearsal mode. **The first real Tuesday run from the app is Rishi's: 2026 week 5** (PROGRESS → Next step).
+- **CR02 (done):** the Run button (`nfl weekly run --auto --expect-week N`), pre-flight checks, the live view and log, resume after a failure, the Saturday injury update, toasts and notifications, rehearsal mode. **First live run from the app: 2026 week 5**, on Tuesday 2026-10-06 at 20:27 ET: 16 m 41 s, every step ok (the graph started Docker and Neo4j itself), the GLM on Novita for 8 m 47 s, the digest's checks passed first time, published 47.5 h before kickoff.
 - **Limits now:** a week's Results appear only after the next Tuesday's run; the GLM step shows no live token count (the call isn't streamed, D103); a week that ran before CR02 keeps its rebuilt log (no flags); MLOps waits for CR03.
 - **CR03:** MLOps (Health · W&B runs · Artifacts) and the season pages.
 - **Not planned:** remote access, user accounts, scheduling (runs stay manual, D71).

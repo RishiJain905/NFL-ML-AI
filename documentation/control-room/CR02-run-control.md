@@ -148,8 +148,8 @@ Everything runs through the same `nfl` commands as the terminal, with the same l
 - [x] 🤖 **`--expect-week` live check** with `--dry-run` (exit 0) and with a deliberately wrong week (exit 6, nothing written). ✅ dry run exit 3 on the stale snapshot (expected), wrong week exit 6 dry and live, nothing written
 - [x] 🤖 Runbook: a "Run the week from the control room" section (start the app, pre-flight, Run, what each state means, resume, Saturday, what stays in the terminal). Guide: the Run button and its safety, live views, events. Skill: the runner rules and events. ✅
 - [x] 🤖 Sol review (Codex, read-only) of the runner, the allowlist, the token / Origin handling and the event writer. Fix the findings with tests. ✅ 10 findings (0 high), all fixed with tests; Sol's verification pass: 5 confirmed, 5 completed, 1 new, all fixed with tests (D104)
-- [ ] 🧑 **Rishi runs the first live Tuesday run from the app** (the first Tuesday after the steps above): start `uv run nfl app`, check pre-flight, press **Run week N**, confirm, and watch. Then check as usual: the digest's footer, `pipeline-<S>-wNN` in W&B, the Season log line (`uv run nfl season weeks --season 2026`). Log it in PROGRESS → Rishi-run steps (launched by Rishi, from the app).
-- [ ] ✋ **Checkpoint:** close CR02.
+- [x] 🧑 **Rishi runs the first live Tuesday run from the app** (the first Tuesday after the steps above): start `uv run nfl app`, check pre-flight, press **Run week N**, confirm, and watch. Then check as usual: the digest's footer, `pipeline-<S>-wNN` in W&B, the Season log line (`uv run nfl season weeks --season 2026`). Log it in PROGRESS → Rishi-run steps (launched by Rishi, from the app). ✅ 2026-10-06, 20:27–20:44 ET: week 5 published from the app, every step ok, checks passed first time (PROGRESS → Rishi-run steps)
+- [x] ✋ **Checkpoint:** close CR02. ✅ Rishi: "Mark CR02 as complete" (2026-10-06, after the week-5 run)
 
 ## As built (2026-10-06): deviations from the task list
 
@@ -165,7 +165,7 @@ Decisions: D103 (as built), D104 (Sol review: 10 findings, 0 high, all fixed; am
 - **A finished week's log** is the runs' own console from the events files when every sitting has one.
 - **The SSE module is `app/stream.py`** (the spec said `events.py`).
 - **The proof of "pipeline unchanged"** used week 4 (week 5 isn't published yet): old code (`git archive HEAD`) vs new code on the same inputs and pinned clock, identical predictions (README §9).
-- **The 🧑 first live Tuesday run from the app** (Rishi at the kickoff: "close; live run on calendar") moves to PROGRESS → Next step: Rishi runs 2026 week 5 from the app today. The ✋ close is waived by "marking the phase complete".
+- **The 🧑 first live Tuesday run from the app** (Rishi at the kickoff: "close; live run on calendar") ran the same evening: Rishi pressed **Run week 5** on 2026-10-06 at 20:27 ET; every step ok, the digest published 47.5 h before kickoff with its checks passed first time, every W&B run tagged `launched-by:rishi` + `via:control-room`, the production aliases moved to week 5. One cosmetic fault found and fixed afterwards: the Pipeline tab showed the records step as 0 s (the run summary is stamped before the W&B logging); it now takes that step's time from the events file (8.7 s). The ✋ close: Rishi, "Mark CR02 as complete".
 
 **The browser proof** (`nfl app --rehearsal --fail-at player` on port 8766, Playwright; screenshots in `.playwright-mcp/cr02/`, git-ignored):
 1. The pre-flight in rehearsal mode (week 4, the folder free) → **Rehearse week 4** → the confirm dialog → "Run in progress", the toast, the now-bar "Starting the run".

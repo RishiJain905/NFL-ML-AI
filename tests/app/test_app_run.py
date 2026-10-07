@@ -698,3 +698,37 @@ def test_stream_of_a_terminal_run_ends_with_its_own_run_end(tmp_path) -> None:
         final["data"]["published"],
     ) == ("ok", "terminal", True)
     assert [m["data"]["type"] for m in msgs if m.get("event") == "run"][-1] == "run_end"
+
+
+def test_the_records_step_is_timed_by_the_events(tmp_path) -> None:
+    """The run summary is stamped before the W&B logging: its gap to the last step read 0 s
+    (2026 week 5); the records step's own step_end has the real time (8.7 s)."""
+    paths = DataPaths(tmp_path)
+    summary = {"status": "ok", "finished": "2026-10-04T05:02:13", "steps": {}}
+    write_week(paths, 2026, 4, ALL_OK, report=True, summary=summary)
+    c, *_ = client_for(tmp_path)
+    rec = next(
+        s for s in c.get("/api/weeks/2026/4/pipeline").json()["steps"] if s["step"] == "records"
+    )
+    assert rec["seconds"] == 0.0  # from the summary's stamp, before any events existed
+    end = {
+        "status": "ok",
+        "exit_code": 0,
+        "message": "2026 week 04: ok",
+        "published": True,
+        "failed_step": None,
+        "material": None,
+    }
+    evs = [
+        *story(tmp_path),
+        {"type": "step_start", "step": "records"},
+        {"type": "step_end", "step": "records", "status": "ok", "seconds": 8.7, "detail": "x"},
+        {"type": "run_end", **end},
+    ]
+    write_events(
+        paths.run_dir(2026, 4) / "events" / "20261004T071800Z.jsonl", evs, "20261004T071800Z"
+    )
+    rec = next(
+        s for s in c.get("/api/weeks/2026/4/pipeline").json()["steps"] if s["step"] == "records"
+    )
+    assert rec["seconds"] == 8.7

@@ -79,14 +79,35 @@ def step_times(
         out[name] = sec if sec is not None else _seconds(st)
     records = None
     if summary is not None:
+        # CR02: the run's own events time the records step (summary, history, drift, the W&B
+        # pipeline run, the dashboard); `run_summary.json` is stamped before the W&B logging,
+        # so the gap from the last step to its `finished` read 0 s (week 5: 8.7 s in events)
+        records = _events_records_seconds(run_dir)
         fin = _parse(summary.get("finished"))
         last = max(
             (t for st in steps.values() if (t := _parse((st or {}).get("finished")))),
             default=None,
         )
-        if fin and last:
+        if records is None and fin and last:
             records = max(0.0, round((fin - last).total_seconds(), 1))
     return out, records
+
+
+def _events_records_seconds(run_dir) -> float | None:
+    """The `records` step's seconds from the newest events file that has one (CR02), or None
+    (a week before CR02, or a run that never reached its records)."""
+    from nflengine.app.runner import read_events
+
+    folder = run_dir / "events"
+    try:
+        files = sorted(folder.glob("*.jsonl"), reverse=True) if folder.exists() else []
+    except OSError:
+        return None
+    for f in files:
+        for e in reversed(read_events(f)):
+            if e.get("type") == "step_end" and e.get("step") == "records":
+                return num(e.get("seconds"))
+    return None
 
 
 def expected_times(
