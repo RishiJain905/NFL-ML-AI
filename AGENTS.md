@@ -47,7 +47,7 @@ Never read, open, print, `cat` / `type` / `Get-Content`, `grep` / `Select-String
 A personal ML system that produces a weekly NFL digest (win probabilities, predicted scores, team trends, projections for offensive and defensive players, Neo4j graph insights), plus a Big Data Bowl movement-model research track.
 
 - **Design docs:** `documentation/01`–`11` (start at `documentation/README.md`).
-- **Control room:** the local web app track, `documentation/control-room/` (spec, phases CR00–CR03, the approved mockup's source; D94–D104).
+- **Control room:** the local web app track, `documentation/control-room/` (spec, phases CR00–CR03, all complete, the approved mockup's source; D94–D106).
 - **Guides:** `documentation/guides/` (knowledge graph, Graph Data Science, W&B tracking, the LLM writer, player projections, weekly operations, season operations, the control room); the operator's how-to is `documentation/runbook.md`; **model cards:** `documentation/model_cards/`. A phase that adds a technology, component, W&B run or artifact must also add or update its guide (CLAUDE.md → Documentation).
 - **Build plan:** `documentation/plans/README.md`. **Where work stands:** `documentation/plans/PROGRESS.md`.
 - **Decisions:** `documentation/10-decisions-log.md`.

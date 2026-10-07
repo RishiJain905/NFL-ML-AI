@@ -1,19 +1,20 @@
 # The control room: a local web app for the weekly pipeline
 
-The control room is a small website that runs only on this computer. On Tuesdays it's where you press **Run**, watch the pipeline work, then read the digest and check last week's results. It will also show the MLOps side (run health, W&B runs, artifacts) and season-long views (CR03).
+The control room is a small website that runs only on this computer. On Tuesdays it's where you press **Run**, watch the pipeline work, then read the digest and check last week's results. It also shows the MLOps side of each week (run health, the W&B runs with their charts, the artifacts) and the season (scorecard, team rankings, the production models, alerts, system health).
 
-It's being built in four phases, CR00–CR03. The spec, the phases and the approved mockup are in [`documentation/control-room/`](../control-room/README.md). This guide explains what's built so far and how to use it. It grows with each phase.
+It was built in four phases, CR00–CR03; **the track is complete**. The spec, the phases and the approved mockup are in [`documentation/control-room/`](../control-room/README.md). This guide explains every screen, what it reads and how to change it.
 
-**Built so far: CR00 (foundations), CR01 (the week archive) and CR02 (run control).**
+**What it does:**
 - The app starts with one command.
 - The sidebar shows the season's weeks with their real status.
-- Each week has its header and seven tabs. **Six of them read the week's real files** (Pipeline, Digest, Games, Players, Results, Graph; §2a). MLOps comes in CR03.
+- Each week has its header and **seven tabs, all from the week's real files** (Pipeline, Digest, Games, Players, Results, Graph: §2a; MLOps: §2c).
 - The Pipeline tab draws the run in three views (drive chart, pipeline map, timeline), picked per week.
 - **The Run button (CR02, §2b):** pre-flight checks, **Run week N** with a confirm dialog, the run **live** in the three views with the log streaming, **Resume** after a failure, the **Saturday injury update**, toasts and browser notifications. It runs exactly the terminal's commands, with the same lock and records.
+- **MLOps (CR03, §2c):** Health (run health, data freshness, ingest dataset by dataset, quality checks, this week vs last week, what ran, drift), W&B runs (the week's runs with their main charts redrawn and linked) and Artifacts (versions, aliases, where `production` points, the lineage behind the digest).
+- **The season pages (CR03, §2d):** Scorecard (2026 live, or the 2025 backtest as an example), Teams & rankings, Models (with each model card), Alerts, Health.
+- W&B is read on the server, cached, never written to; without W&B the pages still show everything local, with a banner (§4c).
 - Both themes work in dark and light mode.
 - The safety rules are in place and tested.
-
-The season pages still show placeholders that say which phase fills them.
 
 ## 1. Start it
 
@@ -21,7 +22,7 @@ The season pages still show placeholders that say which phase fills them.
 
 ```powershell
 npm --prefix web ci          # install the exact package versions from web/package-lock.json
-npm --prefix web run build   # writes web/dist/ (about 140 KB of script, gzipped, plus the fonts)
+npm --prefix web run build   # writes web/dist/ (about 235 KB of script, gzipped, plus the fonts)
 ```
 
 **Every time:**
@@ -172,6 +173,50 @@ Beside the checks: **Run week N** (greyed out with the reason while a blocking c
 
 **What stays in the terminal:** re-running a published week, `--force`, `--as-of`, graph rebuilds, resumes of older weeks, deletes. The app runs exactly three commands (§4b).
 
+## 2c. The MLOps tab (CR03)
+
+A switcher at the top picks one of three sections, each with a one-line description. The choice is remembered while you move between weeks (this browser tab: `sessionStorage`, key `cr.mlopsSection`). Only the open section is loaded.
+
+### Health: did the run go cleanly, and was the data fresh?
+- **Reads** (all local): `runs/<S>/week<NN>/run_summary.json` (the run's own record: status, steps, freshness, ingest, quality, models, drift, alerts), `weekly_run.json`, the run's events file (the command and who launched it), the ingest manifest the ingest step names (`raw/_runs/ingest-<time>.json`), `curated/_quality/latest.json`, the week's prediction files (row counts from their footers), `graph_results.json`, `checks.json`, `raw_llm_output.json` (metadata only), `models/game-model/<S>-w<NN>/meta.json` (trained through), and the same files of the season's other weeks for "this week vs last week".
+- **Shows:**
+  - **five tiles:** run status (steps ok, degraded), data (datasets, failures, snapshot date), quality checks (passed of all, blocking ones), drift alerts (and how many signals still lack the weeks they need), projections (players, team rows, written to the graph);
+  - **step timings** (a bar per step, with the long pole's share: week 5's digest was 54% of 16.5 minutes in steps) beside **what ran:** the game model and the week it was trained through, the player model and how many stats it projected, the team model, the graph build (time, nodes, relationships), the writer (model, route, upstream provider, calls), the prompt id, what this run promoted to `production`, the exact command, who launched it and whether it came from the control room;
+  - **data freshness** (38 rows on week 5: every source and dataset with its snapshot date, age, newest and expected week; stale or failed ones first) beside **this week vs last week:** time in steps, the GLM's time, the LLM's cost, games predicted, player projections, graph nodes, datasets ingested, digest passed first time, each with the change and a small trend line over the season;
+  - **ingest, dataset by dataset** (the manifest: source, dataset, rows, status) and **quality checks** (name, block / warn, result, detail) in scroll boxes. The quality file is overwritten by every curate, so a past week whose curate run isn't the file's says so and shows only its summary's counts;
+  - **drift signals:** each signal's status (ok, alert, or "insufficient data" until it has the graded weeks it needs), its value against its threshold, the run's own sentence, and doc 08's response. Player signals are grouped per status ("insufficient data: QB, RB, …").
+- **A week without run records** (2026 week 4, before P07) shows what its files hold, with a notice; a week without a run says so.
+
+### W&B runs: this week's runs, their main charts redrawn here
+- **Reads:** the run list from W&B (cached, §4c); **every chart from a local file** that holds the same numbers W&B was fed (a parity test checks each one against W&B).
+- **Shows:**
+  - **Runs this week:** job, name, group / job type, the run id linking to W&B. The newest run of each job is the one that counts; re-runs fold away under "Show N earlier runs" (week 4 has 27 runs, 6 current). The player **scoreboard** run is tagged with the week it grades, so week N's list shows `scoreboard-S-w(N−1)`, the one its run made. Without W&B, the links come from the steps' detail lines;
+  - **Season dashboard:** the W&B Report's link, the run it reads now (tag `dashboard-current`, from `runs/<S>/dashboard.json`) and this week's dashboard run;
+  - **one card per run**, each naming its W&B run and keys and the local file it's drawn from:
+
+| Card | W&B run · keys | Drawn from |
+|---|---|---|
+| Game fit: model only vs market (a dumbbell per game, sorted by the gap) | `train-S-wNN` · `slate/*` | `predictions_games.parquet` (the model-only and market rows) |
+| Player scoreboard: vs the baseline (bars per group) | `scoreboard-S-w(N−1)` · `scoreboard/improvement_*` | `runs/<S>/accuracy_scoreboard.parquet`, the graded week's live rows (walk-forward rows before the live model, labelled) |
+| Player fit: projections per stat | `train-S-wNN` (player) · `projections_per_target` | `predictions_players.parquet` |
+| Graph build: time by stage | `graph-S-wNN` · `time/*`, `count/*` | `graph_results.json` |
+| Digest: words per section, check issues | `digest-S-wNN` · `words_per_section`, `check_issue_counts` | `checks.json` (the final round), budgets from `settings.yaml` |
+| Pipeline run: time per step, stale sources, drift | `pipeline-S-wNN` · `step_seconds`, `freshness`, `drift` | `run_summary.json` (none before P07: week 4 says so) |
+
+### Artifacts: every model, graph and digest version
+- **Reads:** W&B only (versions, aliases, the run that logged each version, sizes; the pipeline run's used artifacts).
+- **Shows:** where `production` points for `game-model`, `player-model` and `team-model` (version, week alias, the run that logged it) and the versions in all; **the lineage behind the week's digest** (week 5 on: the artifacts the week's pipeline run used in W&B, `game-model:v5 → graph-results:v2 → player-model:v2 → team-model:v0 → digest:v9`; week 4, before the pipeline run did that: the versions carrying the alias `2026-w04`); one table per artifact (`game-model`, `player-model`, `team-model`, `graph-results`, `digest`, `injury-update`): version, created (ET), aliases, logged by, size, the newest six and a toggle for the rest; "No versions yet" with when the first comes (`injury-update` until the first Saturday update). Without W&B: what the run summary recorded (`models`).
+
+## 2d. The season pages (CR03)
+
+| Page | Shows | Reads |
+|---|---|---|
+| **Scorecard** (`/season/2026/scorecard`) | A switch: **2026 live** / **2025 backtest (example)** (remembered in this browser). Tiles: season Brier for the model, Elo and the market, pick accuracy, ECE against a perfectly calibrated model's ECE on the same games, games graded; live also weeks published, digests whose checks passed, LLM spend. Season-to-date Brier (three lines, crosshair tooltip), pick accuracy, calibration (a point per probability bin, sized by games, against the diagonal), player model vs baseline by group, and live: the pipeline health table (one row per weekly run) and a link to the W&B Season Dashboard. Until two weeks are graded the line charts wait, with the one week's numbers | **Live:** the W&B Season Dashboard's own builder (`ops.dashboard.build_dashboard_data`) for the dashboard's run week, on `season_scorecard.parquet`, the graded weeks' saved predictions and the curated finals, `accuracy_scoreboard.parquet` and `pipeline_history.parquet`, all read by the app: **the same numbers as the report** (a parity test); LLM spend and checks from each published week's files. **Backtest:** `runs/backtests/game/market/predictions_games.parquet` (the market-informed probabilities the digest shows, regular season and playoffs) and `runs/backtests/player/scoreboard.parquet`, scored with the same functions |
+| **Teams & rankings** (`/teams`) | Biggest risers and fallers (Elo change from the week before); the power rankings (rank, Elo, move, a sparkline of the season's Elo, net / offense / defense EPA per play) with an AFC / NFC filter; click a row (or Enter) for its detail: Elo by week, this week's game (the model's chance, or the final), next week's game or bye, pass vs rush EPA | `features/team_elo.parquet` and `team_ratings.parquet` (a week's row is the rating *entering* that week), the schedule snapshot, the week's saved predictions |
+| **Models** (`/models`) | One card per production model: game model, team ratings & Elo, player models, team stat totals, the digest writer. Each: the version in production (from W&B's `production` alias, named by the model's own `meta.json`; without W&B, the run summary's), the headline backtest numbers, bars of each stat's gain over the baseline (MAE for amounts and counts, Brier for chances), the settings, and **Model card** buttons that open the card rendered | `runs/backtests/<model>/…/summary.json` (the canonical walk-forward backtests), W&B for `production` and the ratings evaluation (`ratings-eval`, cached a week), `config/settings.yaml`, the model cards under `documentation/model_cards/` (and the LLM writer's guide), served by id from a fixed list |
+| **Alerts** (`/alerts`) | The season's alerts with their investigation notes (or "No alerts yet" and what raises one); **when each drift signal can first fire** this season (a small timeline: `game_vs_elo` week 10, `calibration` about week 9, `player_vs_baseline` week 7, `checks` week 8, freshness every run, with "this week" marked; worked out from the same inputs and rules the drift checks use: graded weeks, graded games and the schedule's slates, each group's scored weeks, the digests' verdicts); what an alert looks like (the 2025 week-10 simulation's calibration alert and D75); every run's drift states | Every run week's `run_summary.json` (`alerts`, `drift`), `settings.yaml` → `drift` with the first live week and the scoreboard's first week, the indented notes under each week in PROGRESS.md's "Season log" (notes stay there; the app never edits them), `runs/digest-backtests/2025/week10/run_summary.json` |
+| **Health** (`/health`) | **Services:** Neo4j (with GDS and APOC versions), Docker, W&B, OpenRouter (the doctor's routing check), the data drive (free space), the run lock, with **Check again**; **variables by name** with set / not set (optional ones marked; never a value); **recent runs** (when, command, status, launched by, via the control room, how long) | The `nfl doctor` check functions, on a background thread every 5 minutes at most (a W&B login alone takes about 3 s); the app's key check (names only); `pipeline_history.parquet` with each run's events file for its command |
+
 ## 3. Themes and modes
 
 The gear next to "Control Room" opens **Appearance**:
@@ -220,6 +265,12 @@ flowchart LR
 | `preflight.py` (CR02) | The pre-flight checks, the gates for Run / Resume / the injury update, the dry run's log (built from the calendar's plan, no command) |
 | `runner.py` (CR02) | Builds the command for one of three kinds from the server's own pre-flight, starts it detached, keeps a record, finds the current run after a reload or a restart (§4b) |
 | `stream.py` (CR02) | `GET /api/run/stream`: tails the run's events file as server-sent events |
+| `wandb_api.py` (CR03) | The cached, read-only W&B reads (§4c): the week's runs, the artifact versions, a run's used artifacts, the ratings evaluation |
+| `health.py` (CR03) | The Health page: the doctor's checks on a background thread, variables by name, recent runs |
+| `readers/mlops.py` (CR03) | The MLOps tab: Health, the W&B runs' chart cards (from local files), Artifacts |
+| `readers/season.py` (CR03) | Scorecard (live through the dashboard's builder; the 2025 backtest example) and Teams & rankings |
+| `readers/models.py` (CR03) | The Models page and the model cards (a fixed id → file list) |
+| `readers/alerts.py` (CR03) | The Alerts page, with the Season log's notes and when each signal can first fire |
 
 | Endpoint | Gives |
 |---|---|
@@ -233,16 +284,41 @@ flowchart LR
 | `POST /api/run` (CR02) | `{"kind": "weekly" \| "resume" \| "injury_update", "expect_week": N}` with the launch token: 202 with the run id and the command; 403 `not_allowed` (with the reason: a gate is closed, or the browser's week isn't the server's); 409 `locked` (another run holds the lock) or `running` (the app's own run is still going); 422 for any other shape (nothing echoed) |
 | `GET /api/run/current` (CR02) | The run in progress (also one started from a terminal), else the last one the app launched: kind, command, week, start / finish, status, exit code, message, published, failed step, whether it has events, and the last lines of its output when it ended without events |
 | `GET /api/run/stream` (CR02) | Server-sent events: one `run` message per line of the run's events file (`id` = `<run id>:<sequence number>`, so a reconnect resumes after `Last-Event-ID`, and a cursor from another run replays the current one from its start), a heartbeat every 15 s (no timeout: the GLM can take 40 minutes), and an `end` message with the final state |
+| `GET /api/weeks/<S>/<N>/mlops/health` (CR03) | §2c Health |
+| `GET /api/weeks/<S>/<N>/mlops/wandb[?refresh=1]` (CR03) | §2c W&B runs: `wandb` (the W&B state: available, reason, fetched at, stale), the runs, the local links, the dashboard, the six chart cards |
+| `GET /api/weeks/<S>/<N>/mlops/artifacts[?refresh=1]` (CR03) | §2c Artifacts: production, lineage, one entry per artifact, the run summary's models |
+| `GET /api/season/<S>/scorecard?source=live\|backtest` (CR03) | §2d Scorecard |
+| `GET /api/teams[?season=&week=]` (CR03) | §2d Teams & rankings (the newest Elo week by default) |
+| `GET /api/models[?refresh=1]`, `GET /api/models/card/<id>` (CR03) | §2d Models; a card by its id (`game-model-v0`, `player-qb`, …; an unknown id is a 404, never a path) |
+| `GET /api/alerts[?season=]` (CR03) | §2d Alerts |
+| `GET /api/health[?refresh=1]` (CR03) | §2d Health (`checking: true` while the slow checks run) |
 
 The readers only read:
-- `runs/<season>/week<NN>/` (every file of the week; §2a says which tab reads which);
-- `runs/<season>/accuracy_scoreboard.parquet`;
+- `runs/<season>/week<NN>/` (every file of the week; §2a and §2c say which tab reads which);
+- `runs/<season>/accuracy_scoreboard.parquet`, `season_scorecard.parquet`, `pipeline_history.parquet`, `dashboard.json`;
+- `runs/backtests/` (the canonical backtests' summaries and predictions), `runs/digest-backtests/2025/week10/run_summary.json` (the example alert);
 - `reports/<season>/`;
-- `curated/games.parquet` and `curated/teams.parquet`;
+- `curated/games.parquet`, `curated/teams.parquet`, `curated/_quality/latest.json`, `raw/_runs/ingest-*.json`, `features/team_elo.parquet`, `features/team_ratings.parquet`, `models/<model>/<season>-w<NN>/meta.json`;
+- in the repo: `config/settings.yaml`, the model cards, PROGRESS.md's Season log;
 - the newest schedule snapshot (cached for 60 s);
 - the lock file.
 
-They never write to the data root (a test hashes every file before and after calling every endpoint). They also never keep a file open or memory-mapped: the weekly run replaces its files in place, and on Windows an open or mapped file makes that fail. That's why curated tables are read from their Parquet files and not through a DuckDB connection to `nfl.duckdb` (D100).
+They never write to the data root (a test hashes every file before and after calling every endpoint); the app's own writes are under `cache/control-room/` (run records, launched commands' output, the W&B cache). They also never keep a file open or memory-mapped: the weekly run replaces its files in place, and on Windows an open or mapped file makes that fail. That's why curated tables are read from their Parquet files and not through a DuckDB connection to `nfl.duckdb` (D100), and why the Scorecard hands the dashboard's builder every input already read (D105).
+
+## 4c. How the app reads W&B (CR03)
+
+**W&B is the record; the app is a window.** Nothing in the app writes to W&B or moves an alias (promotion stays with `--auto` / `--promote`).
+
+- **Local first.** Every number on the MLOps and season pages comes from a file on D: that holds the same number W&B was fed: the six chart cards (§2c), the live scorecard, the health tiles. W&B is read only for what no local file holds: **the run list and links, artifact versions and aliases, who logged each version, and lineage** (plus the ratings evaluation's summary). `tests/app/test_parity_cr03.py` compares each local number with W&B's for week 5, so the two can't drift apart silently.
+- **The key** goes from the settings straight into the W&B client (`tracking.read_api`, the way `nfl doctor` does it), never into the process environment, a file, a log or a response.
+- **The cache:** one JSON file per answer under `D:\nfl-ml-data\cache\control-room\wandb\` (`runs-2026-w05.json`, `artifacts.json`, `used-<run id>.json`, `ratings-eval.json`), plus memory. A week's run list lives 10 minutes (a day once the week is published and past), the artifact list 10 minutes, a finished run's lineage and the ratings evaluation a week. **Refresh from W&B** / **Try again** (`?refresh=1`) skips it once. The files survive an app restart; deleting the folder is always safe.
+- **Timings:** each W&B call takes 0.1–0.25 s; the artifact list asks who logged every version (about 25 calls, 6 s the first time, then reused: a version's logger never changes); a cached answer comes back in about 0.05 s.
+- **When W&B can't be reached** (no network, W&B down, the key not set): every call has a 10-second timeout, and after a failure W&B isn't asked again for a minute. The page then shows the last cached answer with a banner ("W&B can't be reached right now: showing what it said at …"), or, with no cache, a banner saying links, versions and aliases are missing; **everything local still loads** (the charts, Health, the Scorecard). The reason is a fixed sentence with the error's type, never its message.
+- **Every text from W&B** (names, tags, URLs) has the data root's path made relative and passes through `scrub()` before it's cached, and the secrets scan runs over every CR03 endpoint with a fake W&B that returns a key-shaped tag.
+- **One banner for the whole answer:** Artifacts reads the artifact list, the week's runs and the pipeline run's lineage; Models reads the artifact list and the ratings evaluation. If any of them fails or is stale, the banner says so with that read's reason ("The lineage: W&B didn't answer …"), even when the rest is fresh. After a failed refresh the answer stays marked stale until W&B answers again; a damaged cache file is simply fetched again.
+- **What W&B's own library writes** (the `wandb` package, as with `nfl doctor` and every pipeline command): empty scratch folders in Windows' temp folder (one per run it reads) and a debug log under `%LOCALAPPDATA%\wandb\logs`. Nothing in the data root, no data, no key (checked). The app doesn't move them: that would take environment variables the commands it launches would inherit (D106).
+
+**Where each W&B chart appears in the app:** the W&B guide's §12 has the full map (run → key → screen → local file).
 
 ## 4b. How a run is launched (CR02)
 
@@ -269,7 +345,7 @@ They never write to the data root (a test hashes every file before and after cal
 - **Widgets:** Radix for the gear popover and the confirm dialog (focus handling, Escape).
 - **Styling:** Tailwind 4, with the mockup's tokens as colours; the mockup's component styles ported as they are (`web/src/styles/app.css`).
 - **Fonts:** Barlow, Barlow Condensed and JetBrains Mono, bundled with `@fontsource`, so nothing loads from the internet.
-- **Charts:** small in-house SVG components (`web/src/charts/`): a line chart with a legend and crosshair tooltip, horizontal bars with tooltips, a sparkline. They follow the project's chart rules: text in text colours, a legend for two or more series, hover and focus tooltips. CR01 and CR03 use them.
+- **Charts:** small in-house components (`web/src/charts/`): a line chart with a legend and a crosshair tooltip (hover, or focus and the arrow keys), horizontal bars with tooltips, a sparkline, a range bar, a dot strip, and CR03's dumbbell (model only vs market per game) and calibration chart (points sized by games against the diagonal). They follow the project's chart rules: text in text colours, a legend for two or more series, hover and focus tooltips.
 
 ## 5. The safety rules, in plain words
 
@@ -277,7 +353,7 @@ The app can't be reached from other computers, and other websites open in your b
 
 1. **It only listens on 127.0.0.1.** There's no `--host` option.
 2. **It only answers requests addressed to `127.0.0.1:<port>` or `localhost:<port>`.** That stops a trick where a malicious site points its own domain name at your machine ("DNS rebinding").
-3. **Anything that changes something needs the launch token and must come from the app's own page.** The token is a random string made each time `nfl app` starts. The page reads it from `/api/session`, which other sites can't read. In CR00 nothing changes anything yet; CR02's Run button will be the first.
+3. **Anything that changes something needs the launch token and must come from the app's own page.** The token is a random string made each time `nfl app` starts. The page reads it from `/api/session`, which other sites can't read. The only things that change anything are CR02's Run, Resume and Saturday buttons; every CR03 page only reads.
 4. **No cross-site access headers are ever sent.** The page can't be framed by another site either (it can't be tricked into clicking Run inside a hidden frame). The other security headers: content security policy, `nosniff`, `no-referrer`, `no-store` on API answers.
 5. **Secrets stay on the server.**
    - No endpoint returns a key or an environment value.
@@ -300,10 +376,21 @@ The app can't be reached from other computers, and other websites open in your b
 
 **CR02's web tests** (147 more, 244 in all): the pre-flight panel (ok, blocked with its reason, Check again, a run in progress, notification permission asked once), the confirm dialog and the exact POST body (`{kind, expect_week}` from the pre-flight, never from the URL), 409 / 403 toasts, the failure banner with Resume only for the matching step, the Saturday button and its live log, the watcher's end toasts (none for old runs), the rehearsal banner; the live model (ordering, duplicates, progress rules, the GLM wait, a failure, a resume, a rehearsal, a process that died), each view and the now-bar moving in place, switching views mid-run, the end without a flash back to the plan; and **three real rehearsal recordings** (`web/src/test/fixtures/rehearsal-2026-w04-*.jsonl`: clean, failing at player, resumed) replayed prefix by prefix: steps, time and the ball only move forward, every view renders without NaN.
 
+**CR03's tests.** `tests/app/test_app_cr03.py` (30, on fixture records from `tests/app/cr03_fixtures.py`, with a fake W&B API): the W&B reader (cache hit, expiry, refresh, a restart answering from the file; W&B unreachable → the last answer marked stale with the reason, then a minute's back-off; never cached → unavailable; the key not set; reasons never quote the error), the week's runs (the graded week's scoreboard, re-runs), the artifact list (loggers reused, a missing collection), Health on full records, on a week before run records and on a week without a run, a later curate's quality file, the W&B runs section with and without W&B (local links, the charts still there), Artifacts with and without W&B and the alias lineage, Scorecard live / backtest / an empty season, Teams, Models and the model cards (an unknown or path-shaped id refused), Alerts and the Season log's notes, Health's names-only variables and a leaky check detail; **the secrets scan over every CR03 endpoint with a fake W&B returning a key-shaped tag**, and **every CR03 GET writes nothing but the W&B cache**. The CR03 GETs are also in `test_app_security.py`'s scan. Test clients never reach W&B or the doctor's network checks: `app_helpers.make_client` gives an offline W&B reader and fake checks.
+
+**CR03's real-data parity** (`uv run pytest -m integration tests/app/test_parity_cr03.py`, 10; reads W&B, read-only, with the W&B cache in a temporary folder): week 5's run list is exactly the tagged runs (with the scoreboard rule); the game fit's 15 model-only and market chances equal the game run's `slate/*`; the digest's words and check issues equal `words/*` and `check_issues/*`; the graph's stages, mismatches and nodes equal `time/*`, `count_mismatches`, `count/node/*`; the pipeline's step seconds and statuses equal `step/*`; the scoreboard file's live rows equal `scoreboard/improvement_*`; `production` and the lineage equal W&B's (week 4's alias lineage too); **the live Scorecard's tiles equal the current Season Dashboard run's summary**; every model card opens; reading weeks 4 and 5 changes no file.
+
+**CR03's web tests:** the MLOps tab (`web/src/pages/week/MlopsTab.test.tsx`: each section from fixtures, the switcher and its memory across weeks with blocked storage, week 4's notice, an empty week, the W&B-unavailable and stale banners with the local data still there, earlier runs, no versions yet, lineage, a later curate's quality file, unsafe links shown as text) and the dumbbell; the season pages (`web/src/pages/season/*.test.tsx`: the live / backtest switch, an empty season, the AFC / NFC filter and the detail row by mouse and keyboard, the model-card dialog and links between cards, alerts empty and with alerts, Health's checking state and names only, W&B unavailable on Models) and the calibration chart.
+
 ## 6. Troubleshooting
 
 | What you see | What to do |
 |---|---|
+| A banner "W&B isn't available" or "can't be reached right now" | The reason is in the banner: no network, W&B down, or `WANDB_API_KEY` not set (`uv run nfl doctor`). Everything local still shows; **Try again** asks W&B once more (after a failure the app waits a minute before asking again by itself) |
+| W&B runs or Artifacts look a few minutes old | They're cached (10 minutes for the current week and the artifact list): **Refresh** / **Try again** fetches them now |
+| Health says "checking…" | The doctor's checks run in the background (a few seconds; W&B and OpenRouter answer over the network); the page updates by itself |
+| The Scorecard's lines are empty | Normal until two weeks are graded (2026: after week 6's run). The tiles and the calibration already show the graded week |
+| A past week's quality checks say "a later curate run" | The quality file is replaced by every curate; that week's own checks weren't kept, only its counts (in the run summary) |
 | **Run week N** greyed out | Read the reason under it; the failing check is marked ✕ in the panel (§2b). "Last week isn't final" alone never greys it out, except for 30 minutes after a not-ready run |
 | A run seems stuck on the digest | Normal for up to 40 minutes: the GLM call reports nothing until it returns. The elapsed time keeps moving; the terminal running `nfl app` isn't involved |
 | The page lost the run after a reload or a restart of `nfl app` | It finds it again from the lock and the events file within a few seconds. If the run's process died, the run shows as "interrupted" with the last lines of its output; resume from the failed step |
@@ -333,7 +420,9 @@ The app can't be reached from other computers, and other websites open in your b
   4. add the endpoint to the secrets scan in `test_app_security.py` and to `all_week_urls()` in `test_app_week.py`;
   5. never name a JSON field `key`, `*token*`, `*auth*`, `*secret*` or `*password*`: the scan reads those as leaked credentials.
 - **Adding a screen:** a component under `web/src/components/` or a page under `web/src/pages/`, its route in `routes.tsx`, and a Vitest test with the fake API (`web/src/test/utils.tsx`).
-- **Reviews:** CR00 had a Sol review (8 findings, all fixed, D98), CR01 too (7 findings, all fixed, D102), CR02 too (D104). Each CR phase gets one before its close.
+- **Adding a W&B read:** only for what no local file holds (links, versions, aliases, lineage). A fetch function in `wandb_api.py` that returns plain JSON with every string through `_s()` (scrubbed), called through `WandbReader.get(name, fetch, ttl=…)` so it's cached, timed out and fail-soft; a fake for it in `tests/app/cr03_fixtures.FakeApi`; and, if a local file holds the same number, a parity test in `test_parity_cr03.py`. Never write to W&B or move an alias from the app.
+- **Adding a model card:** add its file to `CARDS` in `readers/models.py` (id → title, path under `documentation/`) and to the model's `_cards(...)`; the browser only ever sends the id.
+- **Reviews:** CR00 had a Sol review (8 findings, all fixed, D98), CR01 too (7 findings, all fixed, D102), CR02 too (D104), CR03 too (D106). Each CR phase got one before its close.
 - **Changing what the app can run:** don't, without Rishi. The three kinds are the allowlist (README §5.3); a new kind needs the spec, a decision, the gate in `preflight.py`, the argv in `runner.build_launch`, tests that every other shape is refused, and a Sol review.
 - **Gates before a commit:** `uv run pytest`, `uv run ruff check`, and in `web/`: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`.
 - **Never** add an endpoint that takes a file path or a command, never send a key or an environment value to the browser, and never make the server listen on anything but 127.0.0.1 (README §5).
@@ -342,6 +431,7 @@ The app can't be reached from other computers, and other websites open in your b
 
 - **CR01 (done):** every week tab from the real files, the three pipeline views for finished runs and the plan, the week header for any week.
 - **CR02 (done):** the Run button (`nfl weekly run --auto --expect-week N`), pre-flight checks, the live view and log, resume after a failure, the Saturday injury update, toasts and notifications, rehearsal mode. **First live run from the app: 2026 week 5**, on Tuesday 2026-10-06 at 20:27 ET: 16 m 41 s, every step ok (the graph started Docker and Neo4j itself), the GLM on Novita for 8 m 47 s, the digest's checks passed first time, published 47.5 h before kickoff.
-- **Limits now:** a week's Results appear only after the next Tuesday's run; the GLM step shows no live token count (the call isn't streamed, D103); a week that ran before CR02 keeps its rebuilt log (no flags); MLOps waits for CR03.
-- **CR03:** MLOps (Health · W&B runs · Artifacts) and the season pages.
-- **Not planned:** remote access, user accounts, scheduling (runs stay manual, D71).
+- **CR03 (done, closes the track):** the MLOps tab (Health · W&B runs · Artifacts) and the season pages (Scorecard, Teams & rankings, Models, Alerts, Health), W&B read on the server and cached (§4c).
+- **Limits now:** a week's Results appear only after the next Tuesday's run; the GLM step shows no live token count (the call isn't streamed, D103); a week that ran before CR02 keeps its rebuilt log (no flags); a week before P07 (2026 week 4) has no run records, so its Health shows only what its files hold and its lineage comes from aliases; the quality checks of a past week are shown only while the quality file is still its own; the Scorecard's lines need two graded weeks; alert notes are edited in PROGRESS.md, not in the app.
+- **Later ideas (not planned):** a Track 2 tab (once T00 starts); scheduled runs if scheduling is ever added (D71); team pages beyond the rankings' detail row.
+- **Not planned:** remote access, user accounts, scheduling (runs stay manual, D71), writing to W&B from the app.

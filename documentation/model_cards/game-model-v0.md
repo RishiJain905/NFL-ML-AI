@@ -1,6 +1,6 @@
 # Model card: game model v0 (P03)
 
-**Family:** Track 1 model B ([04 → B](../04-track1-models.md#b-game-model-win-probability)) · **Chosen:** 2026-10-03 (D48; P03's 🧑/✋ steps waived by Rishi for this phase) · **Production:** `game-model:2026-w04` (W&B version v1, alias `production`) · **Code:** `features/game.py`, `features/qb.py`, `features/venues.py`, `models/game_model.py`, `models/backtest.py`, `models/metrics.py`, `models/game_runs.py` · **Tables:** `features/game_features` (`nfl features game`), `runs/<season>/week<NN>/predictions_games.parquet` (`nfl train game`), `runs/backtests/game/<variant>/` (`nfl backtest game`).
+**Family:** Track 1 model B ([04 → B](../04-track1-models.md#b-game-model-win-probability)) · **Chosen:** 2026-10-03 (D48; P03's 🧑/✋ steps waived by Rishi for this phase) · **Production:** the weekly refit, W&B artifact `game-model:<season>-w<NN>`; `--auto` moves the `production` alias to each week's fit (D72; first `game-model:2026-w04`, W&B version v1; after week 5 `v5`; the control room's Models page and MLOps → Artifacts show where it points now) · **Code:** `features/game.py`, `features/qb.py`, `features/venues.py`, `models/game_model.py`, `models/backtest.py`, `models/metrics.py`, `models/game_runs.py` · **Tables:** `features/game_features` (`nfl features game`), `runs/<season>/week<NN>/predictions_games.parquet` (`nfl train game`), `runs/backtests/game/<variant>/` (`nfl backtest game`).
 
 ## What it is
 

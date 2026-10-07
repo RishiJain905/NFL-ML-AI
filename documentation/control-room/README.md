@@ -1,6 +1,6 @@
 # Control room: the local web app for the weekly pipeline
 
-Status → see the **Control room** rows in [plans/PROGRESS.md](../plans/PROGRESS.md). Decisions: D94–D104 in the [decisions log](../10-decisions-log.md).
+Status → see the **Control room** rows in [plans/PROGRESS.md](../plans/PROGRESS.md): **the track is complete** (CR00–CR03, closed 2026-10-06). Decisions: D94–D106 in the [decisions log](../10-decisions-log.md).
 
 The control room is a web app that runs on Rishi's machine (localhost only). On Tuesday he opens it and presses **one button** to run the week's pipeline. He watches every step happen, then reads the digest and checks last week's results. He can also look at the MLOps side (run health, W&B runs and charts, artifacts) and at season-long views.
 
@@ -232,6 +232,15 @@ The plan is read-only first (useful from day one with no risk to the live pipeli
 - **The pipeline is unchanged** by the events: a week-4 rehearsal (`game`, `player`, clock pinned to the published run) with the pre-CR02 code (`git archive HEAD`) and with the new code gave identical game (32 rows) and team (120) predictions and identical player projections (4,283 rows: every quantile, mean and chance); only the player baselines differed, by at most 7e-18 (floating-point summation order, in code CR02 didn't touch).
 - **A rehearsal of week 4 with events** (placeholder writer): 104 events, 22 KB, 2.5 minutes (player 141 s); a failure injected at `player` and its resume (`--steps player,digest`) chain correctly.
 
+**Checked in CR03 (2026-10-06, after week 5's run).**
+- **W&B through the API** (`tracking.read_api`: the key from the settings straight into the client): building the client 0.4–3.3 s (the default-entity lookup), each call 0.1–0.25 s, no rate limiting seen (30 run reads in a row: the client caches them itself). The artifact list needs one `logged_by` call per version (23 versions, about 6 s). `injury-update` doesn't exist yet: W&B answers "can't find artifact collection". There's no `digest:production` alias (only the models are promoted).
+- **Week 5's W&B runs** (tags `season:2026` + `week:05`): 7, plus the scoreboard run, which is tagged with the week it **grades** (`scoreboard-2026-w04`, `212dlxyp`, made by week 5's run). Week 4 has 27 runs (re-runs), 6 of them the newest of their job, and its scoreboard run is `scoreboard-2026-w03` (`ip2ny9sz`). Week 5's pipeline run (`i8fhvizy`) used `game-model:v5`, `graph-results:v2`, `player-model:v2`, `team-model:v0` (the first) and `digest:v9`.
+- **Every chart has a local twin:** `slate/*` = `predictions_games.parquet`'s model-only / market rows; `scoreboard/improvement_*` = `accuracy_scoreboard.parquet`'s live rows; `words/*` and `check_issues/*` = `checks.json`'s final round; `time/*` and `count/*` = `graph_results.json`; `step/*` = `run_summary.json`; the Season Dashboard's summary = `build_dashboard_data` on the season files. All equal (parity test).
+- **Week 5's records:** `run_summary.json` has `freshness` (38 rows), `ingest` (counts, the failed list; the manifest is named in the ingest step's detail), `quality` (counts and `run_at` only: the per-check list is `curated/_quality/latest.json`, **replaced by every curate**), `models`, `consistency`, `digest`, `drift` (17 rows: the player signals have a row per group, TEAM included), `alerts` (none). `pipeline_history.parquet` has one row (week 5); `dashboard.json` names the report and the current dashboard run (`hkf2hana`, week 5).
+- **Prediction files** name the player group `group` (`pgroup` is the position); the scoreboard's column is `position_group`. P08's targets had walk-forward rows only for week 4 (live from week 5), so week 4's scoreboard mixes modes.
+- **The 2025 backtest example:** 285 games (regular season and playoffs; week 22 is one game), cumulative Brier model 0.2114 / Elo 0.2223 / market 0.2108, pick accuracy 65.8%, ECE 0.042 against a calibrated model's 0.060. Its player groups pool P06's and P08's MAE targets (QB +5.8, EDGE/DL +2.7), so they differ from the W&B guide's P06-only 2025 numbers.
+- **Model cards** link each other and the design docs with relative links; the ratings evaluation (`ratings-eval`, `hcir0po5`) is the only headline number with no local file.
+
 ## 10. As built
 
 Each phase adds what it built and any differences from this spec here, with decision numbers.
@@ -290,3 +299,29 @@ Each phase adds what it built and any differences from this spec here, with deci
   - the SSE module is `app/stream.py`.
 - **The first live Tuesday run from the app:** Rishi ran 2026 week 5 from it on 2026-10-06 (20:27–20:44 ET, 16 m 41 s): every step ok, published 47.5 h before kickoff, checks passed first time, every W&B run tagged `via:control-room`. Since then the Pipeline tab times the records step from the events file (it read 0 s from the run summary's early stamp).
 - **Sol review:** 10 findings (0 high), all fixed; a verification pass completed five of the fixes and found one more, fixed too (D104). The ones that change this spec's rules: the injury update also carries `--expect-week`; SSE ids are `<run id>:<seq>`; the lock's note names the run holding it (`run_id`), and the app ties a held lock to its own launch by that id only; a launch still starting counts as running across an app restart; a Sunday-only slate's Saturday is the one before it; a text cut by any cap can't keep part of the data root's path (`strip_partial_root`).
+
+**CR03 (2026-10-06, D105–D106; closes the track).**
+- **What runs:** every week's **MLOps** tab (Health · W&B runs · Artifacts, the switcher remembered across weeks) and the five **season pages** (Scorecard with the 2026 live / 2025 backtest switch, Teams & rankings, Models with the rendered model cards, Alerts, Health), from the real files, with W&B read on the server through a cached, read-only client. The guide's §2c, §2d and §4c explain each screen and what it reads.
+- **Endpoints added:** `GET /api/weeks/{S}/{W}/mlops/{health,wandb,artifacts}` (W&B ones take `?refresh=1`), `/api/season/{S}/scorecard?source=live|backtest`, `/api/teams`, `/api/models` (`?refresh=1`), `/api/models/card/{id}`, `/api/alerts`, `/api/health` (`?refresh=1`). All GET; none writes outside `cache/control-room/`.
+- **Differences from §3–§5 and the CR03 tasks** (D105 lists them in full):
+  - **local first:** every chart number comes from the file W&B was fed from; W&B gives the run list and links, versions, aliases, who logged each, lineage and the ratings evaluation; a parity test compares each number with W&B;
+  - the W&B key goes from the settings into the client (`tracking.read_api`), never into the environment; answers are cached as JSON under `cache/control-room/wandb/` (10 minutes; a day for a past published week's runs; a week for a finished run's lineage); 10 s timeouts; a minute's back-off after a failure; the last answer served as "stale" with a fixed-text reason;
+  - the week's runs include the scoreboard run that grades the week before (it's tagged with that week);
+  - the live Scorecard is the W&B Season Dashboard's own builder fed by the app's reads (a `preds` argument added to `ops.dashboard.build_dashboard_data`), so it shows the report's numbers; its lines wait for two graded weeks;
+  - Health runs the doctor's checks on a background thread (not on every page load); its keys list is the settings' 11 variable names (the mockup's 8), set / not set;
+  - Models reads the headline numbers from the canonical backtests' summaries, and its card button also opens the LLM writer's guide (`kind: guide`);
+  - Alerts reads investigation notes from PROGRESS.md's Season log (read-only); the example alert is read from the 2025 week-10 simulation's run summary;
+  - a past week's quality checks show only while the quality file is still that run's (week 4's weren't kept);
+  - no "Add a note" button (notes stay in PROGRESS, per the phase's scope).
+- **Mockup parity** (MLOps Health / W&B runs / Artifacts on week 5 in Turf & Pylon dark, week 4's partial view; Scorecard live and backtest, Teams with a detail row, Models with a card open, Alerts, Health in Playbook light; screenshots in `.playwright-mcp/cr03/`, git-ignored). Differences kept on purpose:
+  - **Health:** freshness grouped by source with ages and problems first; "This week vs last week" with a change column and a trend line per row (the mockup had none before week 5); drift player signals grouped per status; quality's "later curate" notice;
+  - **W&B runs:** the newest run per job, re-runs folded under "Show N earlier runs"; a Refresh button; the dumbbell drawn as HTML rows (one tab stop per game, the gap written as "+8 pts"); the scoreboard card shows the graded week by group (the mockup pooled weeks 1–3);
+  - **Artifacts:** `production` first among the alias chips; the lineage note links the pipeline run; without W&B the run summary's model versions;
+  - **Scorecard:** every tile (the mockup's live view had four); the line charts wait for two graded weeks with the week's numbers in words; a note under the live calibration ("the bins are noisy until about 64 games"); the dashboard link in the page header; no in-plot "perfect calibration" label (it sat on the top bins; the legend names the line);
+  - **Teams:** the header names the week the ratings enter; rows open with Enter / Space too;
+  - **Models:** headline tiles from the backtests, bars split MAE / Brier with "Show all 23 stats", working "Model card" buttons (links between cards open in the same dialog);
+  - **Alerts:** the timeline's axis shares the rows' grid (the mockup's dots sat 160 px off); a "Drift by run" table; no disabled buttons;
+  - **Health:** "Variables" (not "Keys"), with a required / optional tone; recent runs with week and duration;
+  - the line chart now has keyboard-focus tooltips (arrows, Home / End, Escape).
+- **Sol review:** 10 findings (8 medium, 2 low, 0 high): 9 fixed with tests, 1 kept with a reason (D106). The ones that change this spec's rules: W&B strings lose the data root's path before they're cached; one banner state covers every W&B read behind an answer; a failed refresh stays marked stale until W&B answers again; the "first can fire" weeks follow the drift evaluator's own rules; the W&B library's own scratch in the OS temp folder (outside the data root) is documented, not moved.
+- **The track is complete.** Later ideas (not planned): a Track 2 tab once T00 starts, scheduled runs if scheduling is ever added (D71), team pages beyond the rankings' detail row.

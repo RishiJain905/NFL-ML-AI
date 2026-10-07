@@ -11,7 +11,7 @@ How to run the weekly NFL digest, what normal looks like, and what to do when so
 | **Tuesday, 10:00 ET or later** (after Monday Night Football; nflverse updates overnight) | `uv run nfl weekly run --auto`, or **Run week N** in the control room (`uv run nfl app`; [Run the week from the control room](#run-the-week-from-the-control-room-cr02), the same command with `--expect-week N`) | Works out the season and week from the calendar, then ingest → ready → curate → ratings → game → graph → player → digest, then the run records (summary, history, drift checks, W&B pipeline run, season dashboard) | Exit 0, last line `ok: 2026 week 05: ok`, the digest at `D:\nfl-ml-data\reports\2026\week05-digest.md`, about 5 minutes plus the LLM (2–40 minutes) |
 | Any time | `uv run nfl weekly status` | What the calendar says now, each step's state for this week and last, the lock, the last 5 runs | Read only |
 | **Saturday, 10:00 ET or later** (final injury designations come out Friday) | `uv run nfl weekly injury-update --auto`, or **Saturday injury update** in the control room's week header | Re-pulls injuries, news, lines and depth charts, re-predicts the week's games and players, compares with Tuesday | "nothing material changed" or "addendum published → `reports\2026\week05-injury-update.md`". Material = a win probability moved ≥ 5 points, or a watch-list player's status changed to or from Doubtful / Out / IR (a plain Questionable tag doesn't count, D73). One `pipeline_history` row per update (`ok`, `degraded` or `failed`) |
-| After either run | W&B: the newest `weekly-pipeline` run and the **2026 Season Dashboard** report (every chart explained: [W&B guide](guides/weights-and-biases.md#the-season-dashboard-p07-every-chart-explained)) | Step times, freshness, checks, drift; the season charts | The 2-minute checklist in the [W&B guide §5](guides/weights-and-biases.md#what-to-check-each-week-in-2-minutes) |
+| After either run | **The control room first** ([After the run: where to look](#after-the-run-where-to-look-cr03)): the week's **MLOps** tab (Health, W&B runs, Artifacts), then **Season → Scorecard** and **Alerts**. W&B itself (the newest `weekly-pipeline` run and the **2026 Season Dashboard** report, every chart explained in the [W&B guide](guides/weights-and-biases.md#the-season-dashboard-p07-every-chart-explained)) for anything deeper | Step times, freshness, ingest, quality, drift, the week's W&B runs and artifacts; the season charts | Everything green on MLOps → Health; the 2-minute checklist in the [W&B guide §5](guides/weights-and-biases.md#what-to-check-each-week-in-2-minutes) |
 
 Before the first run of a session it doesn't hurt to run `uv run nfl doctor` (every line OK).
 
@@ -100,6 +100,22 @@ The control room (`uv run nfl app`, the [guide](guides/control-room.md)) runs th
 **What stays in the terminal:** re-running a published week (`--force`), `--as-of` simulations, graph rebuilds, resumes of older weeks, anything that deletes. The app runs exactly three commands (D103).
 
 **Rehearsal mode:** `uv run nfl app --rehearsal` points the Run button at `nfl weekly rehearse` of the newest published week, into `rehearsals/control-room` (nothing live is touched: no W&B, no graph write, no records; a banner says so). Use it to try the live views. `--fail-at <step>` (a hidden option, rehearsal only) makes the first rehearsal fail at that step on purpose, to try the failure and Resume buttons.
+
+### After the run: where to look (CR03)
+
+The control room is the first place to look after a Tuesday run (or a Saturday update); W&B and the files are there for anything deeper. In order:
+
+1. **The week's MLOps → Health** (`/week/2026/<N>/mlops`): the five tiles should read *ok · 8/8 steps*, *30 datasets · 0 failures*, *17/17 quality checks*, *0 drift alerts*, and the projections written to the graph. Then:
+   - **Step timings:** the digest is normally the long pole (week 5: 54% of 16.5 minutes); a step far slower than last week shows in **This week vs last week** too;
+   - **Data freshness:** nothing stale (stale or failed rows are listed first);
+   - **Ingest** and **Quality checks:** any `failed` dataset or failed check is the first thing to fix;
+   - **Drift signals:** `insufficient data` is normal early in the season (first possible: player week 7, calibration about week 9, game vs Elo week 10); an `alert` → [Drift alerts](#drift-alerts);
+   - **What ran:** the model versions, the writer and its provider, what was promoted, and the exact command.
+2. **MLOps → W&B runs:** the week's runs, each linked; the redrawn charts (the game fit's model-vs-market gaps are what the digest's "model vs consensus" lines describe; the digest's words per section against their budgets).
+3. **MLOps → Artifacts:** `production` on this week's `game-model`, `player-model` and `team-model` (after an `--auto` run), and the lineage `game-model → graph-results → player-model → team-model → digest`.
+4. **Season → Scorecard** (from the second graded week, the season lines), **Season → Alerts** (any alert, with its investigation notes from the Season log), **System → Health** (if anything looked off: services and variables by name).
+
+If W&B can't be reached, the app says so in a banner and shows the last cached W&B answer; every local number still loads. "Refresh" fetches W&B again.
 
 ### Re-publish only the digest
 
@@ -291,7 +307,8 @@ Every alert's full text (with the numbers) is in that week's `run_summary.json` 
 | The lock | `runs\.weekly.lock` |
 | A run's progress events (CR02): every step, progress, the GLM call, each log line | `runs\<season>\week<NN>\events\<run-id>.jsonl` (one file per run, resume or injury update) |
 | What the control room launched, and each command's output | `cache\control-room\runs\<run-id>.json`, `cache\control-room\logs\<run-id>.log` |
-| W&B | group `weekly-pipeline` (`pipeline`, `injury-update`, `simulation`, `main` = the digest), group `season-dashboard`, the report "2026 Season Dashboard"; runs launched from the control room carry the tag `via:control-room` |
+| W&B | group `weekly-pipeline` (`pipeline`, `injury-update`, `simulation`, `main` = the digest), group `season-dashboard`, the report "2026 Season Dashboard"; runs launched from the control room carry the tag `via:control-room`. The control room's MLOps tab lists a week's runs and artifacts (read-only) |
+| The control room's W&B cache (CR03) | `cache\control-room\wandb\*.json` (safe to delete: the app fetches again) |
 
 ## Scheduling later (not now)
 

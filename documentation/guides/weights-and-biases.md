@@ -643,7 +643,7 @@ P10 (season operations) then reviews any alert each week, and the agent investig
 
 Since P07 the `pipeline` run **uses** the week's `game-model`, `graph-results`, `player-model` and `digest` artifacts (lineage; since P08 also `team-model`), and `--auto` gives `game-model`, `player-model` (and since P08 `team-model`) the `production` alias each week (D72). Since P08 `graph-results` (`graph_results.json`) also holds the `gds` block (per-job status, timings, each team's passing-network hub) and `converter_errors`; the game model v1 was never promoted, so `game-model` versions are all v0 fits.
 
-**Where things stand (checked through the W&B API):** `game-model` `v0`–`v3` (`production` on `v1` from `ump6sftd`; `2026-w04` on `v3` from `1vbkvjdj`); `graph-results` `v0` (`2026-w04`, `binb1iho`); `digest` `v0`–`v5` (`2026-w04` on `v5`, `o0skjazq`); `digest-backtest` `v0`–`v31`.
+**Where things stand (checked through the W&B API on 2026-10-06, after week 5; the control room's MLOps → Artifacts shows it live):** `game-model` `v0`–`v5` (`production` + `2026-w05` on `v5`, `1jmmh8g9`; `2026-w04` on `v4`, `st8440zw`); `player-model` `v0`–`v2` (`production` + `2026-w05` on `v2`, `zjwbooy5`; `2026-w04` on `v1`, `kl4fzvl8`); `team-model` `v0` (`production` + `2026-w05`, `ae8potfn`, the first); `graph-results` `v0`–`v2` (`2026-w05` on `v2`, `73xjb0l7`; `2026-w04` on `v1`, `g95ulxqj`); `digest` `v0`–`v9` (`2026-w05` on `v9`, `qlr4f8yk`; `2026-w04` on `v8`, `0eh6h6ll`); `injury-update`: none yet (the first comes from Saturday 2026-10-10). Week 5's `pipeline` run (`i8fhvizy`) used `game-model:v5`, `graph-results:v2`, `player-model:v2`, `team-model:v0` and `digest:v9`.
 
 **Planned, not built:** a reference artifact for the training-data snapshot (doc 08); `candidate` aliases (P08 needed none: v1 lost to v0 in the backtests, D79, and new player / team targets ship through `live_targets`). The player models are one artifact, `player-model`, not one per group (`player-model-wr` in doc 08).
 
@@ -702,4 +702,36 @@ Things that look wrong or confusing in W&B today, with where they come from:
 | **Sweep** | A set of runs that W&B launches over a grid of settings, with its own page (parallel coordinates, parameter importance). Ours run in-process, one configuration after another |
 | **Artifact** | A versioned bundle of files logged by a run (`game-model`, `graph-results`, `digest`). Each new upload with changed contents is a new version (`v0`, `v1`, …) |
 | **Alias** | A movable name for one artifact version (`2026-w04`, `production`, `latest`). Logging a new version with the same alias moves it |
-| **Lineage** | The graph of which run logged which artifact and which runs used it. Ours only has the "logged by" half (§10 item 3) |
+| **Lineage** | The graph of which run logged which artifact and which runs used it. Since P07 (2026 week 5 on) the `pipeline` run uses the week's artifacts, so both halves exist (§4.9, §10 item 3); the control room draws it on MLOps → Artifacts (§12) |
+
+## 12. The control room's view of W&B (CR03)
+
+The control room (the local web app, [its guide](control-room.md)) shows each week's W&B runs, their main charts and the artifacts without opening the W&B website. **It only reads W&B; it never logs a run, writes a summary or moves an alias.**
+
+**Local first.** Every chart number the app shows comes from the file on D: that W&B was fed from; W&B itself is read only for what no local file holds:
+
+| From W&B (the API, server side) | From the local files |
+|---|---|
+| The week's run list (ids, names, groups, job types, states, tags, links) | Every chart card's numbers (table below) |
+| Artifact versions, their aliases (`production`, `<season>-w<NN>`, `latest`), sizes, and the run that logged each | The MLOps Health section (run summary, manifest, quality file, freshness, drift) |
+| The pipeline run's used artifacts (the lineage behind the digest) | The Scorecard (the dashboard's own builder on the same files as the report) |
+| The ratings evaluation's summary (`ratings-eval`, for the Models page) | The Models page's backtest numbers (`runs/backtests/*/summary.json`) |
+
+A parity test (`tests/app/test_parity_cr03.py`, `-m integration`) compares each local number with W&B for 2026 week 5, so the two can't drift apart silently.
+
+**How it reads.** The key goes from the settings straight into the client (`tracking.read_api`, the way `nfl doctor` does it), never into the environment or a file. Answers are cached under `D:\nfl-ml-data\cache\control-room\wandb\` (a week's run list 10 minutes, a day once the week is past and published; the artifact list 10 minutes; a finished run's lineage a week); "Refresh" or "Try again" in the app skips the cache once. Each call has a 10-second timeout; after a failure the app waits a minute before asking again and shows the last cached answer (or a banner) while every local number still loads. Calls take 0.1–0.25 s; the artifact list asks who logged each of its ~25 versions once (about 6 s), then reuses it.
+
+**Which runs are "the week's".** The runs tagged `season:S` + `week:NN`, newest first; the newest run of each job is the one that counts (week 4 has 27 runs, 6 of them current). **One exception:** the player scoreboard run is tagged with the week it **grades**, so `scoreboard-2026-w04` (made by week 5's run) belongs to week 5 in the app, and week 4 shows `scoreboard-2026-w03`.
+
+**Where each W&B chart appears in the app:**
+
+| W&B run · keys | In the app | Drawn from |
+|---|---|---|
+| `train-S-wNN` (`track1-game`) · `slate/home_win_prob_model_only`, `slate/home_win_prob_market` | MLOps → W&B runs → **Game fit** (a dumbbell per game, sorted by the gap); also the Games tab's "where the model disagrees with the market" | `predictions_games.parquet` |
+| `scoreboard-S-w(N−1)` · `scoreboard/improvement_<target>_<group>` | MLOps → W&B runs → **Player scoreboard** (pooled per group) | `accuracy_scoreboard.parquet` (the graded week's live rows) |
+| `train-S-wNN` (`track1-player`) · `projections_per_target` | MLOps → W&B runs → **Player fit** | `predictions_players.parquet` |
+| `graph-S-wNN` · `time/*`, `count/*`, `count_mismatches` | MLOps → W&B runs → **Graph build**; the Graph tab | `graph_results.json` |
+| `digest-S-wNN` · `words/*` (`words_per_section`), `check_issues/*` (`check_issue_counts`) | MLOps → W&B runs → **Digest**; the Digest tab | `checks.json` |
+| `pipeline-S-wNN` · `step/*_seconds` (`step_seconds`), `freshness`, `drift` | MLOps → W&B runs → **Pipeline run**; MLOps → Health (step timings, freshness, drift) | `run_summary.json` |
+| `season-S-wNN` (the current dashboard run) · `game/cum_brier_*`, `game/cum_pick_accuracy`, `cal/*`, `calcurve/*`, `player/cum_improvement_*`, `pipe/*` | Season → **Scorecard** (2026 live): the tiles, season-to-date Brier, pick accuracy, calibration, player groups, pipeline health | the dashboard's builder (`ops.dashboard.build_dashboard_data`) on the same files |
+| The artifacts (`game-model`, `player-model`, `team-model`, `graph-results`, `digest`, `injury-update`) | MLOps → **Artifacts**; the production versions on **Models** | W&B only |
