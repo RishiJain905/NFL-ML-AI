@@ -1095,6 +1095,9 @@ def run_train(
         primary = table.filter(pl.col("is_primary"))
         run.log({"predictions_games": wandb.Table(dataframe=_live_table(table).to_pandas())})
         log_slate_charts(run, table)
+        from nflengine.models.training_charts import log_coefficients
+
+        log_coefficients(run, fits, log)  # what the refit learned (visibility only)
         run.summary.update(
             {
                 "games": primary.height,

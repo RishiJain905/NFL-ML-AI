@@ -1412,6 +1412,8 @@ def run_train(
     if not update:
         model_dir.mkdir(parents=True, exist_ok=True)
     all_preds, walk, meta_t = [], [], {}
+    charts = use_wandb and not update  # the W&B run's training charts (visibility only)
+    entries = []
     for i, target in enumerate(targets):
         events.progress(None, i, len(targets), f"refitting {i + 1}/{len(targets)} · {target.key}")
         frame = target_data(data, target)
@@ -1421,6 +1423,8 @@ def run_train(
         feats = target_features(frame, target)
         config = model_config(target)
         model = PlayerWeekModel(target, feats, config, explain=True)
+        if charts:
+            model.record_at = (season, week)  # this week's fit records its training loss
         keys = [AsOf(season, w) for w in range(1, week + 1)]
         out = walk_forward(
             frame,
@@ -1433,6 +1437,10 @@ def run_train(
         )
         fit = model.last
         assert fit is not None
+        if charts:
+            from nflengine.models.training_charts import TrainingEntry
+
+            entries.append(TrainingEntry(target, fit, model.last_evals, feats, config))
         tt = (
             f"{fit.trained_through[0]}-w{fit.trained_through[1]:02d}"
             if fit.trained_through
@@ -1556,6 +1564,9 @@ def run_train(
         )
         try:
             log_slate(run, preds)
+            from nflengine.models.training_charts import log_training_charts
+
+            log_training_charts(run, entries, log)
             card = (
                 Path(__file__).resolve().parents[3]
                 / "documentation"

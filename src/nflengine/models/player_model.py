@@ -349,6 +349,13 @@ class FittedPlayerModel:
         return c
 
 
+def _records(record_at: tuple[int, int] | None, test: pl.DataFrame) -> bool:
+    """Whether this walk-forward fit is the one whose training curves are recorded."""
+    if record_at is None or not test.height:
+        return False
+    return (int(test["season"][0]), int(test["week"][0])) == tuple(record_at)
+
+
 def _scale(train: pl.DataFrame) -> float:
     recent = train.filter(pl.col("season") >= train["season"].max() - 1)
     d = (recent["y"] - recent["baseline"]).abs().drop_nulls()
@@ -369,7 +376,10 @@ def fit_player_model(
     """Fit one target's boosters on `train` (column `y`), with the range / dispersion from
     `history` (earlier walk-forward predictions with `y`) when it has enough rows.
 
-    `valid` + `evals`: also record per-round training / validation loss (W&B curves).
+    `evals`: also record each booster's per-round loss (W&B curves): on the training rows,
+    and on `valid` when given. Recording reads the loss LightGBM computes anyway; it never
+    changes a booster (no early stopping; `tests/models/test_training_charts.py` proves the
+    trees are byte-identical with and without it).
     `main_only`: amounts fit only the P50 model (tuning; `predict` then can't be used).
     """
     feats = list(features)
@@ -385,7 +395,7 @@ def fit_player_model(
 
     def train_one(params: dict[str, Any], key: str) -> lgb.Booster:
         cb = []
-        if evals is not None and valid is not None:
+        if evals is not None:
             evals[key] = {}
             cb.append(lgb.record_evaluation(evals[key]))
         return lgb.train(
@@ -514,6 +524,10 @@ class PlayerWeekModel:
         self.explain = explain
         self.last: FittedPlayerModel | None = None
         self.curves: dict[int, dict[str, dict]] = {}  # season -> eval history (W&B)
+        # the weekly refit's training charts: the fit for this (season, week) records each
+        # booster's per-round training loss into `last_evals` (visibility only)
+        self.record_at: tuple[int, int] | None = None
+        self.last_evals: dict[str, dict] | None = None
 
     def __call__(
         self, train: pl.DataFrame, weights: np.ndarray, test: pl.DataFrame, history: pl.DataFrame
@@ -527,10 +541,13 @@ class PlayerWeekModel:
             if history.height:
                 ht = (history["season"].cast(pl.Int32) - 2000) * 22 + history["week"].cast(pl.Int32)
                 history = history.filter(ht < kt - self.target.label_lag)
+        evals = {} if _records(self.record_at, test) else None
         fit = fit_player_model(
-            train, weights, self.target, self.features, self.config, history=history
+            train, weights, self.target, self.features, self.config, history=history, evals=evals
         )
         self.last = fit
+        if evals is not None:
+            self.last_evals = evals
         pred = fit.predict(test)
         out = test.select(
             *ID_COLS,

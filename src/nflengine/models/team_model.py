@@ -30,6 +30,7 @@ from nflengine.models.backtest import SampleWeights
 from nflengine.models.player_model import (
     FittedPlayerModel,
     PlayerModelConfig,
+    _records,
     baseline_p50,
     baseline_p_ge1,
     fit_player_model,
@@ -192,14 +193,20 @@ class TeamWeekModel:
         self.features = list(features)
         self.config = config
         self.last: FittedPlayerModel | None = None
+        # the weekly refit's training charts (see `PlayerWeekModel.record_at`)
+        self.record_at: tuple[int, int] | None = None
+        self.last_evals: dict[str, dict] | None = None
 
     def __call__(
         self, train: pl.DataFrame, weights: np.ndarray, test: pl.DataFrame, history: pl.DataFrame
     ) -> pl.DataFrame:
+        evals = {} if _records(self.record_at, test) else None
         fit = fit_player_model(
-            train, weights, self.target, self.features, self.config, history=history
+            train, weights, self.target, self.features, self.config, history=history, evals=evals
         )
         self.last = fit
+        if evals is not None:
+            self.last_evals = evals
         out = test.select(*ID_COLS, "baseline", "y").hstack(fit.predict(test))
         out = out.with_columns(baseline_p50(out["baseline"], self.target, fit.dispersion))
         if self.target.kind == "count":

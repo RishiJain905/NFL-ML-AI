@@ -861,6 +861,7 @@ def run_train(
     created = tuesdays(data.feats.select("season", "week", "kickoff_utc"))
     model_dir.mkdir(parents=True, exist_ok=True)
     all_preds, walk, meta_t = [], [], {}
+    entries = []  # the W&B run's training charts (visibility only)
     for target in targets:
         frame, feats = target_frame(data, target)
         frame = frame.filter(
@@ -868,6 +869,8 @@ def run_train(
         )
         config = model_config(target)
         model = TeamWeekModel(target, feats, config)
+        if use_wandb:
+            model.record_at = (season, week)  # this week's fit records its training loss
         out = walk_forward(
             frame,
             [AsOf(season, w) for w in range(1, week + 1)],
@@ -879,6 +882,10 @@ def run_train(
         )
         fit = model.last
         assert fit is not None
+        if use_wandb:
+            from nflengine.models.training_charts import TrainingEntry
+
+            entries.append(TrainingEntry(target, fit, model.last_evals, feats, config))
         tt = (
             f"{fit.trained_through[0]}-w{fit.trained_through[1]:02d}"
             if fit.trained_through
@@ -967,6 +974,9 @@ def run_train(
         )
         try:
             log_slate(run, preds)
+            from nflengine.models.training_charts import log_training_charts
+
+            log_training_charts(run, entries, log)
             card = (
                 Path(__file__).resolve().parents[3]
                 / "documentation"

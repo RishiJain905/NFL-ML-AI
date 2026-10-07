@@ -117,6 +117,8 @@ Log **live**, not only at the end:
   - always log the same metrics for every baseline (`bt/brier_model`, `bt/brier_elo`, ...)
 - PyTorch (Track 2): loss per step, validation metrics per epoch, trajectory images for the fixed 20 plays every N epochs.
 
+**Weekly refits (production) get training charts too** (`models/training_charts.py`, 2026-10-07): set `PlayerWeekModel.record_at` / `TeamWeekModel.record_at = (season, week)` so only the final week's fit records its per-round training loss (`fit_player_model(evals={})` records the training rows even without a `valid` set), collect `TrainingEntry(target, model.last, model.last_evals, feats, config)` and call `log_training_charts(run, entries, log)`; the game model's ridge weights go through `log_coefficients(run, fits, log)`. Both are fail-soft (a line in the log, never a failed step). **Recording must never change a model:** no early stopping, `deterministic: True`, and a test compares `model_to_string()` with and without it; when changing anything here, re-run the real-data proof (retrain a published week's final fits with recording on and compare every booster byte for byte with the saved model files: 45 of 45 on 2026 week 5).
+
 At the end:
 - `run.summary[...]` holds the pooled metrics and improvement over each baseline.
 - Plots:
