@@ -2,10 +2,10 @@
 
 > **Agents: update this file at the end of every session**, even mid-phase. See the protocol in [README.md](README.md).
 
-**Current phase:** P10 closed ✅; **the control-room track is complete ✅** (CR00–CR03; CR03 closed 2026-10-06). Every main-path phase P00–P10 is done; Track 2 (T00) is on hold.
+**Current phase:** P10 closed ✅; **the control-room track is complete ✅** (CR00–CR03; CR03 closed 2026-10-06). Every main-path phase P00–P10 is done; Track 2 (T00) is on hold. **Three new tracks planned on 2026-10-08 (D107–D112), not started:** Live decisions (LD00–LD03, [`../live-decisions/`](../live-decisions/README.md)), Play calling (PC00–PC03, [`../play-calling/`](../play-calling/README.md)), Ask the Engine (AE00–AE04, [`../ask-the-engine/`](../ask-the-engine/README.md)). **LD00 goes first** (Rishi: "Let's start with that"). The no-touch rule applies to all three: new models only, production untouched (D107).
 **Next step:** Saturday 2026-10-10, 10:00 ET or later: the **Saturday injury update** (the week header's button in `uv run nfl app`, or `uv run nfl weekly injury-update --auto`). Worth a look: two week-5 watch picks missed last week's game (Jayden Daniels, Aaron Donald) and the Tuesday run had no injury report yet; the update re-checks their status. Then Tuesday 2026-10-13: week 6 from the app (**Run week 6**), its Season log line, and week 5's Results tab (graded by week 6); after the run, the week's **MLOps** tab is the first place to look (runbook → After the run: where to look). Runs stay manual (D71); the runbook covers both the app and the terminal. **Optional, any time:** Rishi's own look at week 5's MLOps tab against W&B and the season pages against the Season Dashboard (CR03's ✋, waived at the kickoff and automated in `tests/app/test_parity_cr03.py`).
 **Control room track (D94–D106): complete ✅.** The spec, phases CR00–CR03 and the approved mockup are in [`../control-room/`](../control-room/README.md) ([mockup](https://claude.ai/artifact/1z7AapJzJwKusNtWzXYfQw)). CR02 approved by Rishi on 2026-10-06 after week 5 ran from the app; **CR03** (the MLOps tab: Health · W&B runs · Artifacts; the season pages: Scorecard, Teams & rankings, Models, Alerts, Health; W&B read on the server, cached) built, parity-checked against W&B and closed the same day. Big Data Bowl (T00) is on hold (Rishi, 2026-10-05).
-**Last updated:** 2026-10-07, training charts on the weekly refits (visibility only; week 6's runs are the first to carry them). Before that, 2026-10-06 (night): CR03 built, parity-checked against W&B, Sol-reviewed and closed: the control-room track is complete. Earlier the same evening: week 5 run from the control room ✅ and CR02 approved
+**Last updated:** 2026-10-08, the three new tracks planned (LD, PC, AE; D107–D112). Before that, 2026-10-07, training charts on the weekly refits (visibility only; week 6's runs are the first to carry them). Before that, 2026-10-06 (night): CR03 built, parity-checked against W&B, Sol-reviewed and closed: the control-room track is complete. Earlier the same evening: week 5 run from the control room ✅ and CR02 approved
 
 Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ blocked · ✅ done
 
@@ -33,6 +33,19 @@ Status key: ⬜ not started · 🟨 in progress · ⏸ waiting on Rishi · ⛔ b
 | CR01 | Control room: the week archive (read-only) | ✅ | 2026-10-05 | 2026-10-06 | **Approved by Rishi** ("CR01 is approved, so close it", CR02 kickoff). Every week tab from the real files: 8 readers + 8 endpoints (D100), Results from the next week's report card + recomputed game by game (D101), the three pipeline views with the per-week picker, the week header (late / on time, W&B link, slate tags for any week). Parity on the real data root (16 games, 1,860 projections, 15,522 nodes, the digest byte for byte); nothing written (hash test). sonnet-xhigh built the views, opus-high the five data tabs. Sol review: 7 findings (0 high), all fixed (D102). ✋ close waived by Rishi ("marking the phase complete") |
 | CR02 | Control room: run control and the live pipeline | ✅ | 2026-10-06 | 2026-10-06 | `--expect-week` (exit 6), progress events (`events/<run-id>.jsonl`: every run, resume, injury update, rehearsal), pre-flight / Run / confirm / Resume / Saturday injury update, the runner (3 commands built in code, detached, re-attach), SSE, the three views live, toasts + notifications, `nfl app --rehearsal` (D103). Proven: old vs new code identical on week 4; a real browser run in rehearsal mode (fail at player → resume → done, tab closed mid-run), live files unchanged. sonnet-xhigh built the live views, opus-high the run controls. Sol review: 10 findings (0 high) and a verification pass (5 completed, 1 new), all fixed with tests (D104). 🧑 **first live run from the app: Rishi ran week 5 on 2026-10-06** (every step ok, published 47.5 h before kickoff); ✋ **approved by Rishi** ("Mark CR02 as complete") |
 | CR03 | Control room: MLOps, W&B and the season pages | ✅ | 2026-10-06 | 2026-10-06 | **Closes the track.** The MLOps tab (Health · W&B runs · Artifacts) and the season pages (Scorecard 2026 live / 2025 backtest, Teams & rankings, Models with the model cards, Alerts, Health) from the real files; W&B read on the server through a cached, read-only client (`app/wandb_api.py`, `tracking.read_api`; works offline with a banner) (D105). **Local first:** every chart from the file W&B was fed from, parity against W&B for week 5 10/10 (runs, slate, words, graph, steps, scoreboard, production, lineage, the Season Dashboard's tiles). sonnet-xhigh built the MLOps tab, opus-high the season pages. Sol review: 10 findings (0 high), 9 fixed with tests, 1 kept with a reason (D106). ✋ close waived by Rishi's kickoff ("marking the phase complete") |
+| LD00 | Live decisions: decision models | ⬜ | | | **Next.** Win probability, 3rd / 4th-down yards gained, field goal, punt, pass, kickoff-after-score; decision engine; backtests; `tests/test_production_untouched.py` (D107, D109) |
+| LD01 | Live decisions: the live feed and replay | ⬜ | | | ESPN client + state parser, `nfl live …`, parity vs nflverse, a measured feed lag |
+| LD02 | Live decisions: the Game day tab | ⬜ | | | Mockup first; click-to-check call card with team context; the first live use |
+| LD03 | Live decisions: decision review and season tracking | ⬜ | | | Finished weeks' review, coach aggressiveness, the bot's live calibration, `decision-review` W&B runs |
+| PC00 | Play calling: tendency data | ⬜ | | | Enriched plays + tendency tables (as of each week), the refresh decision (D110) |
+| PC01 | Play calling: the pages | ⬜ | | | Mockup first; Explore → Play calling; the Play calls week tab (descriptive) |
+| PC02 | Play calling: the tendency forecast | ⬜ | | | Next-game rates vs the opponent, walk-forward vs four baselines, grading |
+| PC03 | Play calling: play diagrams and the play browser | ⬜ | | | Reconstructed animations; Big Data Bowl clips if the terms allow (✋) |
+| AE00 | Ask the Engine: the safe query layer and the model bake-off | ⬜ | | | Guard stack, templates, golden set, OpenRouter bake-off (D111) |
+| AE01 | Ask the Engine: the page | ⬜ | | | Mockup first; Explore → Ask the Engine; the free-text endpoint's review |
+| AE02 | Ask the Engine: the history graph | ⬜ | | | Second Neo4j container (compose profile), 2018–2025 plays bulk-imported, weekly append (D112) |
+| AE03 | Ask the Engine: connections, graph experiments, the path benchmark | ⬜ | | | Six degrees, derived relationships, GDS lab, shortest-path benchmark + the sub-cubic paper explained |
+| AE04 | Ask the Engine (optional): a local text-to-query model | ⬜ | | | LoRA fine-tunes with / without LLM-JEPA, local serving, bake-off entry |
 
 ## Rishi-run steps log
 
@@ -108,6 +121,39 @@ One line per live week (`uv run nfl season weeks --season 2026`), plus any drift
 - week 05: published ✓ on time (47.5 h before kickoff), checks passed first time, 0 drift alerts (the first run from the control room; drift signals mostly "insufficient data" this early)
 
 ## Session log (newest first)
+### 2026-10-08: Three new tracks planned: Live decisions, Play calling, Ask the Engine (D107–D112)
+- **Ask (Rishi):** after the control room, "what upgrades would make this even better and more fun", with one restriction: **don't touch the current models** (training, features, anything); model work only as **new** models. From the ideas offered he picked a live 4th-down bot, Ask the Engine (with play-level graph nodes) and his own idea, play calling. Then: research the three, then write phase plans like the control room's, with new control-room screens kept separate (general → sidebar, weekly → new week tabs).
+- **Agreed with Rishi:**
+  - **Live bot:** ESPN's unofficial feed and the app polling it are OK (terms caveat accepted). **Click to check** on the chosen game, never automatic. 3rd and 4th downs.
+  - **Play calling:** "whatever you can do for that one, I am completely fine with". Re-check the Big Data Bowl 2027 lead.
+  - **Ask the Engine:** not GLM (slow, costly); a cheaper, faster OpenRouter model. "Jev" (JEPA) checked without coming back: JEPA models can't write queries on their own. Six degrees: yes. Play-level data in a **second database**, not the weekly graph.
+  - **The sub-cubic paper:** fine that it isn't usable here.
+- **Research (4 parallel agents + checks):**
+  - **ESPN live feed:** fields and quirks confirmed (archived 2026 scoreboards, week-4 summaries). Feed seen 8–84 s behind the snap; 3rd → 4th-down snaps a median 42 s apart; TV delay ~19–62 s. LightGBM decision in 0.14 ms. `nfl4th`'s methods, and its stale touchback-at-the-25 assumption.
+  - **Play-calling data:** FTN in season (about 2 days late; 2026 through week 4 on D:). Personnel / formation / coverage / routes only from participation, published after the season (2026's about February 2027). No public tracking for 2024–2026. Forecasting single plays tops out ~70–75%.
+  - **Ask the Engine:** text-to-Cypher ~60% at best free-form; the guard stack tested live on our Neo4j and DuckDB. Play-level size: 341k plays, ~8M participation links 2018–2025. Bulk import vs 15–20 min UNWIND. The weekly graph's store is 5.2 GB for 22k nodes (space not reclaimed across wipes).
+  - **The paper:** Alman & Vassilevska Williams, arXiv 2610.06783 (2026-10-05), checked on arXiv: truly subcubic APSP / subquadratic 3SUM, found by Claude per the paper. Galactic; no use for our queries.
+  - **LLM-JEPA** (arXiv 2509.14252): a training objective tested on text-to-SQL, so an optional experiment (AE04).
+  - **OpenRouter's cheap / fast models** listed.
+  - **Big Data Bowl 2027:** still only a university event listing for 2026-10-09; not confirmed.
+- **Docs written:**
+  - `documentation/live-decisions/` (README + LD00–LD03);
+  - `documentation/play-calling/` (README + PC00–PC03);
+  - `documentation/ask-the-engine/` (README + AE00–AE04);
+  - D107–D112;
+  - this file (status rows, this entry);
+  - the plans README (phase map), the docs index, STRETCH (two ideas promoted), 02 and 09, CLAUDE.md and AGENTS.md (pointers), the `phase-workflow` skill (the new prefixes).
+- **Side effects:**
+  - An agent started Docker Desktop and Neo4j for the read-only safety probes and stopped Neo4j hard (exit 137).
+  - Restarted it and checked the graph intact (22,387 nodes, 606,289 relationships), then stopped it cleanly (exit 0).
+  - Docker Desktop left running.
+  - No other data on D: touched beyond scratch probe files in the session's temp folder; no W&B writes.
+- **Tests:** no code changed.
+- **Next:**
+  - Saturday's injury update and Tuesday's week-6 run as planned (unchanged).
+  - **LD00** when Rishi kicks it off; ask about the 🧑 / ✋ waivers at that kickoff.
+  - A cheap first step any game night: LD01's latency measurement can run as soon as LD01's client exists.
+
 
 ### 2026-10-07: Training charts on the weekly refits (visibility only)
 - **Rishi:** after asking why the weekly `train-S-wNN` player run shows no training charts (they're in the per-stat backtest runs; the weekly run only refits a fixed recipe): "can we maybe show those training charts for all models that are being retrained? only do this if it won't mess up training - I just want to see this for visibility and learning".

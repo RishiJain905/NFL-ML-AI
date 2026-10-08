@@ -78,6 +78,9 @@ flowchart LR
 | Delivery | Write Markdown to `reports/`, optionally send email or a notification | |
 | Tracking | Log experiments and every production run to W&B | See [08](08-experiment-tracking.md). |
 | Control room (planned, CR00–CR03) | Local web app: run the week with one button (`nfl weekly run --auto --expect-week N`), watch the steps live, read each week's results and the MLOps / season views | Localhost only; FastAPI in `src/nflengine/app/` + a Vite / React app in `web/`. Spec: [control-room/](control-room/README.md) (D94–D96) |
+| Live decisions (planned, LD00–LD03) | A live 3rd- / 4th-down bot in the control room's **Game day** week tab: new win-probability, yards-gained, field-goal, punt and pass models, scored on a click from ESPN's live feed | `src/nflengine/live/`; one allowlisted outbound host (`site.api.espn.com`). Spec: [live-decisions/](live-decisions/README.md) (D107–D109) |
+| Play calling (planned, PC00–PC03) | Team tendency pages (Explore → Play calling), a weekly tendency forecast (**Play calls** week tab), reconstructed play diagrams | `src/nflengine/playcalling/`, files under `{NFL_DATA_ROOT}/playcalling/`. Spec: [play-calling/](play-calling/README.md) (D107, D108, D110) |
+| Ask the Engine (planned, AE00–AE04) | Plain-English questions over the weekly graph, curated data and a second **history graph** (Neo4j container `nfl-neo4j-history`, play-level, compose profile `history`) | `src/nflengine/ask/`, `src/nflengine/history_graph/`. Spec: [ask-the-engine/](ask-the-engine/README.md) (D107, D108, D111, D112) |
 
 ## Tech stack
 

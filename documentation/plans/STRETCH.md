@@ -4,9 +4,9 @@ Ideas that aren't on the critical path. Pick them up only after the relevant pha
 
 | Idea | After | Notes |
 |---|---|---|
-| **Q&A agent over the graph:** ask questions in plain English, get Cypher run in read-only mode | P05 | Text-to-Cypher in a read-only session with write clauses rejected ([05](../05-knowledge-graph.md#stretch-qa-agent-over-the-graph)). Covers the agentic / RAG learning goals |
+| ~~**Q&A agent over the graph:** ask questions in plain English, get Cypher run in read-only mode~~ **Promoted on 2026-10-08** to the Ask the Engine track, AE00–AE04: [`../ask-the-engine/`](../ask-the-engine/README.md) (D111) | P05 | Text-to-Cypher in a read-only session with write clauses rejected ([05](../05-knowledge-graph.md#stretch-qa-agent-over-the-graph)). Covers the agentic / RAG learning goals |
 | Hand-curated coordinator + coaching-tree seed | P05 | Feeds a richer Q5; small CSV (32 teams × OC/DC × seasons) |
-| Play-level nodes in the graph | P08 | ~45k plays/season; enables play-pattern queries (e.g. play-action success vs specific defenses) |
+| ~~Play-level nodes in the graph~~ **Promoted on 2026-10-08**, in a second database (the history graph, AE02–AE03), not the weekly graph (D112) | P08 | ~45k plays/season; enables play-pattern queries (e.g. play-action success vs specific defenses) |
 | HTML email rendering of the digest | P07 | Simple Markdown → HTML template |
 | Ratings and graph history before 2018 / 2010 | P08 | More history for coaching trees and player careers |
 | ~~**Pipeline control room (web app)**~~ **Promoted on 2026-10-05** to its own track, CR00–CR03: [`../control-room/`](../control-room/README.md) (D94–D96) | All P phases | The notes below are the original idea, kept for the record; the plan and the approved mockup are in the control-room folder |

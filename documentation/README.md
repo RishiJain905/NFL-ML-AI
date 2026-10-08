@@ -2,7 +2,7 @@
 
 A personal ML system that produces a weekly NFL digest during the season. It shows game win probabilities and predicted scores, team trends, a look back at last week's tracking stats, projections for offensive and defensive players, and insights from a knowledge graph. It tracks its own accuracy every week. A separate research track models player movement on the NFL Big Data Bowl tracking data.
 
-Last updated: 2026-10-06 (CR03: the control room's MLOps tab and season pages; the control-room track is complete; earlier CR02: the Run button, and P10: season operations).
+Last updated: 2026-10-08 (three new feature tracks planned: Live decisions, Play calling, Ask the Engine; D107–D112). Before that 2026-10-06 (CR03: the control room's MLOps tab and season pages; the control-room track is complete).
 
 ## Start here
 
@@ -13,6 +13,16 @@ Last updated: 2026-10-06 (CR03: the control room's MLOps tab and season pages; t
 ## Control room (the local web app)
 
 [`control-room/`](control-room/README.md) is its own track, CR00–CR03 (D94–D106). **The track is complete** (`uv run nfl app`, the app shell, both themes, the safety rules; every week tab from the real files with the three pipeline views; the Run button with pre-flight, the live views, resume and the Saturday update; the MLOps tab (Health · W&B runs · Artifacts) and the season pages (Scorecard, Teams & rankings, Models, Alerts, Health), with W&B read on the server and cached): see the [control room guide](guides/control-room.md). It's a localhost web app to run the week with one button, watch every step live, read the digest and results, and see the MLOps side (run health, W&B runs and charts, artifacts) and season views. The folder holds the spec, the four phase files and the source of the [approved mockup](https://claude.ai/artifact/1z7AapJzJwKusNtWzXYfQw) (its visual spec).
+
+## New feature tracks (planned 2026-10-08)
+
+Three tracks added after the control room (D107–D112), each with a spec and phase files in its own folder. They follow one rule: **new models only**. The production models, the digest, the weekly graph and the weekly run stay exactly as they are (D107). New screens go in a new **Explore** sidebar group (general pages) or new week tabs after Graph (weekly views) (D108).
+
+| Track | Folder | What it adds |
+|---|---|---|
+| Live decisions (LD00–LD03) | [`live-decisions/`](live-decisions/README.md) | A live 3rd- and 4th-down bot: pick a game in progress, press **Check this play**, get go / kick / punt with win probabilities, a confidence label and "is this team good at this?"; a weekly decision review. New win-probability, yards-gained, field-goal, punt and pass models; ESPN's live feed |
+| Play calling (PC00–PC03) | [`play-calling/`](play-calling/README.md) | Team tendency pages (offense and defense, drawn like a playbook), a weekly forecast of each team's calls against its next opponent, and a play browser with reconstructed play animations |
+| Ask the Engine (AE00–AE04) | [`ask-the-engine/`](ask-the-engine/README.md) | Questions in plain English answered from the graph or the curated data, with the query shown; a second **history graph** with every play since 2018; "six degrees" connections; graph experiments; a shortest-path benchmark |
 
 ## Design documents
 

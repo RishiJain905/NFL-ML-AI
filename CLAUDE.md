@@ -48,6 +48,9 @@ A personal ML system that produces a weekly NFL digest (win probabilities, predi
 - **Build plan:** `documentation/plans/README.md`. **Where work stands:** `documentation/plans/PROGRESS.md`.
 - **Decisions:** `documentation/10-decisions-log.md`. If implementation needs to differ from a doc, update the doc and log the decision in the same commit.
 - **Control room (the local web app):** its own track, `documentation/control-room/` (spec `README.md`, phases `CR00`–`CR03`, all complete, the approved mockup's source in `mockup/`; D94–D106). The mockup is the visual spec: design changes go mockup first, then the spec, then the code. Its status rows are in PROGRESS like every phase.
+- **Feature tracks (planned 2026-10-08, D107–D112):** **Live decisions** (`documentation/live-decisions/`, LD00–LD03, the live 3rd- / 4th-down bot), **Play calling** (`documentation/play-calling/`, PC00–PC03) and **Ask the Engine** (`documentation/ask-the-engine/`, AE00–AE04, with the second "history graph" Neo4j). Each has a spec README and phase files; status rows in PROGRESS.
+  - **The no-touch rule (D107):** these tracks add new models only and never change the production models (game, ratings / Elo, player, team totals), their features, settings, training, artifacts or aliases, the digest, the weekly graph or the weekly run. `tests/test_production_untouched.py` enforces it once created.
+  - **Control-room placement (D108):** general pages go in the sidebar's **Explore** group; weekly views go in new week tabs after Graph.
 
 ## Documentation: what every phase must leave behind
 

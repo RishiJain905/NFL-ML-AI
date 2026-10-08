@@ -48,6 +48,7 @@ A personal ML system that produces a weekly NFL digest (win probabilities, predi
 
 - **Design docs:** `documentation/01`–`11` (start at `documentation/README.md`).
 - **Control room:** the local web app track, `documentation/control-room/` (spec, phases CR00–CR03, all complete, the approved mockup's source; D94–D106).
+- **Feature tracks (planned 2026-10-08):** Live decisions (`documentation/live-decisions/`, LD00–LD03), Play calling (`documentation/play-calling/`, PC00–PC03), Ask the Engine (`documentation/ask-the-engine/`, AE00–AE04). **No-touch rule (D107):** new models only; production models, the digest, the weekly graph and the weekly run are off limits.
 - **Guides:** `documentation/guides/` (knowledge graph, Graph Data Science, W&B tracking, the LLM writer, player projections, weekly operations, season operations, the control room); the operator's how-to is `documentation/runbook.md`; **model cards:** `documentation/model_cards/`. A phase that adds a technology, component, W&B run or artifact must also add or update its guide (CLAUDE.md → Documentation).
 - **Build plan:** `documentation/plans/README.md`. **Where work stands:** `documentation/plans/PROGRESS.md`.
 - **Decisions:** `documentation/10-decisions-log.md`.

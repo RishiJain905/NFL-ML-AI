@@ -30,6 +30,9 @@ Track 2 (parallel, recommended after P04):  T00 Data+baselines ─► T01 GBT �
 | P09 | Real LLM: GLM 5.3 Flash via OpenRouter since P04 (D56); re-checked on the full P08 digest, prompt and checks tuned, no native adapters (D87) | Done 2026-10-05; the tuned prompt is live from the week-5 run |
 | P10 | Rehearsals (the live steps on any week, D90), playoff weeks (D91), the season review and season log, the pre-season checklist; dated work on the season calendar (D89) | Done 2026-10-05; the calendar runs to August 2027 |
 | CR00–CR03 | The control room: a local web app to run the week with one button, watch it live, and read results, MLOps (W&B runs, artifacts) and season views ([control-room/](control-room/README.md), D94–D96) | Planned 2026-10-05; Big Data Bowl (T00) on hold meanwhile |
+| LD00–LD03 | Live decisions: a live 3rd- / 4th-down bot with new decision models, a click-to-check Game day tab, a weekly decision review ([live-decisions/](live-decisions/README.md), D107–D109) | Planned 2026-10-08; **next** |
+| PC00–PC03 | Play calling: team tendency pages, a weekly tendency forecast, reconstructed play diagrams ([play-calling/](play-calling/README.md), D110) | Planned 2026-10-08 |
+| AE00–AE04 | Ask the Engine: plain-English questions over the graph and curated data, the history graph (play-level, a second Neo4j), six degrees, graph experiments ([ask-the-engine/](ask-the-engine/README.md), D111–D112) | Planned 2026-10-08 |
 | T00–T04 | Track 2 ladder + bridge to Track 1 | Parallel, at Rishi's pace |
 
 ## How work is run

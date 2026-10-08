@@ -5,6 +5,12 @@ This folder turns the design docs (`documentation/01`–`11`) into an ordered, *
 - **[PROGRESS.md](PROGRESS.md)** is the live tracker: current phase, status of every phase, session log, the log of steps Rishi ran.
 - One file per phase (`P00`–`P10` for the main build, `T00`–`T04` for Track 2), plus [STRETCH.md](STRETCH.md) for unscheduled extras.
 - **Control room track** (`CR00`–`CR03`, the local web app): its spec, phase files and approved mockup live in their own folder, [`../control-room/`](../control-room/README.md); its status rows are in PROGRESS.md like every other phase.
+- **Three feature tracks planned on 2026-10-08** (D107–D112), each with its own folder, spec and phase files, status rows in PROGRESS.md:
+  - **Live decisions** (`LD00`–`LD03`, [`../live-decisions/`](../live-decisions/README.md)): the live 3rd- / 4th-down bot;
+  - **Play calling** (`PC00`–`PC03`, [`../play-calling/`](../play-calling/README.md)): team tendencies, a weekly forecast, play diagrams;
+  - **Ask the Engine** (`AE00`–`AE04`, [`../ask-the-engine/`](../ask-the-engine/README.md)): plain-English questions, and the history graph.
+
+  **All three follow the no-touch rule (D107):** new models only; the production models, the digest, the weekly graph and the weekly run stay as they are.
 
 ## Phase map
 
@@ -25,6 +31,19 @@ This folder turns the design docs (`documentation/01`–`11`) into an ordered, *
 | [CR01](../control-room/CR01-week-archive.md) | Control room: the week archive | CR00 | Every week tab from real files (read-only), the three pipeline views and the per-week picker |
 | [CR02](../control-room/CR02-run-control.md) | Control room: run control | CR01 | `--expect-week`, progress events, pre-flight + Run / Resume / injury update, live views; the first Tuesday run from the app |
 | [CR03](../control-room/CR03-mlops-and-season.md) | Control room: MLOps and season pages | CR01 | MLOps → Health · W&B runs · Artifacts, Scorecard, Teams, Models, Alerts, Health |
+| [LD00](../live-decisions/LD00-decision-models.md) | Live decisions: decision models | P10 | Win probability, yards gained, field goal, punt, pass and kickoff models; the decision engine; backtests; the production-unchanged test |
+| [LD01](../live-decisions/LD01-live-feed.md) | Live decisions: the live feed and replay | LD00 | ESPN client and state parser, `nfl live …`, parity vs nflverse, a measured feed lag |
+| [LD02](../live-decisions/LD02-game-day-tab.md) | Live decisions: the Game day tab | LD01, CR03 | Click-to-check call card with team context; the first live use |
+| [LD03](../live-decisions/LD03-decision-review.md) | Live decisions: decision review | LD02 | Finished weeks' review, coach aggressiveness, the bot's live calibration |
+| [PC00](../play-calling/PC00-tendency-data.md) | Play calling: tendency data | P10 | Enriched plays and tendency tables as of each week |
+| [PC01](../play-calling/PC01-play-calling-pages.md) | Play calling: the pages | PC00, CR03 | Explore → Play calling; the Play calls week tab |
+| [PC02](../play-calling/PC02-tendency-forecast.md) | Play calling: the tendency forecast | PC01, LD00 | Next-game rates vs the opponent, backtested, graded weekly |
+| [PC03](../play-calling/PC03-play-diagrams.md) | Play calling: play diagrams | PC01 | Reconstructed animations, the play browser, Big Data Bowl clips if allowed |
+| [AE00](../ask-the-engine/AE00-query-layer.md) | Ask the Engine: the query layer | P10 | Guard stack, templates, golden set, model bake-off |
+| [AE01](../ask-the-engine/AE01-ask-tab.md) | Ask the Engine: the page | AE00, CR03 | Explore → Ask the Engine |
+| [AE02](../ask-the-engine/AE02-history-graph.md) | Ask the Engine: the history graph | AE00 | A second Neo4j with play-level nodes 2018+ |
+| [AE03](../ask-the-engine/AE03-connections-and-graph-ml.md) | Ask the Engine: connections and graph ML | AE01, AE02 | Six degrees, derived relationships, GDS lab, the path benchmark |
+| [AE04](../ask-the-engine/AE04-local-query-model.md) | Ask the Engine (optional): local model | AE00 | LoRA fine-tunes with / without LLM-JEPA, served locally |
 | [T00](T00-bdb-data-and-baselines.md) | BDB data + baselines | P00 (recommended after P04) | BDB 2026 on D:, splits, constant-velocity and physics baselines |
 | [T01](T01-bdb-gbt.md) | BDB gradient-boosted model | T00 | LightGBM displacement model |
 | [T02](T02-bdb-sequence.md) | BDB sequence model | T01 | GRU / Transformer trajectory model (GPU) |
@@ -38,6 +57,16 @@ flowchart LR
     P07 --> P10
     P10 --> CR00 --> CR01 --> CR02
     CR01 --> CR03
+    P10 --> LD00 --> LD01 --> LD02 --> LD03
+    CR03 --> LD02
+    P10 --> PC00 --> PC01 --> PC02
+    PC01 --> PC03
+    LD00 --> PC02
+    CR03 --> PC01
+    P10 --> AE00 --> AE01 --> AE03
+    AE00 --> AE02 --> AE03
+    AE00 -.optional.-> AE04
+    CR03 --> AE01
     P00 -.-> T00
     P04 -.recommended start.-> T00
     T00 --> T01 --> T02 --> T03 --> T04

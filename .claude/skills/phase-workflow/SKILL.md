@@ -1,6 +1,6 @@
 ---
 name: phase-workflow
-description: The end-to-end coding workflow for this project's build phases (P00-P10, T00-T04, and the control room CR00-CR03). Use when starting, resuming, continuing or closing phase work, picking up from PROGRESS.md, or kicking off a new session. Covers session start, probing data before building, building and testing, Rishi-in-the-loop steps, verification, review, docs, PROGRESS updates, commit/push, the end-of-run report, and known Windows / guard-hook quirks.
+description: The end-to-end coding workflow for this project's build phases (P00-P10, T00-T04, the control room CR00-CR03, and the feature tracks LD00-LD03, PC00-PC03, AE00-AE04). Use when starting, resuming, continuing or closing phase work, picking up from PROGRESS.md, or kicking off a new session. Covers session start, probing data before building, building and testing, Rishi-in-the-loop steps, verification, review, docs, PROGRESS updates, commit/push, the end-of-run report, and known Windows / guard-hook quirks.
 ---
 
 # Phase workflow (NFL Analytics Engine)
@@ -10,7 +10,7 @@ This is the canonical "how we build" procedure. `CLAUDE.md` holds the rules (sec
 ## 1. Session start
 1. `CLAUDE.md` is already loaded. Re-read its **Security** section if you're unsure about anything that touches credentials.
 2. Read `documentation/plans/PROGRESS.md`: current phase, status, **Next step**, open blockers, standing waivers in the session log.
-3. Read the current phase file (`documentation/plans/Pxx-*.md`; control-room phases are `documentation/control-room/CRxx-*.md`, and their visual spec is the mockup linked in that folder's README) in full, then every doc in its **Read first** list.
+3. Read the current phase file (`documentation/plans/Pxx-*.md`; control-room phases are `documentation/control-room/CRxx-*.md`, and their visual spec is the mockup linked in that folder's README; the feature tracks are `documentation/live-decisions/LDxx-*.md`, `documentation/play-calling/PCxx-*.md` and `documentation/ask-the-engine/AExx-*.md`, each folder with a spec README) in full, then every doc in its **Read first** list. **Feature tracks obey the no-touch rule (D107):** never edit production model, feature, digest, weekly-graph or weekly-run code; run the production-unchanged check before closing.
 4. Run `uv run nfl doctor`. Everything should be OK. A WARN is fine if `PROGRESS.md` already explains it.
 5. Run `uv run pytest -q` to confirm the previous phase still holds. If something is broken, fix it first and log the fix.
 6. If the previous phase is ⏸ waiting on a ✋ approval that Rishi has now given (for example in the kickoff prompt), close it: tick the checkpoint, set ✅ and the completion date in `PROGRESS.md`.
