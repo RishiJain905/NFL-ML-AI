@@ -90,6 +90,13 @@ class DataPaths:
     def cache_uv(self) -> Path:
         return self.cache / "uv"
 
+    @property
+    def live_data(self) -> Path:
+        """The live feed's own files (LD01): ESPN probes, finished games' summaries, latency
+        logs and the parity report. Never curated: live data is a view, not a source. (Not
+        `live`: rehearsal paths use that name for the real data root.)"""
+        return self.root / "live"
+
     def run_dir(self, season: int, week: int) -> Path:
         return self.runs / str(season) / f"week{week:02d}"
 

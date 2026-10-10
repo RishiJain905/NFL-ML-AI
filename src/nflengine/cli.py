@@ -1526,37 +1526,298 @@ def live_backtest(
     console.print(f"ship rules: {ship}")
 
 
-@live_app.command("call")
-def live_call(
-    state: str = typer.Option(..., help="A game state as JSON (schema.GameState fields)."),
-    version: str | None = typer.Option(None, help="A model folder name (default: production)."),
-    no_bootstrap: bool = typer.Option(False, "--no-bootstrap", help="Skip the confidence label."),
-) -> None:
-    """Score one state: a 4th-down call, or a 3rd-down check with its if-stopped table."""
-    import json as _json
-
+def _live_engine(version: str | None = None):
+    """The LD00 decision engine on the production bundle (or a named model folder)."""
     from nflengine.live import models as LM
     from nflengine.live import train as LT
     from nflengine.live.decide import Engine, decide_settings
+
+    try:
+        models = LM.load(LT.root() / version) if version else LT.load_production()
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(1) from e
+    return Engine(models, decide_settings())
+
+
+@live_app.command("call")
+def live_call(
+    state: str | None = typer.Option(None, help="A game state as JSON (schema.GameState fields)."),
+    event: str | None = typer.Option(
+        None, "--event", help="An ESPN event id: fetch the game now and score its next snap."
+    ),
+    version: str | None = typer.Option(None, help="A model folder name (default: production)."),
+    no_bootstrap: bool = typer.Option(False, "--no-bootstrap", help="Skip the confidence label."),
+    json_out: bool = typer.Option(False, "--json", help="Print JSON (with --event)."),
+) -> None:
+    """Score one state (`--state`) or a game right now (`--event`): a 4th-down call, or a
+    3rd-down check with its if-stopped table."""
+    import json as _json
+
     from nflengine.live.schema import GameState
 
+    if (state is None) == (event is None):
+        raise typer.BadParameter("give exactly one of --state or --event")
+    if event is not None:
+        _live_call_event(event, version, not no_bootstrap, json_out)
+        return
     try:
         s = GameState.from_dict(_json.loads(state))
     except (ValueError, TypeError) as e:
         raise typer.BadParameter(str(e)) from e
     if s.down not in (3, 4):
         raise typer.BadParameter("`nfl live call` scores 3rd and 4th downs")
-    try:
-        models = LM.load(LT.root() / version) if version else LT.load_production()
-    except FileNotFoundError as e:
-        console.print(f"[red]{e}[/]")
-        raise typer.Exit(1) from e
-    eng = Engine(models, decide_settings())
+    eng = _live_engine(version)
     try:
         out = (eng.fourth_down if s.down == 4 else eng.third_down)(s, bootstrap=not no_bootstrap)
     finally:
         eng.close()
     console.print_json(_json.dumps(out.as_dict(), default=float))
+
+
+def _live_call_event(event: str, version: str | None, bootstrap: bool, json_out: bool) -> None:
+    import json as _json
+
+    from rich.markup import escape
+
+    from nflengine.live import show
+    from nflengine.live.espn import EspnClient, EspnError, check_event_id
+    from nflengine.live.state import competition, load_contexts, parse_event
+
+    try:
+        ev = check_event_id(event)
+    except ValueError as e:
+        raise typer.BadParameter(str(e)) from e
+    with EspnClient() as client:
+        try:
+            f = client.game(ev)
+        except EspnError as e:
+            console.print(f"[red]{escape(str(e))}[/]")
+            raise typer.Exit(1) from e
+        season = int((f.data.get("season") or {}).get("year") or 0)
+        try:
+            ctx = load_contexts(season).context(ev, f.data) if season else None
+        except FileNotFoundError:
+            ctx = None
+        if ctx is None:
+            console.print(f"[red]event {ev} isn't a game in the curated schedule[/]")
+            raise typer.Exit(1)
+        comp = competition(f.data)
+        status = ((comp.get("status") or {}).get("type") or {}).get("state")
+        down = (comp.get("situation") or {}).get("down")
+        period = int((comp.get("status") or {}).get("period") or 0)
+        summary = None
+        if status == "in" and (period <= 2 or down not in (1, 2, 3, 4)):
+            # the opening kickoff (first half) or the next snap (no down on the scoreboard)
+            try:
+                s = client.summary(ev)
+                summary = None if s.stale else s.data
+            except EspnError:
+                summary = None
+        ls = parse_event(f.data, ctx, fetched_at=f.fetched_at, summary=summary)
+    call = None
+    if ls.is_decision:
+        eng = _live_engine(version)
+        try:
+            st = ls.state
+            call = (eng.fourth_down if st.down == 4 else eng.third_down)(st, bootstrap=bootstrap)
+        finally:
+            eng.close()
+    if json_out:
+        out = {
+            "live": ls.as_dict(),
+            "call": call.as_dict() if call is not None else None,
+            "espn": {"stale": f.stale, "error": f.error, "age_s": round(f.age_s(), 1)},
+        }
+        console.print_json(_json.dumps(out, default=str))
+        return
+    if f.stale:
+        console.print(
+            f"[yellow]ESPN didn't answer ({escape(f.error or '')}); "
+            f"showing its answer from {f.age_s():.0f} s ago[/]"
+        )
+    for line in show.header_lines(ls, f.age_s()):
+        console.print(escape(line))
+    for w in ls.warnings:
+        console.print(f"[yellow]note: {escape(w)}[/]")
+    if call is None:
+        why = ls.reason or (f"down {ls.down}" if ls.down else "no down")
+        console.print(f"[cyan]Not a 3rd or 4th down: {escape(why)}.[/]")
+        return
+    lines = (
+        show.fourth_lines(call, ls.offense or "the offense")
+        if ls.state.down == 4
+        else show.third_lines(call, ls.offense or "", ls.defense or "")
+    )
+    for line in lines:
+        console.print(escape(line))
+
+
+@live_app.command("games")
+def live_games(
+    week: int | None = typer.Option(None, help="Week (default: ESPN's current week)."),
+    season: int | None = typer.Option(None, help="Season (default: seasons.current)."),
+    json_out: bool = typer.Option(False, "--json", help="Print JSON."),
+) -> None:
+    """This week's games from ESPN: status, score, clock, possession, down and distance."""
+    import json as _json
+
+    from rich.markup import escape
+
+    from nflengine.live import show
+    from nflengine.live.espn import EspnClient, EspnError
+    from nflengine.live.state import load_contexts
+    from nflengine.settings import get_config
+
+    if week is not None and season is None:
+        season = get_config().seasons.current
+    with EspnClient() as client:
+        try:
+            f = client.scoreboard(season, week)
+        except EspnError as e:
+            console.print(f"[red]{escape(str(e))}[/]")
+            raise typer.Exit(1) from e
+    year = int((f.data.get("season") or {}).get("year") or season or 0)
+    try:
+        ctxs = load_contexts(year)
+    except FileNotFoundError:
+        ctxs = None
+    ids = {}
+    for e in f.data.get("events") or []:
+        ids[str(e.get("id"))] = ctxs.game_id_for(str(e.get("id")), e) if ctxs else None
+    rows = show.game_rows(f.data, ids)
+    if json_out:
+        console.print_json(_json.dumps(rows, default=str))
+        return
+    wk = (f.data.get("week") or {}).get("number")
+    title = f"ESPN: {year} week {wk} (as of {show.local(f.fetched_at)})"
+    table = Table(title=escape(title))
+    cols = ("event", "game_id", "matchup", "status", "score", "ball", "situation")
+    for col in ("event", "game", "matchup", "status", "score", "ball", "situation"):
+        table.add_column(col)
+    for r in rows:  # everything here came from ESPN: escaped, never Rich markup
+        table.add_row(*(escape(str(r[c] if r[c] is not None else "?")) for c in cols))
+    console.print(table)
+
+
+@live_app.command("replay")
+def live_replay(
+    event: str = typer.Option(..., "--event", help="An ESPN event id (a finished game)."),
+    downs: str = typer.Option("3,4", help="Which downs: 3,4 or 4."),
+    refresh: bool = typer.Option(False, "--refresh", help="Ask ESPN again (no saved summary)."),
+    bootstrap: bool = typer.Option(False, "--bootstrap", help="Add the confidence labels."),
+    version: str | None = typer.Option(None, help="A model folder name (default: production)."),
+    json_out: bool = typer.Option(False, "--json", help="Print JSON."),
+) -> None:
+    """Every 3rd / 4th down of a game from ESPN's summary, the bot's call next to what
+    happened (finished games' summaries are kept under live/summaries/)."""
+    import json as _json
+
+    from rich.markup import escape
+
+    from nflengine.live import show
+    from nflengine.live.espn import EspnClient, EspnError, check_event_id
+    from nflengine.live.replay import decision_plays, load_summary, replay, summary_state
+    from nflengine.live.state import load_contexts
+    from nflengine.paths import ensure_data_root
+
+    try:
+        ev = check_event_id(event)
+        want = [int(d) for d in downs.split(",")]
+    except ValueError as e:
+        raise typer.BadParameter(str(e)) from e
+    paths = ensure_data_root(create_dirs=False)
+    with EspnClient() as client:
+        try:
+            summ, source = load_summary(ev, paths.live_data / "summaries", client, refresh)
+        except EspnError as e:
+            console.print(f"[red]{escape(str(e))}[/]")
+            raise typer.Exit(1) from e
+    header = summ.get("header") or {}
+    season = int((header.get("season") or {}).get("year") or 0)
+    ctx = load_contexts(season, paths).context(ev, header) if season else None
+    if ctx is None:
+        console.print(f"[red]event {ev} isn't a game in the curated schedule[/]")
+        raise typer.Exit(1)
+    plays = decision_plays(replay(summ, ctx), want)
+    eng = _live_engine(version)
+    rows = []
+    try:
+        for p in plays:
+            call = (eng.fourth_down if p.down == 4 else eng.third_down)(
+                p.state, bootstrap=bootstrap
+            )
+            rows.append((p, call, show.replay_row(p, call)))
+    finally:
+        eng.close()
+    if json_out:
+        out = [
+            {"play": p.as_dict(), "call": c.as_dict(), "row": {k: v for k, v in r.items()}}
+            for p, c, r in rows
+        ]
+        console.print_json(_json.dumps(out, default=str))
+        return
+    state = summary_state(summ)
+    title = f"{ctx.away} at {ctx.home} ({ctx.game_id}; ESPN {state}, summary {source})"
+    table = Table(title=escape(title))
+    for col in ("play", "when", "team", "situation", "score", "bot", "WP go/FG/punt", "happened"):
+        table.add_column(col)
+    cols = ("play", "when", "offense", "situation", "score", "bot", "wp", "happened")
+    for _, _, r in rows:
+        agree = r.get("agree")
+        mark = "" if agree is None else (" [green]=[/]" if agree else " [red]x[/]")
+        cells = [escape(str(r[c])) for c in cols]
+        cells[5] += mark
+        table.add_row(*cells)
+    console.print(table)
+    fourth = [r for _, _, r in rows if r.get("agree") is not None]
+    if fourth:
+        same = sum(bool(r["agree"]) for r in fourth)
+        console.print(f"4th downs: {len(fourth)}; the bot's call matched the coach's on {same}.")
+
+
+@live_app.command("latency")
+def live_latency(
+    event: str = typer.Option(..., "--event", help="An ESPN event id (a game about to start)."),
+    minutes: float = typer.Option(200.0, help="How long to watch (it stops after the final)."),
+    poll: float = typer.Option(2.0, help="Seconds between checks (2 s is the minimum)."),
+) -> None:
+    """Measure ESPN's lag on a live game: log each play's first sighting against its snap
+    time to live/latency/<event>.jsonl and print the median, p90 and worst case."""
+    from rich.markup import escape
+
+    from nflengine.live.espn import check_event_id
+    from nflengine.live.latency import latency_path, run_latency
+    from nflengine.paths import ensure_data_root
+
+    try:
+        ev = check_event_id(event)
+    except ValueError as e:
+        raise typer.BadParameter(str(e)) from e
+    folder = ensure_data_root(create_dirs=False).live_data / "latency"
+    console.print(f"watching {ev} for up to {minutes:g} min -> {latency_path(folder, ev)}")
+    stats = run_latency(
+        ev, minutes, folder, poll_s=max(2.0, poll), log=lambda m: console.print(escape(m))
+    )
+    console.print(stats)
+
+
+@live_app.command("parity")
+def live_parity(
+    season: int = typer.Option(2026, help="Season."),
+    weeks: str = typer.Option("1-5", help="Weeks, e.g. 1-5."),
+    decisions: str | None = typer.Option(
+        None, help="ESPN event ids (comma list): also score their 4th downs from both sources."
+    ),
+) -> None:
+    """ESPN's replayed 3rd / 4th-down states vs nflverse play-by-play (LD01's parity check)."""
+    from nflengine.live.parity import decision_parity, run_parity
+
+    report = run_parity(season, _parse_seasons(weeks) or [], log=console.print)
+    console.print({k: v for k, v in report.items() if not isinstance(v, list | dict)})
+    if decisions:
+        out = decision_parity(_csv(decisions) or [], log=console.print)
+        console.print({k: v for k, v in out.items() if not isinstance(v, list | dict)})
 
 
 PLACEHOLDERS: dict[str, tuple[str, str]] = {}
