@@ -6,6 +6,9 @@ import type {
   GamesResponse,
   GraphResponse,
   HealthResponse,
+  LiveCallResponse,
+  LiveContextResponse,
+  LiveGamesResponse,
   Meta,
   MlopsArtifactsResponse,
   MlopsHealthResponse,
@@ -296,5 +299,67 @@ export function useHealth() {
     queryKey: ['health'],
     queryFn: () => apiGet<HealthResponse>(withRefresh(HEALTH_PATH)),
     refetchInterval: (q) => (q.state.data?.checking ? 3_000 : 60_000),
+  });
+}
+
+// ---- LD02: Game day. Nothing is fetched until a click, except the list: every 30 s while the
+// tab is open and the browser tab is visible (TanStack pauses intervals in the background), and
+// only for the week being played. The server keeps ESPN's answers (30 s list, 2 s per game).
+
+const livePath = (season: number, week: number, rest = '') =>
+  `/api/live/${season}/${week}/games${rest}`;
+
+export function useLiveGames(season: number, week: number) {
+  const valid = Number.isInteger(season) && Number.isInteger(week);
+  return useQuery({
+    queryKey: ['live', season, week, 'games'],
+    queryFn: () => apiGet<LiveGamesResponse>(livePath(season, week)),
+    enabled: valid,
+    // the week being played: every refresh_s; a future week: every 5 minutes, so an open tab
+    // turns live when its week starts (the server never asks ESPN for it); a failed first
+    // load: every 30 s (Sol review, LD02)
+    refetchInterval: (q) => {
+      const d = q.state.data;
+      if (!d) return q.state.status === 'error' ? 30_000 : false;
+      if (d.is_current && d.phase !== 'final') return d.refresh_s * 1000;
+      return d.phase === 'future' ? 300_000 : false;
+    },
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+/** "Check this play": never runs by itself (`enabled: false`); the button calls `refetch()`. */
+export function useLiveCall(season: number, week: number, event: string | null) {
+  return useQuery({
+    queryKey: ['live', season, week, 'call', event],
+    queryFn: () =>
+      apiGet<LiveCallResponse>(livePath(season, week, `/${encodeURIComponent(event ?? '')}/call`)),
+    enabled: false,
+    retry: false,
+    gcTime: 10 * 60_000,
+  });
+}
+
+/** "Is this team good at this?": the offense's record as of the week's start (one per week). */
+export function useLiveContext(
+  season: number,
+  week: number,
+  event: string | null,
+  offense: string | null,
+) {
+  return useQuery({
+    queryKey: ['live', season, week, 'context', offense],
+    queryFn: () =>
+      apiGet<LiveContextResponse>(
+        livePath(
+          season,
+          week,
+          `/${encodeURIComponent(event ?? '')}/context?offense=${encodeURIComponent(offense ?? '')}`,
+        ),
+      ),
+    enabled: Boolean(event && offense),
+    staleTime: Infinity,
+    retry: false,
   });
 }

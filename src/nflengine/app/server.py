@@ -37,6 +37,7 @@ from nflengine.app.readers.common import strip_root, use_data_root
 from nflengine.app.readers.digest import get_digest
 from nflengine.app.readers.games import get_games
 from nflengine.app.readers.graph import get_graph
+from nflengine.app.readers.live import LiveRefused, LiveService
 from nflengine.app.readers.meta import lock_dict, plan_dict
 from nflengine.app.readers.models import card as model_card
 from nflengine.app.readers.models import get_models
@@ -128,6 +129,10 @@ class AppSettings:
     # fakes: no test reaches W&B, Neo4j, Docker or OpenRouter)
     wandb: WandbReader | None = None
     system_checks: SystemChecks | None = None
+    # LD02: Game day (the live bot). Tests inject a service on a fake ESPN transport; under
+    # `nfl app --live-replay` the feed serves a finished week as if live.
+    live: LiveService | None = None
+    live_replay: Any = None
 
 
 class _Context:
@@ -141,6 +146,7 @@ class _Context:
         )
         self.wandb = settings.wandb or WandbReader(cache_dir=self._wandb_cache)
         self.checks = settings.system_checks or SystemChecks()
+        self.live = settings.live or LiveService(now=settings.now, replay=settings.live_replay)
         self._sched: tuple[float, Any] | None = None
         self._lock = threading.Lock()
 
@@ -219,6 +225,7 @@ def create_app(settings: AppSettings) -> FastAPI:
             yield
         finally:
             ctx.services.stop()
+            ctx.live.close()
 
     app = FastAPI(
         title="NFL Control Room",
@@ -247,6 +254,13 @@ def create_app(settings: AppSettings) -> FastAPI:
             )
         if req.url.path.startswith("/api/weeks/"):
             return _error(422, "bad_request", "Season and week must be whole numbers in range.")
+        if req.url.path.startswith("/api/live/"):
+            return _error(
+                422,
+                "bad_request",
+                "Season, week and the ESPN event id must be whole numbers in range; the team a "
+                "2-3 letter code.",
+            )
         return _error(422, "bad_request", "A parameter is malformed or out of range.")
 
     @app.exception_handler(DataRootError)
@@ -571,6 +585,49 @@ def create_app(settings: AppSettings) -> FastAPI:
             paths, season, ctx.checks, ctx.services.snapshot(), settings.keys_set, refresh
         )
         return week_json(paths, body)
+
+    # ---- LD02: Game day (documentation/live-decisions/). Season, week and the ESPN event id
+    # are validated; the event must be in the week's ESPN scoreboard. A check is a GET and
+    # changes nothing; ESPN is reached only through the one shared client (live/espn.py).
+    Event = PathParam(pattern="^[0-9]{1,12}$")
+
+    def live_json(request: Request, paths: DataPaths, fn: Callable[[], Any]) -> SafeJSONResponse:
+        # these GETs reach ESPN and run the engine: another site's page (an <img> tag) mustn't
+        # set them off, so a browser's cross-site or same-site request is refused (review S2)
+        if request.headers.get("sec-fetch-site", "").lower() in ("cross-site", "same-site"):
+            return _error(403, "not_allowed", "Game day answers only the control room's own page.")
+        try:
+            body = fn()
+        except LiveRefused as e:
+            return _error(e.status, e.code, e.message)
+        return week_json(paths, body)
+
+    @app.get("/api/live/{season}/{week}/games")
+    def live_games_route(
+        request: Request, season: int = Season, week: int = Week, refresh: bool = Refresh
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        return live_json(request, paths, lambda: ctx.live.games(paths, season, week, refresh))
+
+    @app.get("/api/live/{season}/{week}/games/{event}/call")
+    def live_call_route(
+        request: Request, season: int = Season, week: int = Week, event: str = Event
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        return live_json(request, paths, lambda: ctx.live.call(paths, season, week, event))
+
+    @app.get("/api/live/{season}/{week}/games/{event}/context")
+    def live_context_route(
+        request: Request,
+        season: int = Season,
+        week: int = Week,
+        event: str = Event,
+        offense: str = Query(..., pattern="^[A-Z]{2,3}$"),
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        return live_json(
+            request, paths, lambda: ctx.live.context(paths, season, week, event, offense)
+        )
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def api_not_found(rest: str) -> SafeJSONResponse:

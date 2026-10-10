@@ -30,6 +30,8 @@ SCANNED_GETS = [
     "/api/models/card/game-model-v0",
     "/api/alerts",
     "/api/health",
+    # LD02: Game day (scanned with leaky ESPN text in test_app_live.py)
+    "/api/live/2026/5/games",
 ]
 
 

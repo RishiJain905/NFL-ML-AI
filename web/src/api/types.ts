@@ -999,3 +999,221 @@ export interface HealthResponse {
     via: string | null;
   }[];
 }
+
+// ---- LD02: Game day (the live 3rd / 4th-down bot; documentation/live-decisions/) ----------
+// GET /api/live/{season}/{week}/games, .../games/{event}/call, .../games/{event}/context.
+// Probabilities are 0-1; a `gap` is in the same units (0.014 = 1.4 win-probability points).
+// ESPN text (play descriptions, status lines) is data: render it as text, never as HTML.
+
+export type LiveChoice = 'go' | 'fg' | 'punt';
+export type LiveLabel = 'Confident' | 'Lean' | 'Toss-up';
+
+/** Where an answer came from: ESPN's site API, through the server's one shared client. */
+export interface LiveFeed {
+  as_of: string | null; // when ESPN's answer arrived
+  age_s: number | null; // seconds since then
+  stale: boolean; // an older answer, served because ESPN failed or the client is backing off
+  error: string | null; // why (short, fixed text)
+  cached: boolean; // served from the server's memory (at most one call per game every 2 s)
+  ms: number | null; // how long ESPN took
+}
+
+export interface LivePregame {
+  home_win_prob: number | null; // our pre-game chance (the week's predictions, primary row)
+  home_spread: number | null; // the pre-game market line, nflverse's sign: + = home favoured
+  spread_text: string | null; // "PHI -3.5", "Pick'em"
+  total: number | null;
+  line_source: string | null;
+}
+
+export interface LiveLastPlay {
+  id: string | null;
+  type: string | null; // ESPN's type ("Pass Reception")
+  text: string | null; // ESPN's description
+  at: string | null; // its snap time, from ESPN's play log, when the server has it
+  seen_at: string | null; // when the app first saw it in an ESPN answer
+  age_s: number | null; // seconds since `at`, else since `seen_at`
+  age_from: 'snap' | 'seen' | null;
+}
+
+export interface LiveGame {
+  event: string; // ESPN's event id
+  game_id: string | null; // ours (2026_04_LA_PHI)
+  home: string; // nflverse codes
+  away: string;
+  state: 'pre' | 'in' | 'post';
+  detail: string | null; // ESPN's status line ("3:10 - 4th", "Final", "Halftime")
+  kickoff: string | null;
+  period: number;
+  clock: string | null; // "3:10"
+  home_score: number;
+  away_score: number;
+  possession: string | null; // who has the ball
+  down: number | null;
+  distance: number | null;
+  yardline_100: number | null; // yards to the offense's goal
+  situation: string | null; // "3rd & 4 at PHI 46" (our words, from ESPN's numbers)
+  red_zone: boolean;
+  home_timeouts: number | null;
+  away_timeouts: number | null;
+  last_play: LiveLastPlay | null;
+  espn_home_wp: number | null; // ESPN's own win probability for the home team
+  pregame: LivePregame;
+  decision_down: boolean; // a 3rd or 4th down is next
+}
+
+export interface LiveModels {
+  available: boolean;
+  version: string | null; // the promoted bundle ("2010-2025_20261010T054343Z")
+  message: string | null; // "The decision models aren't trained yet (LD00)."
+}
+
+export interface LiveGamesResponse {
+  season: number;
+  week: number;
+  phase: 'before' | 'live' | 'between' | 'final' | 'past' | 'future';
+  is_current: boolean; // the week Game day is live for (the calendar's, or the replayed one)
+  live_week: { season: number; week: number } | null; // Game day's week now (null: season over)
+  games: LiveGame[];
+  feed: LiveFeed | null; // null when ESPN wasn't asked (a past or future week)
+  feed_error: string | null; // ESPN failed with no earlier answer: the games are the schedule's
+  first_kickoff: string | null;
+  next_kickoff: string | null; // the next game not started yet
+  models: LiveModels;
+  replay: { event: string; at: string; speed: number; lag_s: number } | null; // nfl app --live-replay
+  refresh_s: number; // how often the list may refresh while the tab is visible (30)
+}
+
+export interface LiveOption {
+  choice: LiveChoice;
+  name: string; // "Go for it", "Field goal", "Punt"
+  wp: number | null; // the offense's win probability after this choice (null: not an option)
+  best: boolean;
+}
+
+export interface LiveFourth {
+  best: LiveChoice;
+  best_name: string;
+  gap: number; // the best option's lead over the next best
+  label: LiveLabel | null;
+  boot_share: number | null; // share of the bootstrap refits that agree
+  options: LiveOption[]; // always go, fg, punt in that order
+  convert: number; // the chance a go converts
+  fg_make: number | null;
+  fg_distance: number; // yards
+  punt_start: number | null; // after a punt, the receiver's expected start (yards from its goal)
+  wp_now: number; // the offense's win probability before the snap
+  ms: number;
+}
+
+export interface LiveTableRow {
+  gain: number; // yards gained on 3rd down (negative = a loss)
+  gain_text: string; // "no gain", "a 3-yard gain", "a 2-yard loss"
+  ydstogo: number;
+  yardline_100: number;
+  situation: string; // "4th & 4 at PHI 46"
+  best: LiveChoice;
+  best_name: string;
+  gap: number;
+  label: LiveLabel | null;
+  wp: Record<LiveChoice, number | null>;
+}
+
+export interface LiveThird {
+  convert: number;
+  pass_prob: number;
+  wp_now: number;
+  note: string | null; // "The clock runs out on this play: there is no 4th down to plan."
+  table: LiveTableRow[]; // 4th & 1 ... 4th & max(10, distance), shortest first
+  ms: number;
+}
+
+export interface LiveCallResponse {
+  season: number;
+  week: number;
+  event: string;
+  game_id: string | null;
+  game: LiveGame; // the fresh state behind the call
+  feed: LiveFeed;
+  kind: 'fourth' | 'third' | 'none';
+  reason: string | null; // why there's no call ("1st & 10: checks are for 3rd and 4th downs")
+  warnings: string[]; // what was assumed ("no pre-game line: spread 0 assumed")
+  offense: string | null;
+  defense: string | null;
+  source: 'situation' | 'summary'; // the next snap from ESPN's situation, or its play log
+  fourth: LiveFourth | null;
+  third: LiveThird | null;
+  espn_offense_wp: number | null; // ESPN's own win probability, from the offense's side
+  behind: { likely: boolean; text: string } | null; // ESPN may not have posted the latest snap
+  repeat: { same: boolean; last_check_at: string | null; text: string | null }; // no new play
+  models: LiveModels;
+}
+
+export interface LiveStat {
+  num: number; // e.g. conversions
+  den: number; // e.g. attempts
+  rate: number | null; // num / den (null when den is 0)
+}
+
+/** One measure for a team, this season and last, with the league's rate beside it. */
+export interface LiveMeasure {
+  this: LiveStat;
+  last: LiveStat;
+  league_this: LiveStat;
+  league_last: LiveStat;
+}
+
+export interface LiveKickerBand {
+  band: '<30' | '30-39' | '40-49' | '50+';
+  this: LiveStat;
+  last: LiveStat;
+  league_last: LiveStat;
+}
+
+export interface LivePunting {
+  punts: number;
+  net: number | null; // (gross yards - return yards - 20 per touchback) / punts
+  gross: number | null;
+}
+
+export interface LiveContextTeam {
+  team: string;
+  coach: string | null; // the head coach (nflverse + config/head_coach_fixes.csv)
+  coach_last_team: string | null; // his team last season (null: not a head coach then)
+  go_rate: LiveMeasure; // went for it / 4th downs decided (runs, passes, kicks, punts)
+  fourth_conv: LiveMeasure; // converted / went for it
+  short_conv: LiveMeasure; // 3rd and 4th & 2 or less: converted / runs and passes
+  red_zone_td: LiveMeasure; // touchdown drives / drives that reached the 20
+  coach_go: LiveMeasure | null; // where the bot says go: went / such spots (the coach's own)
+  coach_go_by_distance: {
+    band: '1-2' | '3-5' | '6+';
+    this: LiveStat;
+    last: LiveStat;
+    league_last: LiveStat;
+  }[];
+  kicker: {
+    name: string | null;
+    long: number | null; // career long make in the curated data (2010+)
+    long_season: number | null; // the season of that long make (latest, on a tie)
+    bands: LiveKickerBand[];
+  } | null;
+  punter: {
+    name: string | null;
+    this: LivePunting;
+    last: LivePunting;
+    league_this: LivePunting;
+    league_last: LivePunting;
+  } | null;
+}
+
+export interface LiveContextResponse {
+  season: number;
+  week: number;
+  this_season: number;
+  last_season: number;
+  through_week: number | null; // the newest week of this season in the curated plays (< week)
+  through: string; // "2026 weeks 1-3 and the 2025 season"
+  team: LiveContextTeam;
+  computed_at: string;
+  model_version: string | null; // the bundle behind coach_go
+}

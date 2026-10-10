@@ -1,4 +1,4 @@
-// The week tabs, in the mockup's order (D96).
+// The week tabs, in the mockup's order (D96); Game day comes after Graph (LD02, D108).
 
 export const TABS = [
   ['pipeline', 'Pipeline'],
@@ -8,5 +8,6 @@ export const TABS = [
   ['results', 'Results'],
   ['mlops', 'MLOps'],
   ['graph', 'Graph'],
+  ['game-day', 'Game day'],
 ] as const;
 export type TabKey = (typeof TABS)[number][0];

@@ -1,0 +1,232 @@
+/* Game day (LD02), ported from documentation/live-decisions/mockup/gameday.css: every rule is
+   scoped under .gameday and uses the control room's tokens only. */
+
+.gameday .gd { display: grid; grid-template-columns: 296px minmax(0, 1fr); gap: 18px; align-items: start; }
+.gameday .gd-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.gameday .gd-head { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
+.gameday .gd-head h2 { font-family: var(--font-display); font-size: 22px; font-weight: 700; letter-spacing: .01em; }
+.gameday .gd-head .right { margin-left: auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-3); }
+.gameday .spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; display: inline-block; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- game list ---------- */
+.gameday .glist { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; padding-right: 2px; }
+.gameday .glist .eyebrow { display: flex; justify-content: space-between; padding: 0 2px 6px; }
+.gameday .glist .grp { display: flex; flex-direction: column; gap: 8px; }
+.gameday .gcard {
+  display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 9px 12px 10px;
+}
+.gameday .gcard:hover { border-color: var(--line-2); background: var(--raised); }
+.gameday .gcard[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-wash); box-shadow: inset 3px 0 0 var(--accent); }
+.gameday .gcard .gtop { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 12px; color: var(--ink-3); }
+.gameday .gcard .gtop .live { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.gameday .gcard .gtop .live .dot { color: var(--accent); }
+.gameday .gcard .gsit { color: var(--ink-3); white-space: nowrap; }
+.gameday .gcard .gsit.dd { color: var(--ink); font-weight: 600; }
+.gameday .gcard .grow2 { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; }
+.gameday .gcard .gt { display: flex; align-items: center; gap: 6px; font-size: 14px; min-width: 0; }
+.gameday .gcard .gt.lost { color: var(--ink-2); }
+.gameday .gcard .gs { font-family: var(--font-display); font-size: 20px; font-weight: 700; line-height: 1.1; text-align: right; font-variant-numeric: tabular-nums; }
+.gameday .gcard .gs.lost { color: var(--ink-3); }
+.gameday .gcard .gs.pre { font-family: var(--font-body); font-size: 12.5px; font-weight: 500; color: var(--ink-3); }
+.gameday .ball { display: inline-block; width: 11px; height: 7px; border-radius: 50%; background: var(--ball); flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.gameday .ball.lg { width: 15px; height: 9px; }
+
+/* ---------- game panel ---------- */
+.gameday .gp-h { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.gameday .gp-h h2 { font-family: var(--font-display); font-size: 22px; font-weight: 700; }
+.gameday .gp-h .right { margin-left: auto; }
+.gameday .asof { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-2); flex-wrap: wrap; }
+.gameday .asof svg { color: var(--ink-3); flex: none; }
+.gameday .asof b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.gameday .board { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 16px; align-items: center; padding: 18px 18px 14px; }
+.gameday .side-t { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.gameday .side-t.home { flex-direction: row-reverse; text-align: right; }
+.gameday .side-t .swatchbar { width: 6px; align-self: stretch; border-radius: 3px; flex: none; box-shadow: inset 0 0 0 1px rgba(127,127,127,.3); }
+.gameday .side-t .tn { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.gameday .side-t .tn b { font-family: var(--font-display); font-size: 24px; font-weight: 700; line-height: 1; display: inline-flex; gap: 8px; align-items: center; }
+.gameday .side-t.home .tn b { flex-direction: row-reverse; }
+.gameday .side-t .tn small { color: var(--ink-3); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gameday .side-t .sc { font-family: var(--font-display); font-size: 52px; font-weight: 700; line-height: .9; margin-left: auto; }
+.gameday .side-t.home .sc { margin-left: 0; margin-right: auto; }
+.gameday .tos { display: inline-flex; gap: 3px; }
+.gameday .tos i { width: 14px; height: 4px; border-radius: 2px; background: var(--ink-2); display: inline-block; }
+.gameday .tos i.used { background: var(--line-2); }
+.gameday .mid { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+.gameday .mid .q { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: var(--ink-2); letter-spacing: .05em; text-transform: uppercase; }
+.gameday .mid .clk { font-family: var(--font-display); font-size: 34px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.gameday .mid .dd { font-size: 14px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--raised); border: 1px solid var(--line); white-space: nowrap; }
+.gameday .facts { display: flex; flex-wrap: wrap; gap: 8px 22px; padding: 12px 18px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-2); }
+.gameday .facts span b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.gameday .lastplay { padding: 12px 18px; border-top: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline; }
+.gameday .lastplay p { margin: 0; grid-column: 1 / -1; font-size: 13.5px; color: var(--ink); overflow-wrap: anywhere; }
+.gameday .lastplay .muted { font-size: 12px; }
+.gameday .actbar { display: flex; align-items: center; gap: 12px 18px; flex-wrap: wrap; padding: 14px 18px; border-top: 1px solid var(--line); background: var(--raised); border-radius: 0 0 var(--r) var(--r); }
+.gameday .actbar .btn.big { min-width: 220px; }
+.gameday .actbar .reason { max-width: 46ch; }
+
+/* ---------- call card ---------- */
+.gameday .callcard .ch { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; padding: 13px 18px; border-bottom: 1px solid var(--line); }
+.gameday .callcard .ch .what { display: flex; flex-direction: column; gap: 2px; }
+.gameday .callcard .ch .what b { font-family: var(--font-display); font-size: 21px; font-weight: 700; line-height: 1.1; }
+.gameday .callcard .ch .right { margin-left: auto; }
+.gameday .callgrid { display: grid; grid-template-columns: minmax(230px, .8fr) minmax(0, 1.2fr); gap: 22px 30px; padding: 20px 18px 18px; align-items: start; }
+.gameday .verdict { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.gameday .verdict .big { font-family: var(--font-display); font-size: 64px; font-weight: 700; line-height: .92; letter-spacing: .005em; text-transform: uppercase; }
+.gameday .verdict .big.toss { color: var(--ink-2); }
+.gameday .verdict .sub { font-size: 16px; color: var(--ink); font-weight: 500; }
+.gameday .verdict .expl { font-size: 13.5px; color: var(--ink-2); margin: 0; max-width: 44ch; }
+.gameday .conf { display: inline-flex; align-items: center; gap: 8px; padding: 4px 11px 4px 8px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--panel); font-size: 13.5px; font-weight: 700; color: var(--ink); width: fit-content; }
+.gameday .conf .pips { display: inline-flex; gap: 3px; }
+.gameday .conf .pips i { width: 7px; height: 14px; border-radius: 2px; background: var(--ink-2); display: inline-block; }
+.gameday .conf .pips i.off { background: var(--line-2); }
+.gameday .conf.sm { padding: 2px 8px 2px 6px; font-size: 12px; gap: 6px; }
+.gameday .conf.sm .pips i { width: 5px; height: 10px; }
+.gameday .conf.toss { border-style: dashed; }
+
+/* the three options: one honest 0-100% axis, the best in the accent */
+.gameday .opts { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.gameday .opt { display: grid; grid-template-columns: 112px minmax(0, 1fr) 92px; gap: 12px; align-items: center; padding: 6px 4px; border-radius: 6px; }
+.gameday .opt:hover, .gameday .opt:focus-visible { background: var(--raised); }
+.gameday .opt .on { font-size: 15px; font-weight: 600; color: var(--ink-2); }
+.gameday .opt.best .on { color: var(--ink); font-weight: 700; }
+.gameday .opt .tr { position: relative; height: 22px; }
+.gameday .opt .tr .bg { position: absolute; inset: 9px 0 auto 0; height: 4px; background: var(--raised); border-radius: 2px; box-shadow: inset 0 0 0 1px var(--line); }
+.gameday .opt .tr .fill { position: absolute; left: 0; top: 0; height: 22px; border-radius: 0 4px 4px 0; background: color-mix(in srgb, var(--ink-3) 42%, var(--panel)); }
+.gameday .opt.best .tr .fill { background: var(--accent); }
+.gameday .opt.tied .tr .fill { background: color-mix(in srgb, var(--accent) 55%, var(--panel)); }
+.gameday .opt .tr .now { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px solid var(--ink); opacity: .55; }
+.gameday .opt .pv { font-family: var(--font-display); font-size: 32px; font-weight: 700; line-height: 1; text-align: right; color: var(--ink-2); }
+.gameday .opt.best .pv, .gameday .opt.tied .pv { color: var(--ink); }
+.gameday .opt .pv.na { font-family: var(--font-body); font-size: 12.5px; font-weight: 500; color: var(--ink-3); }
+.gameday .axis { display: grid; grid-template-columns: 112px minmax(0, 1fr) 92px; gap: 12px; padding: 0 4px; }
+.gameday .axis .ticks { position: relative; height: 16px; font-size: 11px; color: var(--ink-3); border-top: 1px solid var(--line-2); }
+.gameday .axis .ticks span { position: absolute; top: 2px; transform: translateX(-50%); font-variant-numeric: tabular-nums; }
+.gameday .axis .ticks span:first-child { transform: none; }
+.gameday .axis .ticks span:last-child { transform: translateX(-100%); }
+.gameday .optnote { font-size: 12px; color: var(--ink-3); margin: 6px 4px 0; display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.gameday .optnote .k { display: inline-flex; align-items: center; gap: 6px; }
+.gameday .optnote .k i { display: inline-block; width: 0; height: 12px; border-left: 2px solid var(--ink); opacity: .55; }
+
+.gameday .odds { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; padding: 0 18px 18px; }
+.gameday .odd { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; background: var(--panel); min-width: 0; }
+.gameday .odd .k { font-size: 12px; color: var(--ink-3); }
+.gameday .odd .v { font-family: var(--font-display); font-size: 24px; font-weight: 700; line-height: 1.1; }
+.gameday .odd .d { font-size: 12px; color: var(--ink-2); }
+.gameday .odd.ref { background: var(--raised); border-style: dashed; }
+.gameday .odd.sample { border-style: dashed; }
+.gameday .callfoot { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 18px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+
+/* 3rd down */
+.gameday .third { display: flex; flex-wrap: wrap; gap: 14px 40px; padding: 20px 18px 6px; align-items: flex-end; }
+.gameday .third .fig { display: flex; flex-direction: column; gap: 4px; }
+.gameday .third .fig b { font-family: var(--font-display); font-size: 60px; font-weight: 700; line-height: .9; }
+.gameday .third .fig span { font-size: 15px; color: var(--ink-2); }
+.gameday .third .fig.small b { font-size: 34px; color: var(--ink-2); }
+.gameday .ifs { padding: 14px 18px 18px; display: flex; flex-direction: column; gap: 10px; }
+.gameday .ifs h3 { font-family: var(--font-display); font-size: 20px; font-weight: 700; }
+.gameday .ifs p { margin: 0; font-size: 13px; color: var(--ink-3); }
+.gameday .iftbl td, .gameday .iftbl th { padding: 8px 10px; }
+.gameday .iftbl td.call { font-weight: 700; font-size: 14.5px; }
+.gameday .iftbl td.call.toss { color: var(--ink-2); font-weight: 600; }
+.gameday .iftbl tr[tabindex]:focus-visible td { background: var(--raised); }
+.gameday .iftbl tr.nogain td { background: var(--raised); }
+.gameday .iftbl tr.nogain td:first-child { box-shadow: inset 3px 0 0 var(--ink-2); }
+.gameday .iftbl tr.yours td { background: var(--accent-wash); }
+.gameday .iftbl tr.yours td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.gameday .iftbl tr.loss td:first-child { color: var(--ink-2); }
+.gameday .iftbl .tag { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-2); margin-left: 6px; }
+.gameday .iftbl .tag.ph { display: none; margin-left: 0; }
+
+/* "is this team good at this?" */
+.gameday .ctx .card-h h2 { font-size: 20px; }
+.gameday .ctxgrid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 0; }
+.gameday .ctxgrid > section { padding: 14px 18px 16px; min-width: 0; overflow-x: auto; }
+.gameday .ctxgrid > section + section { border-left: 1px solid var(--line); }
+.gameday .ctxgrid h3 { font-size: 14.5px; font-weight: 700; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.gameday .ctxgrid h3 small { font-weight: 400; color: var(--ink-3); font-size: 12.5px; }
+.gameday .ctxblock + .ctxblock { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.gameday .ctbl { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+.gameday .ctbl th { text-align: right; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; padding: 4px 6px 6px; border-bottom: 1px solid var(--line); vertical-align: bottom; }
+.gameday .ctbl th:first-child { text-align: left; }
+.gameday .ctbl td { padding: 7px 6px; border-bottom: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; vertical-align: middle; white-space: nowrap; }
+.gameday .ctbl td:first-child { text-align: left; white-space: normal; min-width: 140px; }
+.gameday .ctbl tr:last-child td { border-bottom: 0; }
+.gameday .ctbl td small { display: block; color: var(--ink-3); font-size: 11.5px; }
+.gameday .ctbl td .r { font-weight: 700; color: var(--ink); }
+.gameday .ctbl td.lg { color: var(--ink-2); }
+.gameday .ctbl tr.here td { background: var(--accent-wash); }
+.gameday .ctbl tr.here td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.gameday .ctbl .heretag { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-ink); margin-top: 2px; }
+.gameday .vs { position: relative; width: 96px; height: 16px; display: inline-block; vertical-align: middle; }
+.gameday .vs .t { position: absolute; left: 0; right: 0; top: 7px; height: 2px; background: var(--line); border-radius: 1px; }
+.gameday .vs .lg { position: absolute; top: 1px; height: 14px; width: 0; border-left: 2px solid var(--ink-2); transform: translateX(-1px); }
+.gameday .vs .d1 { position: absolute; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--s1); transform: translateX(-50%); box-shadow: 0 0 0 2px var(--panel); }
+.gameday .vs .d2 { position: absolute; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--panel); border: 2px solid var(--s2); transform: translateX(-50%); }
+.gameday .ctxlegend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--ink-2); align-items: center; }
+.gameday .ctxlegend span { display: inline-flex; align-items: center; gap: 6px; }
+.gameday .ctxlegend .d1 { width: 10px; height: 10px; border-radius: 50%; background: var(--s1); display: inline-block; }
+.gameday .ctxlegend .d2 { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--s2); display: inline-block; }
+.gameday .ctxlegend .lg { width: 0; height: 12px; border-left: 2px solid var(--ink-2); display: inline-block; }
+.gameday .ctxline { font-size: 13px; color: var(--ink-2); margin: 6px 0 0; }
+.gameday .ctxline b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* loading / skeleton */
+.gameday .skel { padding: 22px 18px; display: flex; flex-direction: column; gap: 12px; }
+.gameday .skel i { display: block; height: 14px; border-radius: 6px; background: linear-gradient(90deg, var(--raised), var(--line), var(--raised)); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+.gameday .notice.warn { border-color: color-mix(in srgb, var(--warn) 55%, transparent); background: color-mix(in srgb, var(--warn) 8%, var(--panel)); }
+.gameday .notice.err { border-color: color-mix(in srgb, var(--err) 55%, transparent); background: color-mix(in srgb, var(--err) 7%, var(--panel)); border-style: solid; }
+.gameday .notice .ic.warn { color: var(--warn); }
+.gameday .notice .ic.err { color: var(--err); }
+.gameday .samplebar { font-size: 12.5px; }
+
+/* slate (before the first kickoff) */
+.gameday .slate td.pick { font-weight: 600; }
+
+@media (max-width: 1240px) {
+  .gameday .callgrid { grid-template-columns: minmax(0, 1fr); }
+  .gameday .ctxgrid { grid-template-columns: minmax(0, 1fr); }
+  .gameday .ctxgrid > section + section { border-left: 0; border-top: 1px solid var(--line); }
+}
+@media (max-width: 900px) {
+  .gameday .gd { grid-template-columns: minmax(0, 1fr); }
+  .gameday .glist { position: static; max-height: none; flex-direction: row; overflow-x: auto; overflow-y: hidden; gap: 12px; padding-bottom: 6px; scroll-snap-type: x proximity; }
+  .gameday .glist .grp { flex-direction: row; gap: 8px; }
+  .gameday .glist .grp > .eyebrow { display: none; }
+  .gameday .gcard { width: 210px; flex: none; scroll-snap-align: start; }
+}
+@media (max-width: 560px) {
+  .gameday .board { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 14px; }
+  .gameday .board .mid { grid-column: 1 / -1; grid-row: 1; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 6px 10px; }
+  .gameday .side-t .sc { font-size: 40px; }
+  .gameday .side-t .tn b { font-size: 20px; }
+  .gameday .side-t .tn small { display: none; }
+  .gameday .verdict .big { font-size: 48px; }
+  .gameday .opt, .gameday .axis { grid-template-columns: 84px minmax(0, 1fr) 70px; gap: 8px; }
+  .gameday .opt .on { font-size: 13.5px; }
+  .gameday .opt .pv { font-size: 26px; }
+  .gameday .third { gap: 14px 28px; }
+  .gameday .third .fig b { font-size: 46px; }
+  .gameday .ctbl .vscell, .gameday .ctx .ctxlegend { display: none; }
+  .gameday .ctbl td:first-child { min-width: 0; }
+  .gameday .ctbl td, .gameday .ctbl th { padding-left: 4px; padding-right: 4px; }
+  .gameday .actbar .btn.big { width: 100%; }
+  .gameday .iftbl .gain { display: none; }
+  .gameday .iftbl .tag.ph { display: block; }
+  .gameday .iftbl tr.nogain td.face { box-shadow: inset 3px 0 0 var(--ink-2); }
+  .gameday .iftbl tr.yours td.face { box-shadow: inset 3px 0 0 var(--accent); }
+  /* pips only on a phone; the word stays for screen readers (the chip's aria-label too) */
+  .gameday .iftbl .conf .lt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .gameday .iftbl .conf { position: relative; }
+  .gameday .iftbl td, .gameday .iftbl th { padding: 8px 6px; }
+  .gameday .gp-h .right, .gameday .callcard .ch .right { margin-left: 0; }
+}
+
+/* the React port's extras: dotted-underline hints, the call stack */
+.gameday .recheck { font-size: 12.5px; text-decoration: underline dotted; cursor: help; }
+.gameday .callblock { display: flex; flex-direction: column; gap: 16px; }
+.gameday .opts > [role="listitem"] { display: block; }
+.gameday .opt { width: 100%; }

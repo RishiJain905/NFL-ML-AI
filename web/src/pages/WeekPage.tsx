@@ -7,6 +7,8 @@ import { InjuryUpdateLog } from '../components/run/InjuryUpdate';
 import { WeekHeader } from '../components/WeekHeader';
 import { comma } from '../lib/format';
 import { DigestTab } from './week/DigestTab';
+import { GameDayTab } from './week/GameDayTab';
+import { useCachedLiveCount } from './week/gameday/useCachedLive';
 import { GamesTab } from './week/GamesTab';
 import { GraphTab } from './week/GraphTab';
 import { MlopsTab } from './week/MlopsTab';
@@ -23,6 +25,7 @@ export function WeekPage() {
   const weeks = useWeeks();
   const meta = useMeta();
   const detail = useWeekDetail(season, week);
+  const liveNow = useCachedLiveCount(season, week); // Game day's list, from the cache only (LD02)
 
   if (!TABS.some(([k]) => k === tab))
     return <Navigate to={`/week/${season}/${week}/pipeline`} replace />;
@@ -57,6 +60,14 @@ export function WeekPage() {
                 {counts[k]}
               </span>
             ) : null}
+            {k === 'game-day' && liveNow > 0 ? (
+              <>
+                <span className="dot pulse" style={{ color: 'var(--accent)' }} aria-hidden="true" />
+                <span className="count" aria-label={`(${liveNow} live)`}>
+                  {liveNow} live
+                </span>
+              </>
+            ) : null}
           </NavLink>
         ))}
       </nav>
@@ -70,6 +81,7 @@ export function WeekPage() {
         {tab === 'results' ? <ResultsTab {...props} /> : null}
         {tab === 'graph' ? <GraphTab {...props} /> : null}
         {tab === 'mlops' ? <MlopsTab {...props} /> : null}
+        {tab === 'game-day' ? <GameDayTab {...props} /> : null}
       </section>
     </>
   );

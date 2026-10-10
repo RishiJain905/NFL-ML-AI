@@ -25,7 +25,7 @@ import re
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlencode, urlsplit
@@ -101,13 +101,27 @@ class Fetched:
         return ((now or utc_now()) - self.fetched_at).total_seconds()
 
 
+@dataclass
+class _InFlight:
+    """A request on its way: its waiters get exactly its answer (or its error)."""
+
+    done: threading.Event = field(default_factory=threading.Event)
+    out: Fetched | None = None
+    error: str | None = None
+
+
 class EspnClient:
     """ESPN's site API for one process (the CLI, or the app's server in LD02).
 
     `game(event_id)` is the call for a check (3.4 KB, cached by ESPN for 1 s); `summary`
     (every play, ~50 KB gzipped) is for replays, the opening kickoff and play times;
-    `scoreboard(season, week)` lists a week's games. Thread-safe: one lock serialises the
-    calls, so the 2 s rule holds across threads (calls take ~100 ms).
+    `scoreboard(season, week)` lists a week's games. Thread-safe: every rule (the memory, a
+    request in flight, the back-off, the 2 s and 0.5 s spacing from the *actual* send times) is
+    checked under a lock, and a caller that must wait sleeps outside it and checks everything
+    again, so a request claims its send only when it may go now; the HTTP call happens outside
+    the lock. One game's wait or a slow answer never holds up another request, a back-off that
+    starts while a caller waits stops it, and a second caller for a URL already in flight gets
+    that request's own answer, however long it took (LD02 review, Sol review).
 
     The clock, sleep and HTTP transport can be replaced (tests use `httpx.MockTransport`;
     no test reaches the network).
@@ -148,6 +162,7 @@ class EspnClient:
         self._last_request: dict[str, float] = {}  # clock key -> monotonic time of the request
         self._last_any = float("-inf")  # the last request of any kind
         self._memory: dict[str, tuple[Fetched, float]] = {}  # url -> (answer, request time)
+        self._inflight: dict[str, _InFlight] = {}  # url -> the request now on its way
         self._fails = 0
         self._retry_at = float("-inf")
         self._last_error: str | None = None
@@ -203,28 +218,48 @@ class EspnClient:
 
     def _get(self, clock_key: str, base_url: str, params: dict[str, Any]) -> Fetched:
         url = check_url(base_url + ("?" + urlencode(params) if params else ""))
-        with self._lock:
-            now = self._mono()
-            mem = self._memory.get(url)
-            if mem is not None and now - mem[1] < self.min_interval:
-                return replace(mem[0], cached=True, stale=False, error=None)
-            if now < self._retry_at:
-                wait = self._retry_at - now
-                return self._stale_or_raise(
-                    url, f"backing off after an error, next try in {wait:.0f} s: {self._last_error}"
-                )
-            wait = max(
-                self.min_interval - (now - self._last_request.get(clock_key, float("-inf"))),
-                self.host_interval - (now - self._last_any),
-            )
-            if wait > 0:
-                self._sleep(wait)
-            sent = self._mono()
-            self._last_request[clock_key] = sent
-            self._last_any = sent
-            self.requests += 1
+        while True:
+            with self._lock:
+                now = self._mono()
+                mem = self._memory.get(url)
+                if mem is not None and now - mem[1] < self.min_interval:
+                    return replace(mem[0], cached=True, stale=False, error=None)
+                busy = self._inflight.get(url)
+                if busy is None:
+                    if now < self._retry_at:
+                        wait = self._retry_at - now
+                        return self._stale_or_raise(
+                            url,
+                            f"backing off after an error, next try in {wait:.0f} s: "
+                            f"{self._last_error}",
+                        )
+                    wait = max(
+                        0.0,
+                        self.min_interval
+                        - (now - self._last_request.get(clock_key, float("-inf"))),
+                        self.host_interval - (now - self._last_any),
+                    )
+                    if wait <= 0:  # it may go now: claim the send
+                        sent = now
+                        self._last_request[clock_key] = sent
+                        self._last_any = sent
+                        self.requests += 1
+                        mine = _InFlight()
+                        self._inflight[url] = mine
+                        break
+            if busy is not None:
+                # the same URL is on its way: take that request's own answer
+                if busy.done.wait(self.timeout + 1.0):
+                    with self._lock:
+                        if busy.out is not None:
+                            return replace(busy.out, cached=True, stale=False, error=None)
+                        return self._stale_or_raise(url, busy.error or "the request failed")
+                continue
+            self._sleep(wait)  # outside the lock; then every rule is checked again
+        out: Fetched | None = None
+        error: str | None = None
+        try:
             t0 = time.perf_counter()
-            error: str | None = None
             data: Any = None
             try:
                 resp = self._http.get(url)
@@ -243,17 +278,27 @@ class EspnClient:
             except ValueError:
                 error = "not JSON"
             ms = round((time.perf_counter() - t0) * 1000, 1)
-            if error is not None:
-                self._fails += 1
-                # the exponent is capped: 2.0 ** 1024 overflows after ~17 hours of failures
-                exp = min(self._fails - 1, 30)
-                delay = min(self.backoff_start * 2**exp, self.backoff_max)
-                self._retry_at = self._mono() + delay
-                self._last_error = error
-                return self._stale_or_raise(url, error)
-            self._fails = 0
-            self._retry_at = float("-inf")
-            self._last_error = None
-            out = Fetched(data=data, url=url, fetched_at=self._now(), ms=ms)
-            self._memory[url] = (out, sent)
+            if error is None:
+                out = Fetched(data=data, url=url, fetched_at=self._now(), ms=ms)
+        finally:
+            with self._lock:
+                if out is not None:
+                    self._fails = 0
+                    self._retry_at = float("-inf")
+                    self._last_error = None
+                    self._memory[url] = (out, sent)
+                else:
+                    error = error or "the request failed"
+                    self._fails += 1
+                    # the exponent is capped: 2.0 ** 1024 overflows after ~17 hours of failures
+                    exp = min(self._fails - 1, 30)
+                    delay = min(self.backoff_start * 2**exp, self.backoff_max)
+                    self._retry_at = self._mono() + delay
+                    self._last_error = error
+                mine.out, mine.error = out, error
+                self._inflight.pop(url, None)
+                mine.done.set()
+        if out is not None:
             return out
+        with self._lock:
+            return self._stale_or_raise(url, error or "the request failed")

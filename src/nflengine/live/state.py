@@ -157,7 +157,11 @@ class Contexts:
 
     def context(self, event_id: str, event: dict[str, Any] | None = None) -> GameContext | None:
         gid = self.game_id_for(event_id, event)
-        r = self._by_id.get(gid) if gid else None
+        return self.by_game(gid) if gid else None
+
+    def by_game(self, gid: str) -> GameContext | None:
+        """One game's pre-game facts by our `game_id` (LD02: a slate without ESPN ids)."""
+        r = self._by_id.get(gid)
         if r is None:
             return None
         return GameContext(
@@ -296,7 +300,7 @@ def event_teams(event: dict[str, Any]) -> dict[str, dict[str, Any]]:
             continue
         try:
             score = int(float(c.get("score"))) if c.get("score") not in (None, "") else 0
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):  # "1e309" is inf (Sol review, LD02)
             score = 0
         out[tid] = {
             "team": normalize_team(abbr),
@@ -580,6 +584,9 @@ def parse_event(
             "End of Game": "the game is over",
             "End of Regulation": "end of regulation: overtime starts with a kickoff",
         }[out.last_play_type]
+        return out
+    if len(teams) != 2:  # an answer without both teams has no defense to pick (Sol review, LD02)
+        out.reason = "ESPN's answer is missing a team"
         return out
     down = _int(sit.get("down"))
     poss = str(sit.get("possession") or "")

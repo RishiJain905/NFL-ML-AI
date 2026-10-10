@@ -207,6 +207,19 @@ def control_room(
         "--fail-at",
         hidden=True,  # CR02's failure-and-resume proof: only with --rehearsal
     ),
+    live_replay: str | None = typer.Option(
+        None,
+        "--live-replay",
+        help="LD02: Game day serves this finished game's week (ESPN event id, saved under "
+        "live/summaries/) as if live, so the tab can be tried outside game times.",
+    ),
+    replay_at: str | None = typer.Option(
+        None, "--replay-at", help="Where the replay starts (ISO time; no zone = US Eastern)."
+    ),
+    replay_speed: float = typer.Option(1.0, "--replay-speed", min=0.1, max=60.0),
+    replay_lag: float = typer.Option(
+        10.0, "--replay-lag", min=0.0, max=300.0, help="Seconds ESPN takes to post a play."
+    ),
 ) -> None:
     """Open the control room: a local web app for the weekly pipeline (127.0.0.1 only)."""
     from nflengine.app.preflight import REHEARSAL_STEPS
@@ -216,6 +229,11 @@ def control_room(
         raise typer.BadParameter(
             f"--fail-at needs --rehearsal and one of {', '.join(REHEARSAL_STEPS)}"
         )
+    replay = None
+    if live_replay is not None:
+        replay = {"event": live_replay, "at": replay_at, "speed": replay_speed, "lag_s": replay_lag}
+    elif replay_at is not None or replay_speed != 1.0 or replay_lag != 10.0:
+        raise typer.BadParameter("--replay-at, --replay-speed and --replay-lag need --live-replay")
     raise typer.Exit(
         serve(
             port=port,
@@ -224,6 +242,7 @@ def control_room(
             rehearsal=rehearsal,
             fail_at=fail_at,
             log=print,
+            live_replay=replay,
         )
     )
 
