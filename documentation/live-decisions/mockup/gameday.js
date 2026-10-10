@@ -33,6 +33,13 @@ const S = {
   sel: null, // the picked game (ESPN event id)
   tab: 'gameday',
   page: 'week',
+  // LD03: the decision review
+  rvWeek: '2026_4', // the past week shown (P.review's week_<S>_<W>)
+  rvState: 'ready', // ready | noplays | loading | nomodels
+  rvView: 'week', // week | season (the switch inside the tab)
+  rvFilter: 'all', // all | disagree
+  rvSort: 'rank', // the leaderboard's order
+  rvOpen: false, // the final phase: the review opened from "Open the decision review"
 };
 if (!PALS.some(p => p.id === S.pal)) S.pal = 'turf';
 if (!['system', 'dark', 'light'].includes(S.mode)) S.mode = 'system';
@@ -90,9 +97,10 @@ function moment() {
   return M[S.moment];
 }
 const stateMoment = () => isLiveGd() ? moment() : M[S.gd];
-const nowIso = () => { const m = stateMoment(); return m.at || (m.games.feed && m.games.feed.as_of) || BOARD.at; };
-const curWeek = () => S.gd === 'before' ? M.before.games.week : BOARD.games.week; // the calendar's week
-const viewWeek = () => stateMoment().games.week;
+const nowIso = () => { const m = S.gd === 'past' ? M.before : stateMoment(); return m.at || (m.games.feed && m.games.feed.as_of) || BOARD.at; };
+const curWeek = () => S.gd === 'before' || S.gd === 'past' ? M.before.games.week : BOARD.games.week; // the calendar's week
+const viewWeek = () => S.gd === 'past' ? rvWeekData().week : stateMoment().games.week;
+const viewSeason = () => S.gd === 'past' ? rvWeekData().season : 2026;
 function board() {
   const b = clone(stateMoment().games);
   if (isLiveGd()) {
@@ -133,12 +141,29 @@ function syncMockbar() {
   $$('#momentPick button').forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.v === S.moment)); b.disabled = !isLiveGd(); });
   $$('#checkPick button').forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.v === S.check)); b.disabled = !isLiveGd(); });
   ['#momentGrp', '#checkGrp'].forEach(s => { $(s).style.opacity = isLiveGd() ? '' : '.45'; });
+  const rvOn = S.gd === 'past' || S.gd === 'final';
+  $$('#rvWeekPick button').forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.v === S.rvWeek)); b.disabled = S.gd !== 'past'; });
+  $$('#rvStatePick button').forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.v === S.rvState)); b.disabled = !rvOn; });
+  $('#rvWeekGrp').style.opacity = S.gd === 'past' ? '' : '.45';
+  $('#rvStateGrp').style.opacity = rvOn ? '' : '.45';
   applyTheme();
 }
 try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (S.mode === 'system') applyTheme(); }); } catch (e) { /* old browsers */ }
 $('#gdPick').addEventListener('click', e => {
   const b = e.target.closest('[data-v]'); if (!b) return;
-  S.gd = b.dataset.v; S.sel = null; S.checks = {}; S.tab = 'gameday'; S.page = 'week'; S.settings = false;
+  S.gd = b.dataset.v; S.sel = null; S.checks = {}; S.tab = 'gameday'; S.page = 'week'; S.settings = false; S.rvOpen = false;
+  syncMockbar(); render();
+});
+$('#rvWeekPick').addEventListener('click', e => {
+  const b = e.target.closest('[data-v]'); if (!b || b.disabled) return;
+  S.rvWeek = b.dataset.v; if (S.rvState === 'noplays') S.rvState = 'ready';
+  syncMockbar(); render();
+});
+$('#rvStatePick').addEventListener('click', e => {
+  const b = e.target.closest('[data-v]'); if (!b || b.disabled) return;
+  S.rvState = b.dataset.v;
+  // a past week without plays is week 5's real answer
+  if (S.gd === 'past' && S.rvState === 'noplays') { S.rvWeek = '2026_5'; S.rvState = 'ready'; }
   syncMockbar(); render();
 });
 $('#momentPick').addEventListener('click', e => {
@@ -161,14 +186,15 @@ function renderSide() {
     ? `<button class="navi" data-nav="week" data-week="5" aria-current="${cur(5)}"><span class="wk">5</span><span class="grow">Week 5<span class="sub">This week · Thu Oct 8</span></span><span class="chip ok"><span class="ic">✓</span>Published</span></button>`
     : '';
   const w4sub = cw === 4 ? 'This week · Sun Oct 4' : 'Checks passed';
-  const w3 = S.gd === 'past' ? `<button class="navi" data-nav="week" data-week="${vw}" aria-current="true"><span class="wk">${vw}</span><span class="grow">Week ${vw}<span class="sub">Stand-in for a past week</span></span><span class="chip flat">Final</span></button>` : '';
+  const linked = S.gd === 'past' && !(viewSeason() === 2026 && (vw === 4 || vw === 5));
+  const w3 = linked ? `<button class="navi" data-nav="week" data-week="${vw}" aria-current="true"><span class="wk">${esc(weekShort(viewSeason(), vw))}</span><span class="grow">${esc(viewSeason() === 2026 ? `Week ${vw}` : `${viewSeason()} ${weekName(viewSeason(), vw)}`)}<span class="sub">${viewSeason() === 2026 ? 'Before go-live · opened by link' : 'Last season · opened by link'}</span></span><span class="chip flat">Final</span></button>` : '';
   $('#side').innerHTML = `
     <div class="brand"><div class="brand-mark">CR</div><div style="flex:1;min-width:0"><b>Control Room</b><small>NFL Analytics Engine</small></div>
       <button class="iconbtn" id="gearBtn" aria-expanded="${S.settings}" aria-controls="settingsPop" title="Appearance"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M3.4 12.6l1.3-1.3M11.3 4.7l1.3-1.3"/></svg></button>
       ${S.settings ? settingsPop() : ''}</div>
     <div class="navgrp"><div class="eyebrow">2026 weeks</div>
       ${w5}
-      <button class="navi" data-nav="week" data-week="4" aria-current="${cur(4)}"><span class="wk">4</span><span class="grow">Week 4<span class="sub">${w4sub}</span></span><span class="chip ok"><span class="ic">✓</span>Published</span></button>
+      <button class="navi" data-nav="week" data-week="4" aria-current="${String(S.page === 'week' && vw === 4 && viewSeason() === 2026)}"><span class="wk">4</span><span class="grow">Week 4<span class="sub">${w4sub}</span></span><span class="chip ok"><span class="ic">✓</span>Published</span></button>
       ${w3}
       <button class="navi" disabled title="Live weekly runs started in week 4"><span class="wk">1–3</span><span class="grow">Before go-live<span class="sub">Walk-forward rows only</span></span></button>
     </div>
@@ -207,7 +233,9 @@ $('#side').addEventListener('click', e => {
   if (b.dataset.nav === 'week') {
     S.page = 'week';
     const w = Number(b.dataset.week);
-    if (S.gd === 'past' && w === curWeek()) { S.gd = 'live'; S.sel = null; }
+    if (S.gd === 'past' && w === curWeek()) { S.gd = 'before'; S.sel = null; }
+    else if (S.gd === 'past' && w === 4) { S.rvWeek = '2026_4'; S.rvState = 'ready'; }
+    else if (w === 4 && S.gd === 'before') { S.gd = 'past'; S.rvWeek = '2026_4'; }
   } else S.page = 'season';
   syncMockbar(); render(); window.scrollTo({ top: 0 });
 });
@@ -216,7 +244,7 @@ function renderTop() {
   const top = $('#top');
   const now = nowIso();
   if (S.page !== 'week') {
-    top.innerHTML = `<div class="titleblock"><span class="eyebrow">2026 season</span><h1>Season pages</h1><span class="muted">Unchanged by LD02</span></div>`;
+    top.innerHTML = `<div class="titleblock"><span class="eyebrow">2026 season</span><h1>Season pages</h1><span class="muted">Unchanged by Game day (the review's season view sits inside the tab)</span></div>`;
     return;
   }
   if (S.gd === 'before') {
@@ -231,16 +259,18 @@ function renderTop() {
     return;
   }
   if (S.gd === 'past') {
+    const wk = rvWeekData(), sn = wk.season, w = wk.week;
+    const n = wk.games.length || (sn === 2026 && w === 5 ? M.before.games.games.length : 0);
     top.innerHTML = `
-      <div class="titleblock"><span class="eyebrow">2026 regular season</span><h1>Week ${viewWeek()}</h1>
-        <div class="chips"><span class="chip flat">${M.past.games.games.length} games</span><span class="chip flat">All final</span></div></div>
+      <div class="titleblock"><span class="eyebrow">${sn} ${w > 18 && sn >= 2021 ? 'postseason' : 'regular season'}</span><h1>${esc(weekName(sn, w))}</h1>
+        <div class="chips">${n ? `<span class="chip flat">${n} game${n > 1 ? 's' : ''}</span>` : ''}<span class="chip flat">All final</span>${wk.summary ? `<span class="chip flat">${wk.summary.decisions} 4th downs reviewed</span>` : ''}</div></div>
       <div class="right"><div class="clock"><span class="small">Now</span><span class="big">${esc(tMin(now))}</span><span class="small">${esc(tDay(now))} ET · mock clock</span></div></div>`;
     return;
   }
   const b = board();
   const live = b.games.filter(g => g.state === 'in').length;
   top.innerHTML = `
-    <div class="titleblock"><span class="eyebrow">2026 regular season · this week</span><h1>Week 4</h1>
+    <div class="titleblock"><span class="eyebrow">2026 regular season · ${S.gd === 'final' ? 'all final' : 'this week'}</span><h1>Week 4</h1>
       <div class="chips"><span class="chip ok"><span class="ic">✓</span>Published</span>${live ? `<span class="chip run"><span class="dot pulse"></span>${live} games on</span>` : ''}<span class="chip flat">16 games</span><span class="chip flat">Colts at Commanders in London</span></div></div>
     <div class="right">
       <div class="clock"><span class="small">Now</span><span class="big">${esc(tMin(now))}</span><span class="small">${esc(tDay(now))} ET · mock clock</span></div>
@@ -253,23 +283,25 @@ function renderTabs() {
   if (S.page !== 'week') { nav.hidden = true; return; }
   nav.hidden = false;
   const live = isLiveGd() ? board().games.filter(g => g.state === 'in').length : 0;
-  const counts = viewWeek() === 4 ? { games: 16, players: '1,860', graph: 3 } : { games: 15 };
+  const counts = viewWeek() === 4 && viewSeason() === 2026 ? { games: 16, players: '1,860', graph: 3 } : S.gd === 'past' ? {} : { games: 15 };
   nav.innerHTML = TABS.map(([k, l]) => `<button class="tab" role="tab" data-tab="${k}" aria-selected="${S.tab === k}">${l}${k === 'gameday' && live ? `<span class="dot pulse" style="color:var(--accent)" aria-hidden="true"></span><span class="count">${live} live</span>` : counts[k] ? `<span class="count">${counts[k]}</span>` : ''}</button>`).join('');
 }
 $('#tabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b) return; S.tab = b.dataset.tab; render(); });
 
 /* ------------------------------------------------------------------ views */
 function render() {
+  hideTip(); // the element under the pointer may be gone
   renderSide(); renderTop(); renderTabs();
   const v = $('#view');
   if (S.page !== 'week') v.innerHTML = otherView('The season pages');
   else if (S.tab !== 'gameday') v.innerHTML = otherView(`The ${TABS.find(t => t[0] === S.tab)[1]} tab`);
   else if (S.gd === 'before') v.innerHTML = beforeView();
   else if (S.gd === 'past') v.innerHTML = pastView();
+  else if (S.gd === 'final' && S.rvOpen) v.innerHTML = reviewView(true);
   else v.innerHTML = boardView();
 }
 function otherView(what) {
-  return `<div class="notice accent"><span class="ic">i</span><div><b>Mockup: ${esc(what)} ${S.page === 'week' ? 'is' : 'are'} unchanged by LD02.</b> It's drawn in the <a href="${CR_MOCKUP}" target="_blank" rel="noopener">control room mockup</a>; this page shows the new Game day tab only.<div style="margin-top:10px"><button class="btn sm" data-go="gameday">Back to Game day</button></div></div></div>`;
+  return `<div class="notice accent"><span class="ic">i</span><div><b>Mockup: ${esc(what)} ${S.page === 'week' ? 'is' : 'are'} unchanged by Game day (LD02, LD03).</b> It's drawn in the <a href="${CR_MOCKUP}" target="_blank" rel="noopener">control room mockup</a>; this page shows the new Game day tab only.<div style="margin-top:10px"><button class="btn sm" data-go="gameday">Back to Game day</button></div></div></div>`;
 }
 /* ---------- before the first kickoff ---------- */
 function beforeView() {
@@ -285,12 +317,8 @@ function beforeView() {
 
 /* ---------- a past week ---------- */
 function pastView() {
-  const b = M.past.games;
-  return `
-    <div class="card"><div class="empty"><div class="glyph">LD03</div><h3>Decision review: coming in LD03</h3>
-      <p>For a finished week this tab will show every 4th down, the bot's call next to the coach's, and the win chance each choice cost or gained. Live checks only run during the current week.</p></div></div>
-    <div class="card"><div class="card-h"><h2>Week ${b.week} finals</h2><span class="muted">${b.games.length} games</span></div>
-      <div class="card-b"><div class="games" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">${b.games.map(g => gameCard(g, false)).join('')}</div></div></div>`;
+  // LD03: a finished week's Game day tab is its decision review (review.js)
+  return reviewView(false);
 }
 
 /* ---------- the board: list + panel ---------- */
@@ -310,9 +338,7 @@ function boardView() {
     const mins = nx ? Math.round((new Date(nx.kickoff) - new Date(now)) / 60000) : null;
     main += `<div class="card"><div class="empty"><div class="glyph">—</div><h3>No game on right now</h3><p>${nx ? `Next: ${esc(nx.away)} at ${esc(nx.home)}, ${esc(tMin(nx.kickoff))} ET (in ${mins} min).` : ''} The list keeps updating every ${b.refresh_s} s while this tab is open.</p></div></div>`;
   }
-  if (S.gd === 'final' && !sel) {
-    main += `<div class="card"><div class="empty"><div class="glyph">F</div><h3>Every week-4 game is final</h3><p>The week's decision review (each 4th down, the bot's call next to the coach's, and what it cost or gained) comes in LD03.</p><button class="btn sm" aria-disabled="true" title="Coming in LD03">Open the decision review · LD03</button></div></div>`;
-  }
+  if (S.gd === 'final' && !sel) main += finalEmpty(b);
   if (sel) main += panel(sel, b);
   const counts = [live.length && `${live.length} on now`, pre.length && `${pre.length} later`, post.length && `${post.length} final`].filter(Boolean).join(' · ');
   return `
@@ -384,7 +410,7 @@ function panel(g, b) {
   let act;
   const can = b.models.available && g.state === 'in';
   if (g.state === 'pre') act = `<button class="btn primary big" aria-disabled="true">Check this play</button><span class="reason">Opens at kickoff (${esc(tMin(g.kickoff))} ET).</span>`;
-  else if (g.state === 'post') act = `<button class="btn primary big" aria-disabled="true">Check this play</button><span class="reason">The game is over. Its 4th downs go in the decision review (LD03).</span>`;
+  else if (g.state === 'post') act = `<button class="btn primary big" aria-disabled="true">Check this play</button><span class="reason">The game is over: its 4th downs are in the week's decision review.</span>`;
   else if (!can) act = `<button class="btn primary big" aria-disabled="true">Check this play</button><span class="reason">${esc(b.models.message)}</span>`;
   else if (st === 'loading') act = `<button class="btn primary big" aria-disabled="true" aria-busy="true"><span class="spin" aria-hidden="true"></span>Checking…</button><span class="reason">Asking ESPN for this game, then running the bot.</span>`;
   else act = `<button class="btn primary big" id="checkBtn" data-ev="${esc(g.event)}">${st === 'answer' ? 'Check again' : st === 'error' ? 'Try again' : 'Check this play'}</button><span class="reason">${st === 'answer' && res ? `Last check ${esc(tSec(res.call.feed.as_of))}. ` : ''}One ESPN call for this game, then the bot: about a second. Nothing is fetched until you press it.</span>`;
@@ -558,6 +584,8 @@ function contextCard(x, c) {
       <section>${right || '<p class="muted">No kick in range on this play.</p>'}</section>
     </div></div>`;
 }
+
+/* @review.js */
 
 /* ------------------------------------------------------------------ interactions */
 $('#view').addEventListener('click', e => {

@@ -201,6 +201,14 @@ Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/particip
 - **`games.kickoff_utc`** is tz-aware UTC (compare with an aware `now`); 2026 week 5's last kickoff is Monday 2026-10-13T00:15Z, so "the week being played" must run past the calendar's switch at that kickoff (the Game day tab: until 6 h after it).
 - **ESPN's saved summaries** (`live/summaries/`): one 2026 "Official Timeout" row has a `wallclock` a day late (2026-09-12 in a 09-11 game): order plays by `sequenceNumber`, and even out times that run ahead of the next play's.
 
+## Quirks found in LD03 (checked live 2026-10-10)
+
+- **4th-down play types** (2025 / 2026 w1-4): punt 2,042 / 487, field_goal 1,024 / 232, pass 596 / 101, run 335 / 64, no_play 289 / 83, qb_kneel 4 / 1. **Fakes are typed run or pass** with "(Punt formation)" / "(Field Goal formation)" at the start of `desc` (14 / 4 rows), but a fumbled snap in punt formation is typed `run` too: `aborted_play == 1` separates the botched kick (2025: MIA at NYJ; 2026: MIA at SF, the punter fumbling) from a fake. A holder's fumbled hold that becomes a pass isn't always flagged aborted (2026 CIN at HOU).
+- **`no_play` 4th downs:** `live.replay.pre_snap_penalty(desc)` separates false starts / delays (2025: 188) from plays wiped out after the snap (101). Of the post-snap ones, 57 weren't replayed (roughing the kicker, a defensive penalty on a go, "field goal is GOOD, NULLIFIED by Penalty" + a first down): the coach's call is in the text; 44 were replayed (the next snap is the same team's 4th down). A neutral-zone infraction can hand a first down with no play at all (pre-snap, not a decision).
+- **"(Field Goal formation)"** alone is a fake's text: a real kick's text says "field goal is GOOD / No Good / BLOCKED" (LD01's `choice_of` rule).
+- **`posteam_score` / `defteam_score`** (Float64) give the score before the snap on 4th downs; `quarter_seconds_remaining` exists, but the review derives the quarter clock from `half_seconds_remaining` (Q1 / Q3: minus 900).
+- **Interim head coaches** are rows of their own in `plays` / `games` after the change (2025: Mike McCoy at TEN, Mike Kafka at NYG); 2026's nflverse errors still need `config/head_coach_fixes.csv`.
+
 ## Recipes
 
 **Open the data:**

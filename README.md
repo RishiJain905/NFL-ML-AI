@@ -98,6 +98,7 @@ uv run nfl live call --event 401872981    # LD01: a game right now: its next sna
 uv run nfl live replay --event 401872980  # LD01: every 3rd / 4th down of a game, the bot next to the coach
 uv run nfl live latency --event 401872981 --minutes 200   # LD01: ESPN's lag on a live game
 uv run nfl live parity --season 2026 --weeks 1-5          # LD01: ESPN's states vs nflverse play-by-play
+uv run nfl live review --season 2026 --week 5 --wandb     # LD03: a finished week's decision review (Tuesday, after the weekly run)
 # guide: documentation/guides/live-decisions.md
 
 uv run pytest                      # tests (integration tests excluded by default)

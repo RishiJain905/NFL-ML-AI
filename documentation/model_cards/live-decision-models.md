@@ -133,6 +133,22 @@ Every real 4th down of each held-out season (3,596–4,222 a season; 1 failed th
 
 Coaches' go rate has nearly doubled since 2014, toward the bot's, and agreement has risen from 53% to 63%: the sanity check the plan asked for. The **cost** is the bot's own accounting (win probability of its call minus the coach's), so it's an upper bound on what coaches really gave away.
 
+## Live calibration (LD03): the bot on real plays
+
+The decision review (`nfl live review`, the Game day tab of a finished week; [guide §10](../guides/live-decisions.md#10-the-decision-review-ld03)) checks the promoted bundle on each season's real plays as the weeks come in: its win probability on every snap of finished games, its conversion chances on 3rd downs and attempted 4th downs, its make chances on field goals. **2026 is the first out-of-sample season** (the bundle was fit on 2010–2025); 2025 is shown only as the in-sample example.
+
+| Through | Snaps (games) | WP Brier: bot / `vegas_wp` | Calibration error (10 bins): bot / `vegas_wp` | 3rd downs: converted / bot | Attempted 4th downs: converted / bot | Field goals: made / bot |
+|---|---|---|---|---|---|---|
+| **2026 week 4** (out of sample) | 9,368 (64) | 0.1680 / 0.1659 | 0.035 / 0.026 | 41.6% / 42.3% (1,644) | 57.0% / 54.4% (172) | 85.7% / 83.3% (259) |
+| 2025, whole season (**in-sample**) | 40,610 (284) | 0.1586 / 0.1593 | 0.015 / 0.019 | 41.8% / 42.8% (7,376) | 56.4% / 55.3% (957) | 85.6% / 84.6% (1,140) |
+
+How to read it:
+- **Win probability:** four weeks is 64 games, and a game's snaps rise and fall together, so a 0.035 error after four weeks isn't yet a signal (`vegas_wp` is at 0.026 on the same snaps; one held-out season in the backtest ranged 0.014–0.032 on 20 bins). Watch the bins with the most snaps (0–10% and 90–100%) and whether the gap to `vegas_wp` keeps shrinking as weeks are added. A season-long error above the backtest's range, or Brier more than 0.005 behind `vegas_wp`, would be the sign to re-check.
+- **Conversion:** on 3rd downs the bot is within a point of what happened (2026 and 2025). On attempted 4th downs (real attempts only: no penalty first downs before the snap, no wiped kicks) it says less than what happened (by 1–3 points): **selection bias**, coaches go when they like their chances, exactly as the backtest showed (above). The flip side is the one that matters for the calls: on 4th downs coaches *don't* try, the bot's chances are probably a little high, which is part of why it says go so often.
+- **Field goals:** level within 1–2 points overall; small bands move a lot week to week (75 kicks of 50+ yards so far in 2026: 68% made vs 66% expected).
+
+The trend is logged every week to W&B (`decision-review` runs, below) and drawn in the Game day tab's Season view.
+
 ## Is this good? (honest notes)
 
 - **`vegas_wp` and `xpass` were fit on most of our test seasons** (nflfastR trained its models on 2000s–2019 data), so they're partly in-sample opponents. The pass model's 6 / 12 is exactly that: it loses all six seasons inside `xpass`'s 2006–2019 training data and wins all six after it. Win probability is within 0.0011 Brier of `vegas_wp` pooled, and level with it on 2024 and 2025, seasons `vegas_wp` never saw.
@@ -173,11 +189,15 @@ Coaches' go rate has nearly doubled since 2014, toward the bot's, and agreement 
 - **Artifact** `live-decision-models` (type `model`): the whole bundle folder; aliases `<version>` and, with `--promote`, `production`; description = this card.
 - **Run:** [`hxmgioka`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/hxmgioka) (version `2010-2025_20261010T054343Z`, promoted 2026-10-10 05:45 UTC).
 
+### `decision-review` runs (`decision-review-<season>-w<NN>`, LD03)
+
+One run per finished week (`nfl live review --wandb`), with the season through that week: the live record of this card's models. **Charts:** `season/wp_calibration` (the bot and `vegas_wp` against the diagonal, 10 bins: should hug it more closely week by week), `season/conversion` (by distance 1–10+: 3rd downs actual vs bot should overlap; the 4th-down attempts' actual line sits above the bot's, the selection bias), `season/go_rate_by_week` (coaches far below the bot). **Tables:** `review/decisions`, `review/costliest`, `season/leaderboard`, `season/wp_calibration_bins`, `season/conversion_rows`, `season/fg_table`, `season/trend`. **Scalars** (`week/*`, `season/*`; chart them across runs with `week` on the x-axis): `season/wp_brier` vs `season/wp_brier_vegas`, `season/wp_ece` vs `season/wp_ece_vegas`, `season/conv3_actual` vs `_pred`, `season/conv4_actual` vs `_pred`, `season/fg_made` vs `_pred`. Runs on a training season carry the tag `in-sample`. Every panel: [W&B guide §6.8](../guides/weights-and-biases.md#68-decision-review-group-live-decisions-job-type-decision-review-ld03).
+
 ## Known biases and limits
 
 - **Aggressive on 4th downs** (above); **average team** (the spread is the only strength input; a team's own kicker or short-yardage offense is LD02's context panel).
 - **Selection bias** in 4th-down conversion (3rd and 4th downs trained together with `down` as a feature, as nfl4th does).
-- **Leave-one-season-out, not walk-forward:** a held-out season's fit saw later seasons. Fine for situations; the live record (LD03) is the real test.
+- **Leave-one-season-out, not walk-forward:** a held-out season's fit saw later seasons. Fine for situations; the live record (LD03, above) is the real test, and 2026 is its first season.
 - **Overtime:** one win-probability model; a tied playoff OT period goes on into a new 15-minute period (D115), but the 2025 "both teams possess" rule isn't modelled explicitly (2,825 OT snaps in the backtest; calibration 0.044, better than `vegas_wp`'s 0.076).
 - **Not advised:** two-point tries, timeouts; onside kicks are left out of the kickoff model; a safety's free kick is a fixed start (60 yards to goal).
 - **The last two minutes:** win probability is 0.005 Brier behind `vegas_wp` there; the kneel-out and clock rules handle the end of a half.
@@ -193,4 +213,4 @@ Coaches' go rate has nearly doubled since 2014, toward the bot's, and agreement 
 
 ## Versioning
 
-- **`2010-2025_20261010T054343Z`** (2026-10-10, LD00): fit 2010–2025, 20 bootstraps; `production`. Retrain after each season (add the finished season to `live.train_seasons`, re-run the backtest, then `nfl live train --promote`).
+- **`2010-2025_20261010T054343Z`** (2026-10-10, LD00): fit 2010–2025, 20 bootstraps; `production`. Retrain after each season (add the finished season to `live.train_seasons`, re-run the backtest, then `nfl live train --promote`). A new promoted bundle changes every stored decision review's stamp: the control room rebuilds a week on its next open, and `nfl live review --season S --weeks 1-N` re-writes the files (the season just trained on becomes in-sample).

@@ -3,10 +3,12 @@
 Runs the control room's API in-process (`create_app` + `TestClient`) with Game day on a
 `ReplayFeed` (the saved ESPN summaries under `{NFL_DATA_ROOT}/live/summaries/`, nothing
 fetched from ESPN), pinned at each mockup moment, and saves every answer the Game day tab
-reads into `{NFL_DATA_ROOT}/cache/live-decisions-mockup/payloads.json` (or `--out`). Nothing
-else is written apart from the app's own team-context cache (`cache/control-room/live/`).
+reads into `{NFL_DATA_ROOT}/cache/live-decisions-mockup/payloads.json` (or `--out`), and the
+decision reviews of finished weeks (LD03: the `review` block, from curated plays, never ESPN).
+Nothing else is written apart from the app's own caches (`cache/control-room/live/`).
 
-    uv run python documentation/live-decisions/mockup/dump_payloads.py
+    PYTHONIOENCODING=utf-8 uv run python documentation/live-decisions/mockup/dump_payloads.py
+    ... dump_payloads.py --review-only   # redo the review block only, keep the moments
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -150,22 +153,72 @@ def before_week() -> dict:
         }
 
 
+# LD03: the decision reviews the mockup draws (name -> (season, week, the season's `through`))
+REVIEWS = [
+    ("2026_4", 2026, 4, 4),  # the newest reviewed week: 243 decisions
+    ("2026_1", 2026, 1, 1),  # week 1: the small-sample season
+    ("2026_5", 2026, 5, 5),  # no plays yet (the season clamps to week 4)
+    ("2025_18", 2025, 18, 18),  # a full regular-season week, in-sample
+    ("2025_22", 2025, 22, 22),  # the Super Bowl: one game, no go-for-it; the whole 2025 season
+]
+
+
+def review_block() -> dict:
+    """The decision reviews (LD03): `GET /api/live/{S}/{W}/review` and `.../season-review?through=W`
+    from the real app, read-only on the curated plays (the app keeps what it computes in its own
+    cache, `cache/control-room/live/`). Plus `final_no_plays`: what week 4 said in its `final`
+    phase, before Tuesday's run curated its plays (the reader's own wording for that case)."""
+    from nflengine.app.readers.live import no_plays_text
+
+    paths = ensure_data_root(create_dirs=False)
+    feed = ReplayFeed.from_folder(paths.live_data / "summaries", "401872966")
+    tc, _ = app_for(feed, paths.root)
+    out: dict[str, Any] = {}
+    with tc:
+        for name, season, week, through in REVIEWS:
+            for kind, path in (
+                ("week", f"/api/live/{season}/{week}/review"),
+                ("season", f"/api/live/{season}/season-review?through={through}"),
+            ):
+                t0 = time.monotonic()
+                out[f"{kind}_{name}"] = get(tc, path)
+                print(f"  {kind} {name}: {out[f'{kind}_{name}'].get('status')} "
+                      f"({time.monotonic() - t0:.1f} s)")  # fmt: skip
+    w4 = out["week_2026_4"]
+    out["final_no_plays"] = {
+        **{k: w4[k] for k in ("season", "week")},
+        "status": "no_plays", "message": no_plays_text(2026, 4, [1, 2, 3]), "model": None,
+        "computed_at": None, "source": None, "summary": None, "highlights": None, "games": [],
+        "plays": [],
+    }  # fmt: skip
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument(
+        "--review-only", action="store_true",
+        help="redo only the review block, keeping the file's moments",
+    )  # fmt: skip
     args = ap.parse_args(argv)
     paths = ensure_data_root(create_dirs=False)
     out_path = args.out or paths.cache / "live-decisions-mockup" / "payloads.json"
-    data: dict[str, Any] = {
-        "built_at": datetime.now(UTC).isoformat(),
-        "source": "2026 week 4 replayed from ESPN's saved play logs (nfl app --live-replay)",
-        "moments": {},
-    }
-    for name, event, at, lag, game, note in MOMENTS:
-        print(f"{name}: {note}")
-        data["moments"][name] = moment(name, event, at, lag, game, note)
-    data["moments"]["before"] = before_week()
-    data["moments"]["past"] = past_week(2026, 3)
+    if args.review_only:
+        data = json.loads(out_path.read_text(encoding="utf-8"))
+    else:
+        data = {
+            "built_at": datetime.now(UTC).isoformat(),
+            "source": "2026 week 4 replayed from ESPN's saved play logs (nfl app --live-replay)",
+            "moments": {},
+        }
+        for name, event, at, lag, game, note in MOMENTS:
+            print(f"{name}: {note}")
+            data["moments"][name] = moment(name, event, at, lag, game, note)
+        data["moments"]["before"] = before_week()
+        data["moments"]["past"] = past_week(2026, 3)
+    print("review: the decision reviews (LD03)")
+    data["review"] = review_block()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(data, indent=1), encoding="utf-8")
     print(f"wrote {out_path.name} ({out_path.stat().st_size // 1024} KB)")

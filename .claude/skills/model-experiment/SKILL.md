@@ -227,6 +227,12 @@ Write one card per model family at `documentation/model_cards/<family>.md` (also
 - **Unit tests worked out by hand find label bugs real data hides:** a stub-model test caught 276 goal-to-go penalty first downs mislabelled "stopped". After a label fix, re-run the reported backtest and keep both run ids in the card.
 - **Time a budget on an idle machine.** A parallel model fit doubled a 15 ms measurement; the train-time `run_checks` records the number the card quotes.
 
+## 9h. Lessons from LD03 (the live record of a shipped model)
+- **Say "in-sample" wherever it applies.** The decision review scores 2025 with a bundle fit on 2010-2025: its calibration there (Brier 0.1586 vs `vegas_wp` 0.1593) flatters the bot. Record the bundle's fit seasons (`meta.seasons`) with every review and tag the W&B run `in-sample`; the out-of-sample record starts with the first season after the fit.
+- **Selection bias can read the "wrong" way.** The plan expected the bot's conversion chances to look optimistic on attempted 4th downs; real attempts converted *more* than predicted (2025: 56.4% vs 55.3%; 2026 so far 57.0% vs 54.4%), because coaches pick their spots. Compare against a population with no choice in it (3rd downs: 41.8% vs 42.8%) before calling a model biased, and count only real attempts (no penalty first downs before the snap).
+- **W&B `line_series` makes its own table.** `wandb.plot.line_series` logged under `X` writes a table `X_table`; an explicit `wandb.Table` logged under `X_table` in the same `log` call is overwritten (seen in LD03's smoke run: both came back as the chart's 3-column data). Name explicit tables differently (`X_rows`, `X_bins`).
+- **Grade decisions against a reference you can name.** "Cost" is the bot's best minus the coach's choice, in the bot's own win probabilities: an upper bound when the bot is aggressive. Rank coaches by a rate in clearly defined spots (the bot says go, not a toss-up) rather than by total cost.
+
 ## 10. Honesty rules
 - Report results that lose to the baseline as well. A model that doesn't beat its baseline doesn't ship (`documentation/11`).
 - A metric that looks too good usually means leakage. Check the as-of logic and feature timing before celebrating.

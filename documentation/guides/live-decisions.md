@@ -305,11 +305,112 @@ Game day then serves that game's **week** from the saved ESPN play logs (`live/s
 
 - **ESPN's timing is the weak link:** the feed trails the snap by seconds to over a minute (§7.3); "last play N s ago" is exact only once the server has the play log (from the second check of a game, or the first in the first half).
 - **A replay can't show ESPN's own lag pattern:** it uses one fixed lag, and the try point arrives with the touchdown.
-- **The team context is descriptive**, not an input to the call (the models know the spread, not the roster: §13).
+- **The team context is descriptive**, not an input to the call (the models know the spread, not the roster: §14).
 - **New models need an app restart:** the app keeps the bundle it loaded until `nfl app` restarts.
-- **Next (LD03):** finished weeks get the decision review (every 4th down, the bot's call against the coach's, the win chance it cost or gained) and the bot's own accuracy.
+- **Finished weeks** get the decision review (§10).
 
-## 10. Commands
+## 10. The decision review (LD03)
+
+Once a week's games are final and Tuesday's weekly run has brought its plays into the curated data, the week's **Game day** tab turns into a **decision review**: every 4th down of the week, what the coach did, what the bot would have done, and how much win probability the coach's choice gained or cost. A **This week / Season** switch next to it shows the season so far: which coaches go for it when the numbers say go, and whether the bot's own numbers held up on real plays.
+
+It's built from **nflverse's play-by-play** (the curated `plays`), not from ESPN: the same states every time, so a review is reproducible. The bot is the promoted LD00 bundle, read only.
+
+### 10.1 Open it
+
+- **In the control room:** `uv run nfl app`, pick a past week in the sidebar, open **Game day**. The review's header has a **‹ Week N−1 · Week N+1 ›** stepper (the sidebar lists only the weeks the weekly run published: the stepper reaches 2026 weeks 1–3, and `/week/2025/<N>/game-day` opens last season), the **This week / Season** switch, the models' version and whether the season is out of sample. The first open of a week the CLI hasn't reviewed builds it (about a second per week; the first time a season is opened its plays are read from D:, which can take 10–15 s on a cold disk), then it's kept.
+- **The week being played,** once every game is final: the Game day tab says so and offers **Open the decision review**, which works once Tuesday's run has brought the week's plays in ("Ready after Tuesday's run" until then).
+- **In a terminal** (the Tuesday routine, after the weekly run; runbook → Tuesday):
+
+```powershell
+uv run nfl live review --season 2026 --week 5 --wandb   # the week just played, + its W&B run
+uv run nfl live review --season 2025 --weeks 1-22       # a range (no W&B without --wandb)
+```
+
+  It prints the week's line (decisions, coaches' go-for-its vs the bot's, agreement, toss-ups, wins given up), the boldest and costliest calls, and the season's leaderboard top and bottom five. It isn't a weekly-run step (D107: the weekly run stays as it is), and there's no control-room button for it (Rishi, 2026-10-10): the tab builds a missing week by itself; only the W&B run needs the command.
+
+### 10.2 Which 4th downs count
+
+A **decision** is a 4th-down snap the coach chose a play for (LD01's rules, the phase file's pitfall):
+
+| Case | Counts as | 2025 |
+|---|---|---|
+| A run or pass | **go** | 931 |
+| A field goal / a punt | **fg** / **punt** | 3,066 |
+| A **fake** punt or field goal (`(Punt formation)` typed run or pass) | **go** | 13 (in the 931) |
+| An **aborted** snap in punt or field-goal formation (a fumbled snap) | the kick: it was a botched kick, not a fake | 1 |
+| A play **wiped out by a penalty after the snap** that wasn't replayed (roughing the kicker, a defensive penalty on a go) | the call in the play's text | 57 |
+| A wiped-out play whose down **was replayed** (an offensive holding on a punt: punt again from 10 yards back) | not a decision: the replayed snap is | 44 |
+| A penalty **before** the snap (false start, delay of game, encroachment), a kneel, a spike | never | 188 + 4 |
+
+So 2025 has **4,054 decisions** (LD00's backtest, which used only the typed plays, had 3,997). 2026 weeks 1–4 have 897 (206, 226, 222, 243).
+
+### 10.3 Reading a row: the week's costliest call
+
+2026 week 4, Green Bay at Tampa Bay, 1st quarter, 10:27, 0–0. **4th & 2 at TB 44.** The bot's win probabilities for Green Bay after each choice:
+
+| Option | Win probability |
+|---|---|
+| **Go for it** (57% to convert) | **67.8%** |
+| Field goal (61 yards) | 64.3% |
+| Punt | 62.9% |
+
+Matt LaFleur punted (30 yards, out of bounds at the TB 14). The bot's best was go, by 3.5 points over the field goal, **Confident**. The row shows:
+- **edge** = the coach's option minus the best other option = 62.9 − 67.8 = **−4.9 points**: the call cost 4.9 points of win probability. When the coach picks the bot's best, the edge is positive (it's the gap to the next option: what the call gained);
+- **cost** = the bot's best minus the coach's option = 4.9 points (0 when they agree). Summed over a team's decisions, costs are **expected wins given up** against the bot (100 points = one win);
+- the **result** ("TB ball at own 14") is what happened, and it doesn't change the grade: a good call can fail and a bad one can work.
+
+Every row also carries the label (Confident / Lean / Toss-up, §5), the three option WPs (on hover or when opened), the chance to convert, and tags for fakes and wiped-out plays. nflverse's play text is shown as text.
+
+### 10.4 The highlights
+
+- **Costliest call:** the largest cost of the week (above: 4.9 points), and the **five costliest** below it. In week 4 all five were kicks where the bot said go: GB (4.9), NE 4th & 4 at its own 42 in the 4th (4.7), LV's 48-yard field goal on 4th & 2 at KC 30 (4.5), LA 4th & 2 at its own 35 (4.3), CLE 4th & 1 at its own 25 (3.5).
+- **Boldest call:** the longest shot a coach chose when kicking was still a real option: of the go-for-its that counted (not wiped out), in a game still in doubt (the bot's win chance before the snap between 10% and 90%) and where kicking was within 5 points of going (so a desperate 4th & 13 down 6 at 1:29 is forced, not bold), the one with the lowest chance to convert. Week 4: **Tampa Bay, 4th & 11 at GB 47, down 3 with 1:34 left** (27% to convert; the bot agreed: going 17.9% against punting 15.3%, Confident; stopped for no gain). Weeks 1–3: LAC 4th & 18 at its own 23 with 4:17 left (15%; the bot said punt), GB 4th & 10 at midfield with 0:02 left (34%; the bot said a field goal), CAR 4th & 16 at its own 16 (14%; the bot said punt).
+
+### 10.5 The season: who goes for it
+
+The **coach leaderboard** ranks head coaches (nflverse's, with `config/head_coach_fixes.csv`, so interim coaches get their own rows) by how often they went for it in **go spots**: 4th downs where the bot says go and isn't calling it a toss-up (Confident or Lean). Beside it: the go spots, how many he went in, his overall go rate, how often he went where the bot says kick (**kick spots**: the bot says field goal or punt, Confident or Lean), the expected wins he gave up (split into **timid**, kicking in go spots, and **bold**, going in kick spots; the rest is toss-ups and field goal against punt) and how often he agreed with the bot. The league's row sits at the bottom.
+
+**2025 (the whole season, in-sample, below):** coaches went for it in **47%** of 1,250 go spots and in **0.7%** of 1,001 kick spots; they gave up **19.5 expected wins** against the bot: 15.1 by kicking in go spots, 0.2 by going in kick spots, the rest on toss-ups and field goal against punt; the bot and the coach agreed on 62% of 4,054 decisions. Top: Matt LaFleur (GB, 71% of 31 go spots), Dave Canales (CAR, 69% of 45), Shane Steichen (IND, 66%), Nick Sirianni (PHI, 64%), Sean McVay (LA, 63%), Sean McDermott (BUF, 62%), Dan Campbell (DET, 57%). Bottom: Brian Callahan (TEN, 2 of 7 go spots before Mike McCoy took over as interim coach), DeMeco Ryans (HOU, 30% of 46), Jim Harbaugh (LAC, 31%), Sean Payton (DEN, 32%), Mike Tomlin (PIT, 33%). **2026 through week 4:** Ben Johnson (CHI, 8 of 12) on top; Sean Payton (0 of 11) and Liam Coen (0 of 5) at the bottom. Four weeks is a small sample: a coach has 5–12 go spots.
+
+**Against published rankings (LD03's sanity check, 2026-10-10):** the closest public table with every 2025 head coach is FTN's **Aggressiveness Index** (published 2026-01-29; it compares each coach's go-for-its in qualifying 4th downs with what coaches historically did in those spots, not with a model). Rank correlation (Spearman) with our ranking: **0.66** over all 34 coaches, **0.71** without the four split-season coaches (Daboll / Kafka at NYG, Callahan / McCoy at TEN), 0.74 for coaches with at least 25 go spots. Five of the ten names in each top 10 are the same (LaFleur, McDermott, Campbell, Sirianni, Steichen), six of ten in the bottom 10, and three of the bottom five (Ryans, Jim Harbaugh, Callahan). The one model-based number we could read: a report of rbsdm.com's "went for it when the model says go" puts **LaFleur first at 72.7%** (league 51.6%); ours has him first at 71.0% (league 47.4%) (secondary source, not verified on rbsdm itself). The biggest gaps are small samples (interim coaches McCoy 8th here vs 28th, Kafka 11th vs 1st) and the definitions: Sean Payton faced 50 go spots and went in 16 (31st here), while FTN, which rewards going more often than coaches used to, has him 17th. **Verdict:** the same coaches sit near the top and the bottom; the order in the middle (ranks 9–29 span 37–54%) is within the noise of ~35 go spots per coach.
+
+**How to read "wins given up":** as a ranking, not a bill. The bot is aggressive (§14): it says go on about 55% of 4th downs, coaches on 19–24%, so nearly every coach "gives up" wins by kicking; who gives up the most, and where, is the useful part.
+
+### 10.6 The season: is the bot right?
+
+Three checks on real plays, through the week the tab shows:
+
+- **Win probability:** the bot's WP on every snap of the season's finished games against who won, in 10 bins, next to nflfastR's `vegas_wp` on the same snaps. Points on the diagonal = calibrated. 2026 weeks 1–4 (the first out-of-sample season): Brier 0.1680 vs `vegas_wp` 0.1659, calibration error 0.035 vs 0.026, on 9,368 snaps of 64 games. That's noisy: the snaps of one game rise and fall together, so 64 games is a small sample; it needs about four weeks before it says much, and a season to be sure (the backtest's held-out seasons: 0.0048, model card).
+- **Conversion:** the bot's chance to convert against what happened, by distance (1 … 10+), on **3rd downs** and on **attempted 4th downs** (real attempts only: no first down handed over by a penalty before the snap, no kick wiped out by roughing, no fumbled kick-formation snap). 2025: 3rd downs converted 41.8% vs the bot's 42.8% (7,376 snaps); attempted 4th downs 56.4% vs 55.3% (957). 2026 weeks 1–4: 41.6% vs 42.3% (1,644) and 57.0% vs 54.4% (172). The attempted 4th downs look like the bot is too cautious, but it's **selection bias**: coaches go when they like the spot, so the spots they choose convert more often than an average one. The 3rd downs (no choice involved) are the fair test. The other side of the same coin: on the 4th downs coaches don't try, the bot's chances are probably too high, which is where its aggressiveness comes from (§14).
+- **Field goals:** made vs the bot's make chance by distance band (2025: 85.6% made vs 84.6% predicted on all tries).
+
+**2025 is in-sample:** the promoted models were trained on 2010–2025, so their calibration on 2025 flatters them (WP Brier 0.1586 vs `vegas_wp` 0.1593, error 0.015 vs 0.019); the tab and the W&B run say so. The honest out-of-sample checks are LD00's leave-one-season-out backtest and 2026 from here on.
+
+### 10.7 The W&B run
+
+`nfl live review --wandb` logs one **`decision-review`** run per week (group `live-decisions`, tags `season:S`, `week:NN`, `ld03`, `in-sample` for a training season): the week's decisions table, the five costliest, the season's leaderboard, the calibration chart, the conversion chart, the field-goal table, the go rate by week, and scalars `week/*` and `season/*`. The W&B guide §6.8 has every panel and what to look for. `--smoke` sends a check run to the group `live-decisions-smoke`.
+
+### 10.8 How it's wired
+
+| Piece | What |
+|---|---|
+| `src/nflengine/live/review.py` | the rules (`decisions_frame`, `outcome`), the scoring (`score_decisions`: edge, cost), `highlights`, `leaderboard`, `calibration`, `season_tables`, the files, `ReviewStore`, `run_review` and `log_wandb` |
+| `nfl live review` | writes `live/<S>/week<NN>/decision_review.parquet` (one row per decision) + `.json` (its stamp) and `live/<S>/season_review.parquet` (the leaderboard) + `.json` (every season table) |
+| `GET /api/live/{season}/{week}/review` | the week's review: `status` ok / `no_plays` (the week's plays aren't curated yet: they come with Tuesday's run) / `no_models` |
+| `GET /api/live/{season}/season-review?through=N` | the season through week N (clamped to the newest week with plays) |
+
+- **Stamps:** a stored review is used only while its stamp matches: the review's schema (2 since the Sol review), the model version, a hash of that week's (or the season's) curated play rows with what `games` adds to them (the neutral site, the kickoff), and a hash of the coach fixes; a week's JSON also carries a hash of its rows, so a parquet from another write never pairs with it. A Tuesday curate rewrites the season's plays file but leaves earlier weeks' rows alone, so their reviews stay valid; a correction to a past play (or a coach fix, or a schedule fix) rebuilds just what it touches. `nfl live review` stops with an error when it can't write a file.
+- **What the app writes:** a week the CLI hasn't stored is built and kept in memory and under `cache/control-room/live/review/` (written in the background: small writes on D: take seconds here), never under `live/`. It never asks ESPN.
+- **Shared engine:** a build scores 4th downs in chunks under the engine's lock, so a live Game day check never waits long behind it, and the season's calibration runs under the same lock (LightGBM's thread settings are process-wide). A season is built with one bundle throughout. **A newly promoted bundle reaches the app after `nfl app` restarts** (as for checks, §9.9); then every stored review is rebuilt on its next open.
+
+### 10.9 Limits
+
+- **The bot's view, not the truth:** a cost is measured against the bot, which is aggressive (§14); a toss-up "disagreement" costs under a point by definition.
+- **The coach is the head coach**, even when a coordinator calls the plays.
+- **Wiped-out plays** whose down was replayed aren't decisions; when it wasn't, the call comes from the play's text (a fake punt wiped out by a penalty reads as a go only if the text shows the run or pass).
+- **In-sample 2025** (§10.6); **small samples** early in a season.
+
+## 11. Commands
 
 ```bash
 uv run nfl live backtest                 # leave-one-season-out, 2014-2025 (W&B live-backtest), ~3 min
@@ -327,11 +428,14 @@ uv run nfl live latency --event 401872981 --minutes 200   # ESPN's lag on a live
 uv run nfl live parity --season 2026 --weeks 1-5 --decisions 401872657,401872923   # ESPN vs nflverse
 uv run nfl app                           # the control room: the current week's Game day tab (LD02)
 uv run nfl app --live-replay 401872966 --replay-at 2026-10-04T15:57:15   # Game day on a replayed week
+uv run nfl live review --season 2026 --week 5 --wandb   # a finished week's decision review + its W&B run (LD03)
+uv run nfl live review --season 2025 --weeks 1-22       # several weeks; files only without --wandb
+uv run nfl live review --season 2026 --week 1 --wandb --smoke   # a W&B logging check (group live-decisions-smoke)
 ```
 
 `nfl live call --state` prints the call as JSON: `wp` (go / fg / punt), `best`, `gap`, `label`, `boot_share`, `convert`, `fg_make`, `fg_distance`, `punt_start` (the receiving team's expected start, yards from its own goal), `wp_now` and `ms`. On a 3rd down: `convert`, `pass_prob`, `wp_now` and `table`. The state's fields: `season`, `score_diff`, `game_seconds`, `half_seconds`, `down`, `ydstogo`, `yardline_100` (required); `off_timeouts`, `def_timeouts` (3), `home` (+1 / 0 / −1), `receive_2h_ko`, `spread` (offense side, + = favored), `total`, `roof`, `ot`, `playoffs`, `wind`, `temp` (optional).
 
-## 11. Files
+## 12. Files
 
 | Where | What |
 |---|---|
@@ -343,23 +447,27 @@ uv run nfl app --live-replay 401872966 --replay-at 2026-10-04T15:57:15   # Game 
 | `{NFL_DATA_ROOT}/live/latency/<event>.jsonl` | `nfl live latency`'s log: a `start` line, one `game` line per play the first time the scoreboard showed it, one `summary` line per play with its `wallclock`, `error` lines, an `end` line with the statistics |
 | `{NFL_DATA_ROOT}/live/parity/<season>-wNN-wNN.json` (+ `.parquet`) | the parity report and its row-by-row comparison |
 | `{NFL_DATA_ROOT}/cache/control-room/live/context/<season>-wNN.json` | the Game day tab's "Is this team good at this?" for a week, with the stamp it was built from (LD02; rebuilt when the plays, schedule, coach fixes or models change) |
+| `{NFL_DATA_ROOT}/live/<season>/week<NN>/decision_review.parquet` (+ `.json`) | the week's decision review (LD03): one row per decision (the state, the coach's call, the bot's, the three WPs, edge, cost, label, result, nflverse's play text) and its stamp (schema, model version, data and coach-fix hashes); written by `nfl live review` |
+| `{NFL_DATA_ROOT}/live/<season>/season_review.parquet` (+ `.json`) | the season through the newest reviewed week: the coach leaderboard (parquet) and every season table (JSON: leaderboard, league row, weekly trend, calibration) |
+| `{NFL_DATA_ROOT}/cache/control-room/live/review/` | the control room's own copies of reviews it built (weeks or seasons `nfl live review` hasn't stored); safe to delete |
 | `{NFL_DATA_ROOT}/live/probe/` | LD01's probe: ESPN responses saved on 2026-10-10 and archived live scoreboards (the test fixtures were trimmed from them) |
 
 None of the `live/` files feed curated tables: live data is a view, not a source.
 
-## 12. Changing it safely
+## 13. Changing it safely
 
 - Model settings live in `config/settings.yaml` → `live:` (the only block this track adds); code defaults in `live/models.py` `DEFAULTS`.
 - Any model change: re-run `nfl live backtest`, compare with the ship rules (model card), then `nfl live train --promote`.
 - **Never touch the production models** (D107): `tests/test_production_untouched.py` fails if a protected file or settings block changes.
 - New rules eras (another kickoff change, say): add it to `schema.kickoff_era` and re-train; the kickoff model falls back to the latest era it has until then.
 
-## 13. Limits and what's next
+## 14. Limits and what's next
 
-- **The bot is aggressive:** it says go on 51% of 2014–2025 4th downs (coaches 17%): 96% of 4th & 1, 73% of 4th & 4–5, 52% of 4th & 6–7. Valuing the same futures with nflfastR's expected points is even more aggressive, so the win-probability model isn't the cause; the 4th-down conversion chances are (they sit between the 3rd-down rate and the rate of 4th downs teams chose to attempt, the classic selection bias; model card → Is this good?). LD03 tracks the bot's calls and its conversion chances against real attempts each week.
+- **The bot is aggressive:** it says go on 51% of 2014–2025 4th downs (coaches 17%): 96% of 4th & 1, 73% of 4th & 4–5, 52% of 4th & 6–7. Valuing the same futures with nflfastR's expected points is even more aggressive, so the win-probability model isn't the cause; the 4th-down conversion chances are (they sit between the 3rd-down rate and the rate of 4th downs teams chose to attempt, the classic selection bias; model card → Is this good?). LD03 tracks it each week: in 2025 the bot said go on 56% of 4th downs and coaches on 24%; the bot's conversion chances matched 3rd downs (42.8% vs 41.8%) and ran under attempted 4th downs (55.3% vs 56.4%: the spots coaches chose), §10.6.
 - **Average team:** the models know the spread, not the roster. A great kicker or a bad short-yardage offense is context (LD02), not an input.
 - **Two-point tries and timeouts** aren't advised; overtime uses the same win-probability model (the 2025 "both teams possess" rule isn't modelled explicitly; a tied playoff OT period does go on).
 - **Onside kicks** are left out of the kickoff model.
 - **The feed can break.** ESPN's API is unofficial: if a check fails every time, look at what `scoreboard/{event}` returns now and fix `live/state.py` (runbook → Game day). A check never changes anything, so a broken feed costs nothing but the answer.
 - **The first half needs the summary** (who received the opening kickoff), so a first-half check makes two ESPN calls, 2 s apart (the Game day tab does it once per game, §9.3).
-- **LD02 (done)** put the check in the control room's **Game day** tab (§9). Next: **LD03**, the decision review of finished weeks and the bot's own accuracy on real plays.
+- **LD02 (done)** put the check in the control room's **Game day** tab (§9); **LD03 (done)** added the decision review of finished weeks, the coach leaderboard and the bot's calibration on real plays (§10). That closes the Live decisions track.
+- **Ideas for later** (not planned): a live calibration alert when the bot's 2026 WP calibration error passes the backtest's band; re-training on 2026 once the season ends (it's in-sample after that); a two-point-try advisor; a team-strength input (the roster, not just the spread).
