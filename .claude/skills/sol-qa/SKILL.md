@@ -1,21 +1,45 @@
 ---
 name: sol-qa
-description: User-invoked only. How to call Sol (Codex, gpt-6.1-sol at xhigh effort) through /codex:rescue for a task Rishi gives in his prompt. Covers the flags, the background flow, fetching results, guardrails, and what to do when Sol is out of weekly or 5-hour usage.
+description: User-invoked only. How to call Sol (Codex, gpt-6.1-sol at xhigh effort, Fast speed) through /codex:rescue for a task Rishi gives in his prompt. Covers the flags, the Fast service tier (set in Codex's user config, how to check and verify it), the background flow, fetching results, guardrails, and what to do when Sol is out of weekly or 5-hour usage.
 disable-model-invocation: true
 ---
 
-# sol-qa: how to call Sol (Codex, `gpt-6.1-sol`, `xhigh`)
+# sol-qa: how to call Sol (Codex, `gpt-6.1-sol`, `xhigh`, Fast)
 
 **User-invoked only.** You are reading this because Rishi invoked it (`/sol-qa`) or `@`-mentioned this file in his prompt. Call Sol only in a session where he did that, and only for the task he gives in that prompt. Never call Sol on your own initiative, and don't treat this file as a standing instruction in later sessions.
 
+**When his prompt names `/sol-qa`, follow this file yourself.** The `Skill` tool refuses to load it (`disable-model-invocation: true`); that only blocks loading it through the tool. Read this file and make the call in §2 directly. Don't stop and ask Rishi to type `/sol-qa` himself (LD00, 2026-10-10: he corrected exactly that).
+
 "Sol" is Codex running `gpt-6.1-sol`, reached through the Codex plugin's `/codex:rescue` path. This file only explains **how to call it**. The task itself is whatever Rishi writes in his prompt (a review, a QA pass, a second opinion, a diagnosis), so keep this procedure generic.
 
-Verified 2026-10-03 with plugin `codex@openai-codex` 1.0.6 and Codex CLI 0.160.0. If a step stops working, re-run a read-only smoke call (step 2) before assuming the task is at fault.
+Verified 2026-10-03 with plugin `codex@openai-codex` 1.0.6 and Codex CLI 0.160.0; Fast speed verified 2026-10-10 (§1). If a step stops working, re-run a read-only smoke call (step 2) before assuming the task is at fault.
 
 ## 1. Fixed settings
 
-- **Model:** `gpt-6.1-sol`. **Effort:** `xhigh`.
-- Pass both flags on every call, even though they are Rishi's current Codex defaults, so a changed default can't silently change Sol. Don't change the model or effort unless Rishi says so.
+- **Model:** `gpt-6.1-sol`. **Effort:** `xhigh`. **Speed:** Fast.
+- Pass the model and effort flags on every call, even though they are Rishi's current Codex defaults, so a changed default can't silently change Sol. Don't change the model, effort or speed unless Rishi says so.
+
+### Speed: Fast (the `priority` service tier)
+
+- **The options for `gpt-6.1-sol`:** Standard (the default) and **Fast** (service tier id `priority`, "2x speed, increased usage" in Codex's model list). There is no "Ultrafast" tier for this model; the label exists in Codex's interface code, but no model offers it (checked in the model cache and the CLI, 2026-10-10).
+- **It's a Codex config setting, not a flag.** The plugin's `task` command takes only `--model`, `--effort`, `--write`, `--background` and `--fresh` / `--resume`, and sends Codex only the model and effort; the speed comes from Codex's config. Rishi set it **user-wide** on 2026-10-10: `service_tier = "priority"` in `~/.codex/config.toml` (it was `"default"` = Standard). Every Codex run on this machine is Fast.
+- **Pre-flight check** (read only that key; never print or copy the whole file, which may hold other tools' settings): `grep -nE '^\s*service_tier\s*=' ~/.codex/config.toml` must show `service_tier = "priority"`. If it shows anything else, tell Rishi; don't edit his Codex config without his OK.
+- **A wrong value fails silently.** A tier the model doesn't advertise is dropped from the request ("Configured service tier `…` is not advertised as supported for model `…` and will be omitted from requests") and the run goes at Standard speed.
+- **Verify a run went Fast:** the session files (`~/.codex/sessions/`) don't record the tier, but Codex's log does. After a run, look for its thread id in `~/.codex/logs_2.sqlite` (read-only):
+
+```bash
+f="$(cygpath -w ~/.codex/logs_2.sqlite)"; python - "$f" <<'PY'
+import re, sqlite3, sys
+con = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
+for tid, body in con.execute("select thread_id, feedback_log_body from logs where feedback_log_body like '%service_tier%' order by ts desc limit 200"):
+    m = re.search(r'service_tier":"(\w+)"', body or "")
+    if m: print(tid, m.group(1))
+PY
+```
+
+  The newest threads should show `priority` (before 2026-10-10 every run showed `default`). The thread id is the Codex session id that `node "$CC" status` / `result` print.
+- **Measured** (one smoke call, 2026-10-10): about 43 output tokens/s on Fast vs about 28 on Standard for a first step of the same context size (~22k input tokens), so roughly 1.5x on that sample; Codex advertises 2x. A config change took effect without restarting Codex (the shared app-server picked it up).
+- **Cost:** Fast uses more of the weekly and 5-hour Codex limits per call. When a limit runs out, §5 applies unchanged.
 
 ## 2. How to call
 
@@ -58,7 +82,7 @@ node "$CC" result <job-id>         # Sol's final output + `codex resume <session
 node "$CC" cancel <job-id>         # stop a running job
 ```
 
-Ignore the `DEP0190` deprecation warning that node prints. It is harmless. Poll sparingly, because an `xhigh` run can take many minutes. When a background job finishes, the subagent may send a second report, and either source is fine.
+Ignore the `DEP0190` deprecation warning that node prints. It is harmless. Poll sparingly, because an `xhigh` run can take many minutes (a full phase review took ~10 min at Standard speed on 2026-10-10; expect less on Fast). Rather than polling by hand, start one background wait loop that checks `status <job-id>` every minute and saves `result <job-id>` to the scratchpad when the job is done. When a background job finishes, the subagent may send a second report, and either source is fine.
 
 **Presenting results.** Give Rishi Sol's output unaltered (quote it or point to it), labeled as Sol's. Put your own commentary separately.
 

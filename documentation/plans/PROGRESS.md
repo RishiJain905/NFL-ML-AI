@@ -124,6 +124,12 @@ One line per live week (`uv run nfl season weeks --season 2026`), plus any drift
 - week 05: published ✓ on time (47.5 h before kickoff), checks passed first time, 0 drift alerts (the first run from the control room; drift signals mostly "insufficient data" this early)
 
 ## Session log (newest first)
+### 2026-10-10 (after LD00): Sol runs in Fast mode
+- **Ask (Rishi):** run Sol (`gpt-6.1-sol`, xhigh) in fast mode for faster iteration; find the options first, then make it user-wide.
+- **Found:** for `gpt-6.1-sol` the only speeds are Standard and **Fast** (service tier `priority`, "2x speed, increased usage" in Codex's model list); no Ultrafast tier. The plugin's `task` command has no speed flag (it sends only model + effort), so speed is a Codex config setting; `~/.codex/config.toml` had `service_tier = "default"` (Standard). A tier the model doesn't advertise is silently dropped.
+- **Changed (Rishi's OK, user-wide, outside the repo):** `~/.codex/config.toml` → `service_tier = "priority"`. One read-only smoke call through the skill's path: Codex's log shows the thread with `service_tier":"priority"` (every earlier run `default`); ~43 vs ~28 output tokens/s on a first step of the same context size (~1.5x on one sample).
+- **Docs:** the `sol-qa` skill §1 (the Fast setting, a pre-flight check, how to verify a run from `~/.codex/logs_2.sqlite`, the usage cost) and a note that agents follow the skill file directly when Rishi's prompt names `/sol-qa`.
+
 ### 2026-10-10: LD00 (Live decisions: decision models) built, backtested, shipped and closed
 - **Kickoff (Rishi):** start LD00 from its phase file; the opus-high / sonnet-xhigh subagents allowed; `/sol-qa` (Sol, `gpt-6.1-sol`) code review of the uncommitted changes before the commit; done = every LD00 task + docs + skill updates. **Waivers (asked once at the start):** "Agent runs all; rules decide": the 🧑 backtest by the agent (`--launched-by agent`), the ✋ ship decision by the pre-registered rules with any miss back to Rishi; the ✋ close waived by "marking the phase complete". The PC rebooted mid-session; every file survived and the work resumed.
 - **Session start:** `nfl doctor` OK except Neo4j (container down; not needed). The suite had **one failure, a time-bomb test**: `tests/ops/test_pipeline.py::test_auto_works_out_the_week_and_writes_the_records` stamped the run's finish with the real clock, so `on_time` turned false once the real week-5 deadline passed (2026-10-09). Fixed in the test (pins `ops.records.utc_now`); no production code changed (D113 (9)).
