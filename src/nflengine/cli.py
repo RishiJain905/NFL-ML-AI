@@ -1456,6 +1456,109 @@ def graph_coaching_seed(
     console.print(f"[green]coaching seed: {seed.height:,} rows -> {path} ({stats})[/]")
 
 
+# --- live decisions (LD00+, documentation/live-decisions/): the 3rd / 4th-down bot ------------
+live_app = typer.Typer(
+    help="Live decisions: the 3rd- and 4th-down bot's models (LD00), the live feed (LD01+).",
+    no_args_is_help=True,
+)
+app.add_typer(live_app, name="live")
+
+
+@live_app.command("train")
+def live_train(
+    seasons: str | None = typer.Option(None, help="Fit seasons (default: live.train_seasons)."),
+    promote: bool = typer.Option(
+        False, "--promote", help="Move live-decision-models' own `production` alias here."
+    ),
+    n_boot: int | None = typer.Option(None, help="Bootstrap refits (default: settings)."),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Fit the six live-decision models, save them on D:, log `live-decision-models`."""
+    from nflengine.live.train import run_train
+
+    out = run_train(
+        seasons=_parse_seasons(seasons),
+        promote=promote,
+        n_boot=n_boot,
+        use_wandb=not no_wandb,
+        launched_by=launched_by,
+        log=console.print,
+    )
+    ok = out["checks"]["calls_ok"] and out["checks"]["timing_ok"]
+    console.print(
+        f"[{'green' if ok else 'yellow'}]{out['version']}: checks {'ok' if ok else 'FAILED'}[/]"
+    )
+    if out["url"]:
+        console.print(f"W&B: {out['url']}")
+
+
+@live_app.command("backtest")
+def live_backtest(
+    seasons: str | None = typer.Option(
+        None, help="Held-out seasons (default: live.backtest_seasons)."
+    ),
+    ratings: bool = typer.Option(
+        False, "--ratings", help="Research variant: the gain model with team ratings."
+    ),
+    smoke: bool = typer.Option(False, "--smoke", help="Two seasons, tagged smoke."),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
+    save: bool = typer.Option(True, help="Save predictions + summary on D:."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Leave-one-season-out backtest of every live-decision model (W&B `live-backtest`)."""
+    from nflengine.live.backtest import run_backtest
+    from nflengine.settings import get_config
+
+    held = _parse_seasons(
+        seasons or str((get_config().live or {}).get("backtest_seasons", "2014-2025"))
+    )
+    out = run_backtest(
+        seasons=held,
+        gain_ratings=ratings,
+        use_wandb=not no_wandb,
+        launched_by=launched_by,
+        smoke=smoke,
+        save=save,
+        log=console.print,
+    )
+    ship = out.get("ship", {})
+    console.print(f"ship rules: {ship}")
+
+
+@live_app.command("call")
+def live_call(
+    state: str = typer.Option(..., help="A game state as JSON (schema.GameState fields)."),
+    version: str | None = typer.Option(None, help="A model folder name (default: production)."),
+    no_bootstrap: bool = typer.Option(False, "--no-bootstrap", help="Skip the confidence label."),
+) -> None:
+    """Score one state: a 4th-down call, or a 3rd-down check with its if-stopped table."""
+    import json as _json
+
+    from nflengine.live import models as LM
+    from nflengine.live import train as LT
+    from nflengine.live.decide import Engine, decide_settings
+    from nflengine.live.schema import GameState
+
+    try:
+        s = GameState.from_dict(_json.loads(state))
+    except (ValueError, TypeError) as e:
+        raise typer.BadParameter(str(e)) from e
+    if s.down not in (3, 4):
+        raise typer.BadParameter("`nfl live call` scores 3rd and 4th downs")
+    try:
+        models = LM.load(LT.root() / version) if version else LT.load_production()
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(1) from e
+    eng = Engine(models, decide_settings())
+    try:
+        out = (eng.fourth_down if s.down == 4 else eng.third_down)(s, bootstrap=not no_bootstrap)
+    finally:
+        eng.close()
+    console.print_json(_json.dumps(out.as_dict(), default=float))
+
+
 PLACEHOLDERS: dict[str, tuple[str, str]] = {}
 
 

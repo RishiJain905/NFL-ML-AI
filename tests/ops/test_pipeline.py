@@ -68,7 +68,12 @@ def run(sched, **kw):
     return W.run_pipeline(schedules=sched, **kw)
 
 
-def test_auto_works_out_the_week_and_writes_the_records(sched, paths) -> None:
+def test_auto_works_out_the_week_and_writes_the_records(sched, paths, monkeypatch) -> None:
+    # the run record stamps its finish with the real clock (`ops.records.utc_now`): pin it to
+    # the same Tuesday, or `on_time` turns false once the real week-5 deadline has passed
+    import nflengine.ops.records as R
+
+    monkeypatch.setattr(R, "utc_now", lambda: TUESDAY_W5)
     calls: list[str] = []
     out = run(sched, auto=True, now=TUESDAY_W5, funcs=fake(calls), launched_by="agent")
     assert (out.status, out.exit_code, out.season, out.week) == ("ok", 0, 2026, 5)

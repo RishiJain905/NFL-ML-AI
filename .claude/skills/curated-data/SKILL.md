@@ -171,6 +171,18 @@ Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/particip
 - **Participation for the current season** is "not published yet" until nflverse fills it after the season; with `seasons.current` still on that season, `nfl ingest` picks it up (research only).
 - **2026 schedule:** week 18 is on 2027-01-10, so Wild Card weekend is 2027-01-16/18 and the Wild Card Tuesday run is 2027-01-12.
 
+## Quirks found in LD00 (checked live 2026-10-10)
+- **Kickoff eras (where a team starts after receiving a kickoff after a score):** touchback at the 20 to 2015, the 25 in 2016-23, the 30 in 2024 (the new kickoff), the 35 from 2025; the receiver's mean start (yards from its own goal) 23.0 / 25.4 / 29.8 / 30.6 (2026 weeks 1-4: 30.5). On a kickoff `posteam` is the receiver; find the next possession with the next snap (a play with a `down`). Onside kicks: `desc` contains "onside" (0.8-1.6% of kickoffs after a score).
+- **Extra points:** 99.3% made to 2014, 93-96% from 2015 (the longer kick), 95.9% in 2023-25; two-point tries ~48%, 9-10% of tries since 2018.
+- **Overtime in plays:** `qtr == 5`, and `game_seconds_remaining` = `half_seconds_remaining` = the OT clock (max 900 to 2016, 600 from 2017). 2025: no OT game ended on the first possession (both teams possess); 2024: five did.
+- **Field goals:** `kick_distance` = `yardline_100` + 18 on 90% of kicks (+19 8%, +17 2%); after a miss the other team's first snap is at 100 - (`yardline_100` + 8) or its 20. 16,499 regular-season tries 2010-2026 (330 blocked).
+- **The second-half kickoff** goes to the team that didn't receive the opening kickoff (2,227 / 2,227 games 2018-2025); `home_opening_kickoff == 1` means the home team *received* the opening kickoff (99.5%).
+- **Snaps always carry both teams' timeouts** (`posteam_timeouts_remaining` null only on non-snap rows); `penalty_yards` is never null on a defensive-penalty first down (and ≥ the distance on 71% of them).
+- **3rd / 4th-down conversion:** "gain ≥ distance or an offensive TD" agrees with `first_down` on 99.5% of 2018-2025 runs and passes. Attempted 4th downs convert more than 3rd downs at the same distance (4th & 5: 53% vs 3rd & 5: 46%): teams choose when to go.
+- **Neutral sites:** `plays.location` is nflverse's raw label; use `games.neutral_site` (46 neutral games in 2018-2025).
+- **nflfastR's own models:** `xpass` was fit on 2006-2019 and the EP / WP models on seasons through 2019, so `vegas_wp`, `wp`, `xpass` are in-sample baselines before 2020 (an LD00 pass model lost every season 2014-2019 to `xpass` and won every season 2020-2025).
+- **`ep`** isn't in the live package's play columns: read it straight from `plays/*.parquet` when needed.
+
 ## Recipes
 
 **Open the data:**

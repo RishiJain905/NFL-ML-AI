@@ -130,3 +130,15 @@ Same 🤖 / 🧑 / ✋ tags and protocol as every phase ([plans/README.md](../pl
 ## 8. As built
 
 Each phase adds what it built and any differences from this spec here, with decision numbers.
+
+### LD00: decision models (2026-10-10; D113, D114, D115)
+
+- **Built:** `src/nflengine/live/` = `schema.py` (the `GameState` contract, eras, rules by season), `data.py` (training frames), `models.py` (the six models), `decide.py` (the engine), `train.py`, `backtest.py`; `nfl live train | backtest | call`; `tests/live/` (294 unit tests + the bundle's 7 integration tests); `tests/test_production_untouched.py` (the D107 guard for all three tracks). Guide [`guides/live-decisions.md`](../guides/live-decisions.md), model card [`model_cards/live-decision-models.md`](../model_cards/live-decision-models.md), skill `live-decisions`.
+- **Shipped:** `live-decision-models:production` = `2010-2025_20261010T054343Z` (W&B `hxmgioka`). Backtest `p3y90nh0` (the ship decision; re-run as `m70hg3pa` after the Sol fixes, D115, with identical model metrics): win probability within 0.0011 Brier of `vegas_wp` (calibration 0.0048), yards gained 12 / 12 seasons, field goal 10 / 12, pass 6 / 12 (it beats `xpass` in every season `xpass` never trained on; shipped by Rishi, D114).
+- **Findings from the LD00 probes (checked live on 2026-10-10):**
+  - 31,985 4th downs in 2018–2025 (5,750 attempts); lines, `wp`, `vegas_wp`, `xpass` complete on runs and passes.
+  - **Rules eras:** touchback after a kickoff at the 20 (to 2015), 25 (2016–23), 30 (2024), 35 (2025+); the receiver's mean start after a score 23.0 → 25.4 → 29.8 → 30.6 yards from its own goal (2026 weeks 1–4: 30.5); extra point 99.3% → 93–96% from 2015; OT 15 → 10 minutes in 2017; in 2025 no OT game ended on the first possession (both teams possess).
+  - **Field goals:** distance = yards to goal + 18 (90%); a miss → the spot of the kick 8 yards back; indoors +3.6 points at 40–55 yards; a kicker's own record adds ~0.1% (not used).
+  - **State semantics:** the second-half kickoff goes to the team that didn't receive the opening one (2,227 / 2,227 games); timeouts are never missing on a snap; `games.neutral_site` (not the raw `location`) marks neutral sites.
+- **Differences from this spec:** the bootstrap uses 20 refits and only for calls closer than 5 points (the 20 ms budget; D113); the win-probability model is boosted from a logistic base (D113, model card → Tuning); goal-to-go defensive-penalty first downs are left out of the yards-gained model; the bot's live use reads `models/live-decisions/production.json` (the app reads files, not the alias).
+- **For LD01:** build a `GameState` (offense's side: `yardline_100` from `yardLine` + possession, both timeouts, the pre-game spread and total from the offense's side, `season`, `home` +1 / 0 / −1, `receive_2h_ko` from the opening kickoff); `GameState` rejects bad input with a readable message; `Engine(load_production()).fourth_down(state)` / `.third_down(state)`.

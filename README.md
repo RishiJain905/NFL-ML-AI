@@ -89,6 +89,11 @@ uv run nfl graph query q2_injury_ripple --season 2026 --week N   # one library q
 uv run nfl graph coaching-seed --refresh   # rebuild config/coaching_seed.csv from Wikipedia (each preseason; P08, D86)
 # Neo4j Browser: http://localhost:7474 (queries to try: .claude/skills/neo4j-graph/SKILL.md)
 
+uv run nfl live backtest           # LD00: leave-one-season-out backtest of the 3rd / 4th-down bot's models (W&B live-backtest)
+uv run nfl live train --promote    # LD00: fit 2010-2025, run the decision checks, log + promote live-decision-models
+uv run nfl live call --state '{"season": 2025, "score_diff": 0, "game_seconds": 2400, "half_seconds": 600, "down": 4, "ydstogo": 1, "yardline_100": 40}'   # one call
+# guide: documentation/guides/live-decisions.md
+
 uv run pytest                      # tests (integration tests excluded by default)
 uv run pytest -m integration       # Neo4j golden / load / performance tests (~10 min; rebuilds the graph)
 uv run ruff check .                # lint

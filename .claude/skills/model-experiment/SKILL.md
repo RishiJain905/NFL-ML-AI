@@ -77,6 +77,11 @@ Applies to P02 (ratings/Elo/trend), P03 and P08 (game model), P06 and P08 (playe
 - **Team totals** (`models/team_model.py`, `models/team_runs.py`, `features/team_stats.py`): `Target(..., group="TEAM")` through `fit_player_model`, `TeamWeekModel`, `TeamLogger` (adds deviance curves), `run_backtest` / `run_tune` / `run_train(run_dir=, model_dir=, backtest_root=)` / `score_weeks`, `live_team_targets()` (settings `team_model.live_targets`), `ship_rule`.
 - **Consistency** (`models/consistency.py`): `apply_consistency(players, teams, receptions=, rec_yds_anchor=, strength=)` → (frame, `inconsistency/*` summary); `mean_estimate()` (0.3·P10 + 0.4·P50 + 0.3·P90: amounts have no mean); `run_eval` (`nfl consistency`).
 
+**Building blocks that exist (LD00, the live-decision models; `live-decisions` skill):**
+- `nflengine.live` is self-contained (D107: it never imports `nflengine.models` / `features`). `live/backtest.py` has a **leave-one-season-out** harness (`run_backtest`, `check_no_leak`, `ship_verdict`, small metric helpers `brier`, `log_loss`, `ece`, `reliability`, `auc`), the right shape for situation models (football situations, not week-ahead forecasts); walk-forward stays the rule for anything forecasting a week.
+- `live/models.fit_all(frames, seasons, ...)` filters every frame to `seasons` itself, so a caller can't leak a held-out season; `FitReport.rows` lets the harness prove it.
+- `live/train.run_checks` = hand-made decisions + a timing budget + the bootstrap gate, re-run at every train; `--promote` refuses if any fails.
+
 ## 1. Define before you code
 Write these down (in the phase file or model card) before any training code:
 - **Target:** exact column and grain (for example `receiving_yards` per player-game, regular season, only players who played).
@@ -214,6 +219,13 @@ Write one card per model family at `documentation/model_cards/<family>.md` (also
 - **Playoff projections use regular-season form:** the player models are trained on regular-season rows only; a playoff week's rows come from `with_playoff_week` and are graded with the playoff box scores. If a few seasons of live grading show playoff projections clearly worse than regular-season ones, train on playoff rows too (D91's revisit trigger): a model change, so walk-forward first.
 - **The pre-season retune** (runbook → Pre-season checklist): ratings (`nfl ratings tune` → `eval`), game (`nfl backtest game` both variants, `game-weights`), players (`nfl tune player` → `nfl backtest player` per target), team (`nfl tune team` → `nfl backtest team`), each with the just-finished season in the reported window, a rule written down before the reported runs, the 🧑 handoff notes of §6, and a decisions-log entry for every setting that changes.
 - **Rehearse before trusting a model change on a live Tuesday:** `nfl weekly rehearse` runs the real weekly fit on a past week in a scratch copy (W&B off); a pinned rehearsal of a published week must reproduce its files exactly when nothing should have changed.
+
+## 9g. Lessons from LD00 (the live-decision models)
+- **When every row of a group shares one label, the sample is the groups.** A win-probability model has ~150 snaps per game and one outcome: scaling LightGBM rounds up for "5x more rows" overfit game noise (calibration error 0.036 on a 2025 smoke). Pick capacity on held-out *games*, keep trees small, and **boost from a simple model** (`init_score` from a logistic on smooth terms: Brier 0.1525 vs 0.1550 for the best trees-only setting on the tuning window). Same lesson as P08's game v1.
+- **A baseline fit on your test seasons isn't an opponent.** nflfastR's `xpass` (2006-2019) beat our pass model on every season it was trained on and lost on every later one; split any "beats the published model" rule by the baseline's own training window, and write that into the rule before the run next time.
+- **Check a decision model's behaviour, not just its parts.** Every part passed its rule, and the bot still said go twice as often as coaches. Cross-check the engine with an independent valuation (nflfastR `ep` in place of our WP): that isolated the conversion chances (selection bias on attempted 4th downs) as the driver, not the WP model.
+- **Unit tests worked out by hand find label bugs real data hides:** a stub-model test caught 276 goal-to-go penalty first downs mislabelled "stopped". After a label fix, re-run the reported backtest and keep both run ids in the card.
+- **Time a budget on an idle machine.** A parallel model fit doubled a 15 ms measurement; the train-time `run_checks` records the number the card quotes.
 
 ## 10. Honesty rules
 - Report results that lose to the baseline as well. A model that doesn't beat its baseline doesn't ship (`documentation/11`).
