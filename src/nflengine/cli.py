@@ -1477,7 +1477,8 @@ def graph_coaching_seed(
 
 # --- live decisions (LD00+, documentation/live-decisions/): the 3rd / 4th-down bot ------------
 live_app = typer.Typer(
-    help="Live decisions: the 3rd- and 4th-down bot's models (LD00), the live feed (LD01+).",
+    help="Live decisions: the 3rd- and 4th-down bot's models (LD00), the live feed (LD01+), "
+    "the decision review (LD03).",
     no_args_is_help=True,
 )
 app.add_typer(live_app, name="live")
@@ -1837,6 +1838,71 @@ def live_parity(
     if decisions:
         out = decision_parity(_csv(decisions) or [], log=console.print)
         console.print({k: v for k, v in out.items() if not isinstance(v, list | dict)})
+
+
+@live_app.command("review")
+def live_review(
+    season: int = typer.Option(..., help="Season."),
+    week: int | None = typer.Option(None, help="One finished week."),
+    weeks: str | None = typer.Option(None, help="Several weeks, e.g. 1-4 (instead of --week)."),
+    use_wandb: bool = typer.Option(
+        False, "--wandb", help="Log one `decision-review` W&B run per week."
+    ),
+    smoke: bool = typer.Option(
+        False, "--smoke", help="W&B: a logging check (group live-decisions-smoke, tag smoke)."
+    ),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Review finished weeks' 4th downs: the bot's call against the coach's (LD03).
+
+    Writes live/<S>/week<NN>/decision_review.* and live/<S>/season_review.* on D:. Not a
+    weekly-run step: run it after Tuesday's weekly run for the week just played."""
+    from rich.markup import escape
+    from rich.table import Table
+
+    from nflengine.live.review import run_review
+
+    chosen = _parse_seasons(weeks) or ([week] if week is not None else None)
+    if not chosen:
+        console.print("[red]Give --week N or --weeks A-B.[/]")
+        raise typer.Exit(2)
+    try:
+        out = run_review(
+            season,
+            chosen,
+            use_wandb=use_wandb,
+            launched_by=launched_by,
+            log=console.print,
+            smoke=smoke,
+        )
+    except FileNotFoundError as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(1) from e
+    if not out:
+        console.print("[yellow]Nothing reviewed: no curated plays for those weeks yet.[/]")
+        raise typer.Exit(3)
+    last = out[-1]
+    hl = last["payload"]["highlights"]
+    for name in ("boldest", "costliest"):
+        p = hl.get(name)
+        if p:
+            console.print(
+                f"{name}: {escape(p['posteam'])} ({escape(p['coach'] or '?')}), Q{p['qtr']} "
+                f"{p['clock']}, {escape(p['situation'])}: coach {p['choice']}, bot {p['best']} "
+                f"({p['label']}), cost {100 * (p['cost'] or 0):.1f} pts, {escape(p['result'])}"
+            )
+    board = last["tables"]["leaderboard"]
+    t = Table(title=f"{season} through week {last['week']}: go rate where the bot says go")
+    for col in ("#", "coach", "team", "go spots", "went", "rate", "wins given up"):
+        t.add_column(col)
+    for r in board[:5] + board[-5:] if len(board) > 10 else board:
+        t.add_row(
+            str(r["rank"]), escape(r["coach"]), escape("/".join(r["teams"] or [])),
+            str(r["go_spots"]), str(r["went_in_go_spots"]),
+            "-" if r["go_rate_spots"] is None else f"{r['go_rate_spots']:.0%}",
+            f"{r['wp_lost']:.2f}",
+        )  # fmt: skip
+    console.print(t)
 
 
 PLACEHOLDERS: dict[str, tuple[str, str]] = {}

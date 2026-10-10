@@ -9,7 +9,11 @@ Three answers, all GETs (a check changes nothing; documentation/live-decisions/R
   browser tab: one shared client), the parsed next snap, then the 4th-down call (go / field
   goal / punt) or the 3rd-down check with its if-stopped table, always with the "as of";
 - **the team context** (`context`): "is this team good at this?" from curated plays as of the
-  start of the week (`live/context.py`, cached per week under `cache/control-room/live/`).
+  start of the week (`live/context.py`, cached per week under `cache/control-room/live/`);
+- **the decision review** (`review`, `season_review`; LD03): a finished week's 4th downs, the
+  bot's call against the coach's, and the season's coach leaderboard and calibration, from
+  curated plays and the models (`live/review.py`): `nfl live review`'s files under `live/<S>/`
+  when their stamp matches, else built once and kept under `cache/control-room/live/review/`.
 
 Rules (README §5, the control room's §5):
 - ESPN is reached only through `live.espn.EspnClient` (`site.api.espn.com` only, 2 s per game,
@@ -19,7 +23,7 @@ Rules (README §5, the control room's §5):
   30 s at most (it gives the snap times behind "last play 12 s ago" and the opening kickoff);
 - ESPN text is data: it goes through `clean()` (control characters out, scrubbed, capped) and
   the browser renders it as text;
-- the only files written are the team-context cache under `cache/control-room/live/`.
+- the only files written are the team-context and review caches under `cache/control-room/live/`.
 
 "Live week" = the first week of the season whose last kickoff + 6 h is still ahead (the
 calendar's week moves to N+1 at week N's last kickoff, which would end Monday night's game
@@ -168,6 +172,11 @@ class _LockedEngine:
                 out.extend(self._e.fourth_downs(states[i : i + CHUNK], bootstrap=bootstrap))
         return out
 
+    def hold(self) -> threading.Lock:
+        """The engine's lock, for work that calls the models directly (LD03's calibration):
+        LightGBM's thread settings are process-wide, so it must never overlap a check."""
+        return self._lock
+
     def __getattr__(self, name: str) -> Any:  # anything else: the engine itself, under the lock
         return getattr(self._e, name)
 
@@ -217,6 +226,7 @@ class LiveService:
         models_version: Callable[[DataPaths], str | None] = _default_models_version,
         contexts_loader: Callable[[int, DataPaths], Contexts] = load_contexts,
         context_cache: Any = None,
+        review_store: Any = None,
         refresh_s: float = REFRESH_S,
         summary_ttl_s: float = SUMMARY_TTL_S,
         behind_s: float = BEHIND_S,
@@ -252,6 +262,7 @@ class LiveService:
         self._seen: dict[str, dict[str, datetime]] = {}
         self._checks: dict[str, tuple[str | None, tuple, datetime]] = {}
         self._preds: dict[tuple[int, int], tuple[Any, dict[str, float]]] = {}
+        self._review_store = review_store  # LD03 (lazy: `live.review.ReviewStore`)
 
     # -- shared pieces ---------------------------------------------------------------------------
     def now(self) -> datetime:
@@ -1049,3 +1060,101 @@ class LiveService:
         if out is None:
             raise LiveRefused(404, "not_found", "No context for that team.")
         return clean_all(out, paths)
+
+    # -- LD03: the decision review ---------------------------------------------------------------
+    def _reviews(self, paths: DataPaths) -> Any:
+        with self._lock:
+            if self._review_store is None:
+                from nflengine.live.review import ReviewStore
+
+                self._review_store = ReviewStore(
+                    cache_folder=paths.cache / "control-room" / "live" / "review",
+                    background_writes=self.background,
+                )
+            return self._review_store
+
+    def _review_engine(self, paths: DataPaths) -> tuple[Any, str]:
+        """The shared engine for a review build: 4th downs in chunks under the engine's lock,
+        so a Game day check never waits behind a whole week (LiveRefused when it can't load)."""
+        engine, version = self.engine(paths)
+        return _LockedEngine(engine, self._engine_lock), version
+
+    def _review_base(self, season: int) -> dict[str, Any]:
+        return {"season": season, "status": "ok", "message": None, "model": None,
+                "source": None, "computed_at": None}  # fmt: skip
+
+    def _review_version(self, paths: DataPaths) -> str | None:
+        """The bundle a stored review must match; None (with the status set) when there's none."""
+        return self._context_version(paths)
+
+    def review(self, paths: DataPaths, season: int, week: int) -> dict[str, Any]:
+        """A finished week's decision review (README §3, LD03): read-only, never ESPN."""
+        from nflengine.live import review as RV
+
+        base = {**self._review_base(season), "week": week, "summary": None,
+                "highlights": None, "games": [], "plays": []}  # fmt: skip
+        store = self._reviews(paths)
+        weeks = store.weeks(paths, season)
+        if week not in weeks:
+            base["status"] = "no_plays"
+            base["message"] = no_plays_text(season, week, weeks)
+            return clean_all(base, paths)
+        version = self._review_version(paths)
+        if version is None:
+            return clean_all(self._no_models(base, paths), paths)
+        try:
+            rv = store.week(paths, season, week, lambda: self._review_engine(paths), version)
+        except LiveRefused as e:
+            if e.code != "no_models":
+                raise
+            return clean_all({**base, "status": "no_models", "message": e.message}, paths)
+        base.update(RV.week_payload(rv, RV.week_games(paths, season, week)))
+        return clean_all(base, paths)
+
+    def season_review(self, paths: DataPaths, season: int, through: int | None) -> dict[str, Any]:
+        """The season through `through` (clamped to the newest week with plays): the coach
+        leaderboard, the bot's calibration and the weekly trend."""
+        from nflengine.live import review as RV
+
+        base = {**self._review_base(season), "through_week": None, "weeks": [], "decisions": 0,
+                "leaderboard": [], "league": None, "trend": [], "calibration": None}  # fmt: skip
+        store = self._reviews(paths)
+        weeks = store.weeks(paths, season)
+        upto = [w for w in weeks if through is None or w <= through]
+        if not upto:
+            base["status"] = "no_plays"
+            base["message"] = (
+                f"No {season} plays in the curated data yet."
+                if not weeks
+                else f"No {season} week up to week {through} is in the curated data yet."
+            )
+            return clean_all(base, paths)
+        version = self._review_version(paths)
+        if version is None:
+            return clean_all(self._no_models(base, paths), paths)
+        try:
+            tables, src = store.season(
+                paths, season, max(upto), lambda: self._review_engine(paths), version
+            )
+        except LiveRefused as e:
+            if e.code != "no_models":
+                raise
+            return clean_all({**base, "status": "no_models", "message": e.message}, paths)
+        base.update(RV.season_payload(tables, src))
+        return clean_all(base, paths)
+
+    def _no_models(self, base: dict[str, Any], paths: DataPaths) -> dict[str, Any]:
+        m = self.models(paths)
+        return {**base, "status": "no_models", "message": m.get("message") or NO_MODELS}
+
+
+def no_plays_text(season: int, week: int, weeks: list[int]) -> str:
+    """Why a week has no review yet: its plays aren't curated (the Tuesday run brings them)."""
+    if not weeks:
+        return f"No {season} plays in the curated data yet."
+    if week > max(weeks):
+        return (
+            f"Week {week}'s plays aren't in the curated data yet: they come in with the Tuesday "
+            "run after the week (ingest + curate). The review builds then."
+        )
+    return f"Week {week} has no plays in the curated data."

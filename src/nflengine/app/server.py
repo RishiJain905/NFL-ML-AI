@@ -629,6 +629,24 @@ def create_app(settings: AppSettings) -> FastAPI:
             request, paths, lambda: ctx.live.context(paths, season, week, event, offense)
         )
 
+    # ---- LD03: the decision review (curated plays + the models; never ESPN). It runs the
+    # engine on a week without a stored review, so it sits behind the same cross-site refusal.
+    @app.get("/api/live/{season}/{week}/review")
+    def live_review_route(
+        request: Request, season: int = Season, week: int = Week
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        return live_json(request, paths, lambda: ctx.live.review(paths, season, week))
+
+    @app.get("/api/live/{season}/season-review")
+    def live_season_review_route(
+        request: Request,
+        season: int = Season,
+        through: int | None = Query(None, ge=1, le=22),
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        return live_json(request, paths, lambda: ctx.live.season_review(paths, season, through))
+
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def api_not_found(rest: str) -> SafeJSONResponse:
         return _error(404, "not_found", f"No endpoint /api/{rest}")

@@ -1,17 +1,19 @@
 // The Game day tab (LD02; mockup: documentation/live-decisions/mockup/, boardView, beforeView,
 // pastView). The week's games refresh every 30 s while this tab is open in the week being played;
-// nothing else is fetched until "Check this play".
+// nothing else is fetched until "Check this play". A finished week is its decision review (LD03:
+// gameday/ReviewView.tsx); the week being played, once every game is final, offers it too.
 
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { apiGet, useLiveGames } from '../../api/client';
+import { apiGet, useLiveGames, useLiveReview } from '../../api/client';
 import type { LiveGame, LiveGamesResponse } from '../../api/types';
 import { TeamChip } from '../../components/TeamChip';
 import { Card, EmptyState, Notice } from '../../components/ui';
 import { dayLabel } from '../../lib/format';
 import { GameCard, GameList } from './gameday/GameList';
 import { GamePanel } from './gameday/GamePanel';
+import { ReviewView } from './gameday/ReviewView';
 import { defaultPick, groupGames, liveGamesKey, pregamePick, tKick, tMin, tSec } from './gameday/model';
 import './week.css';
 import './gameday/gameday.css';
@@ -107,31 +109,82 @@ function Slate({ d }: { d: LiveGamesResponse }) {
   );
 }
 
-function Past({ d }: { d: LiveGamesResponse }) {
+function Finals({ d }: { d: LiveGamesResponse }) {
+  if (!d.games.length) return null;
   return (
-    <>
-      <EmptyState glyph="LD03" title="Decision review: coming in LD03" actions={<LiveWeekLink d={d} />}>
-        For a finished week this tab will show every 4th down, the bot&apos;s call next to the coach&apos;s, and the win
-        chance each choice cost or gained. Live checks only run during the week being played.
-      </EmptyState>
-      <Card>
-        <div className="card-h">
-          <h2>Week {d.week} finals</h2>
-          <span className="muted">{d.games.length} games</span>
+    <Card>
+      <div className="card-h">
+        <h2>Week {d.week} finals</h2>
+        <span className="muted">{d.games.length} games</span>
+      </div>
+      <div className="card-b">
+        <div className="games" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+          {d.games.map((g) => (
+            <GameCard key={g.event} game={g} />
+          ))}
         </div>
-        <div className="card-b">
-          <div className="games" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
-            {d.games.map((g) => (
-              <GameCard key={g.event} game={g} />
-            ))}
-          </div>
-        </div>
-      </Card>
-    </>
+      </div>
+    </Card>
   );
 }
 
-function Board({ d, season, week, receivedAt }: { d: LiveGamesResponse; season: number; week: number; receivedAt: number | null }) {
+/** A finished week: its decision review (LD03). The finals show under "isn't ready yet". */
+function Past({ d, season, week }: { d: LiveGamesResponse; season: number; week: number }) {
+  return <ReviewView season={season} week={week} liveWeek={d.live_week} actions={<LiveWeekLink d={d} />} empty={<Finals d={d} />} />;
+}
+
+/** The week being played, every game final: live checks are over; the review once its plays are in. */
+function FinalWeek({ d, season, week, onOpen }: { d: LiveGamesResponse; season: number; week: number; onOpen: () => void }) {
+  const rq = useLiveReview(season, week);
+  const r = rq.data;
+  const ready = r?.status === 'ok';
+  let text: string;
+  if (rq.isPending) text = 'Live checks are over for this week. Looking for its decision review…';
+  else if (!r) text = `Live checks are over for this week. Couldn't check the decision review (${rq.error?.message ?? 'error'}).`;
+  else if (ready)
+    text = `Live checks are over for this week. The decision review is ready: ${r.summary?.decisions ?? 0} 4th downs, the bot's call next to each coach's, and what each call gained or cost.`;
+  else text = `Live checks are over for this week. The decision review reads nflverse's play-by-play, not ESPN: ${r.message ?? ''}`;
+  return (
+    <EmptyState
+      glyph="F"
+      title={`Every week-${d.week} game is final`}
+      actions={
+        ready ? (
+          <button type="button" className="btn primary" onClick={onOpen}>
+            Open the decision review
+          </button>
+        ) : (
+          <>
+            <button type="button" className="btn sm" aria-disabled="true" disabled title="Ready after Tuesday's run">
+              Open the decision review
+            </button>
+            {r?.status === 'no_plays' ? (
+              <span className="muted" style={{ fontSize: 12.5 }}>
+                Ready after Tuesday&apos;s run. Until then, pick a game on the left for its final score.
+              </span>
+            ) : null}
+          </>
+        )
+      }
+    >
+      {text}
+    </EmptyState>
+  );
+}
+
+function Board({
+  d,
+  season,
+  week,
+  receivedAt,
+  onOpenReview,
+}: {
+  d: LiveGamesResponse;
+  season: number;
+  week: number;
+  receivedAt: number | null;
+  onOpenReview: () => void;
+}) {
   const qc = useQueryClient();
   const [sel, setSel] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -216,20 +269,7 @@ function Board({ d, season, week, receivedAt }: { d: LiveGamesResponse; season: 
               {d.refresh_s} s while this tab is open.
             </EmptyState>
           ) : null}
-          {d.phase === 'final' && !picked ? (
-            <EmptyState
-              glyph="F"
-              title={`Every week-${d.week} game is final`}
-              actions={
-                <button type="button" className="btn sm" aria-disabled="true" title="Coming in LD03">
-                  Open the decision review · LD03
-                </button>
-              }
-            >
-              The week&apos;s decision review (each 4th down, the bot&apos;s call next to the coach&apos;s, and what it cost
-              or gained) comes in LD03.
-            </EmptyState>
-          ) : null}
+          {d.phase === 'final' && !picked ? <FinalWeek d={d} season={season} week={week} onOpen={onOpenReview} /> : null}
           {picked ? (
             <GamePanel
               key={picked.event}
@@ -250,6 +290,8 @@ function Board({ d, season, week, receivedAt }: { d: LiveGamesResponse; season: 
 export function GameDayTab({ season, week }: { season: number; week: number; isCurrent: boolean; lastPublishedWeek: number | null }) {
   const q = useLiveGames(season, week);
   const d = q.data;
+  // the final phase's "Open the decision review" (the board stays a click away)
+  const [reviewOpen, setReviewOpen] = useState(false);
   // the phase can change while the tab is open (a future week turns live): the body follows it
   let body;
   if (q.isPending) body = <Card className="pad muted">Loading the week&apos;s games…</Card>;
@@ -263,8 +305,13 @@ export function GameDayTab({ season, week }: { season: number; week: number; isC
       </Notice>
     );
   else if (d.phase === 'before' || d.phase === 'future') body = <Slate d={d} />;
-  else if (d.phase === 'past') body = <Past d={d} />;
-  else body = <Board d={d} season={season} week={week} receivedAt={q.dataUpdatedAt || null} />;
+  else if (d.phase === 'past') body = <Past d={d} season={season} week={week} />;
+  else if (d.phase === 'final' && reviewOpen)
+    body = <ReviewView season={season} week={week} liveWeek={d.live_week} onBack={() => setReviewOpen(false)} />;
+  else
+    body = (
+      <Board d={d} season={season} week={week} receivedAt={q.dataUpdatedAt || null} onOpenReview={() => setReviewOpen(true)} />
+    );
   return (
     <div className="gameday wk-stack">
       {d ? <ReplayBanner d={d} /> : null}

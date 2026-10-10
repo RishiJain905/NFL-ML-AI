@@ -24,6 +24,7 @@ import {
   GAMES_REPLAY,
   PATH,
 } from './gamedayFixtures';
+import { REVIEW_NO_PLAYS } from './reviewFixtures';
 
 const W4 = { season: 2026, week: 4, isCurrent: false, lastPublishedWeek: 4 };
 
@@ -218,12 +219,13 @@ describe('GameDayTab: the week states', () => {
     expect(await screen.findByRole('link', { name: 'Game day is on week 4' })).toHaveAttribute('href', '/week/2026/4/game-day');
   });
 
-  it('a past week: the decision review is coming in LD03', async () => {
-    mockApi({ '/api/team-info': TEAM_INFO, '/api/live/2026/3/games': GAMES_PAST });
+  it('a past week: its decision review (LD03; ReviewView.test.tsx has the rest), never ESPN', async () => {
+    const f = mockApi({ '/api/team-info': TEAM_INFO, '/api/live/2026/3/games': GAMES_PAST, '/api/live/2026/3/review': REVIEW_NO_PLAYS });
     renderApp(<GameDayTab {...W4} week={3} />);
-    expect(await screen.findByRole('heading', { name: 'Decision review: coming in LD03' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Week 3 finals' })).toBeInTheDocument();
+    expect(await screen.findByText('Decision review · 2026 Week 3')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Week 3 finals' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Game day is on week 4' })).toBeInTheDocument();
+    expect(liveCalls(f)).toEqual([]);
   });
 
   it('between windows and when every game is final', async () => {
@@ -272,7 +274,7 @@ describe('GameDayTab: the list refresh', () => {
     expect(n()).toBe(2);
     vi.unstubAllGlobals();
 
-    const g = mockApi({ '/api/team-info': TEAM_INFO, '/api/live/2026/3/games': GAMES_PAST });
+    const g = mockApi({ '/api/team-info': TEAM_INFO, '/api/live/2026/3/games': GAMES_PAST, '/api/live/2026/3/review': REVIEW_NO_PLAYS });
     renderApp(<GameDayTab {...W4} week={3} />);
     await screen.findByRole('heading', { name: 'Week 3 finals' });
     await act(async () => {

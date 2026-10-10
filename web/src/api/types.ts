@@ -1217,3 +1217,184 @@ export interface LiveContextResponse {
   computed_at: string;
   model_version: string | null; // the bundle behind coach_go
 }
+
+// ---- LD03: decision review (finished weeks; documentation/live-decisions/LD03-decision-review.md)
+// GET /api/live/{season}/{week}/review and GET /api/live/{season}/season-review?through=N.
+// Built from curated play-by-play (not ESPN) and the promoted live-decision models; the server
+// reads `live/<S>/week<NN>/decision_review.*` (written by `nfl live review`) or computes the week
+// and keeps it in its own cache. Probabilities 0-1; `edge` / `cost` / `wp_lost` in the same
+// units (0.049 = 4.9 win-probability points; a sum of them = expected wins).
+
+export type ReviewStatus = 'ok' | 'no_plays' | 'no_models';
+
+export interface ReviewModel {
+  version: string | null; // the bundle the review was scored with
+  in_sample: boolean | null; // the season is inside the bundle's training seasons (2025: yes)
+  trained_seasons: [number, number] | null; // [first, last]
+}
+
+/** One 4th down the coach decided (pre-snap penalties, kneels and replayed downs aren't). */
+export interface ReviewPlay {
+  game_id: string;
+  play_id: number;
+  posteam: string; // the offense (nflverse code)
+  defteam: string;
+  coach: string | null; // the offense's head coach
+  qtr: number; // 5 = overtime
+  clock: string | null; // the quarter clock "10:27"
+  off_score: number | null; // the offense's score before the snap
+  def_score: number | null;
+  situation: string; // "4th & 2 at TB 44"
+  ydstogo: number;
+  yardline_100: number;
+  choice: LiveChoice; // the coach's call (a fake punt / field goal = go)
+  best: LiveChoice; // the bot's
+  agree: boolean;
+  label: LiveLabel | null; // the bot's confidence
+  gap: number | null; // the bot's best option's lead over the next
+  wp: Record<LiveChoice, number | null>; // the offense's win probability after each option
+  wp_now: number | null; // before the snap (the options' average view; not drawn on the card)
+  edge: number | null; // the coach's option minus the best other one: + gained, - cost
+  cost: number | null; // the bot's best minus the coach's option (>= 0)
+  convert: number | null; // the chance a go converts
+  fg_make: number | null;
+  fg_distance: number | null;
+  fake: boolean;
+  wiped: boolean; // wiped out by a penalty after the snap (the down wasn't replayed)
+  success: boolean | null; // a go converted / a field goal made; null for a punt
+  result: string; // "Converted (+3 yds)", "Missed from 52", "TB ball at own 14"
+  desc: string; // nflverse's play text (data: render as text)
+}
+
+export interface ReviewGame {
+  game_id: string;
+  away: string;
+  home: string;
+  away_score: number | null;
+  home_score: number | null;
+  kickoff: string | null;
+  decisions: number;
+  wp_lost: Record<string, number | null>; // per team: expected wins given up vs the bot
+}
+
+export interface ReviewSummary {
+  decisions: number;
+  coach: Record<LiveChoice, number>;
+  bot: Record<LiveChoice, number>;
+  agree: number;
+  toss_ups: number;
+  go_spots: number; // the bot says go, Confident or Lean
+  went_in_go_spots: number;
+  wp_lost: number | null; // the week's total, in wins
+  fakes: number;
+  wiped: number;
+  skipped: number; // 4th downs the state rules refused
+}
+
+export interface LiveReviewResponse {
+  season: number;
+  week: number;
+  status: ReviewStatus;
+  message: string | null; // why there's no review ("Week 5's plays come in with Tuesday's run")
+  model: ReviewModel | null;
+  computed_at: string | null;
+  source: 'file' | 'cache' | 'computed' | 'memory' | null; // `nfl live review`'s file, the app's cache, now, earlier this session
+  summary: ReviewSummary | null;
+  highlights: {
+    boldest: ReviewPlay | null; // the go with the lowest convert chance in a game in doubt
+    costliest: ReviewPlay | null;
+    top: ReviewPlay[]; // the five costliest
+  } | null;
+  games: ReviewGame[];
+  plays: ReviewPlay[]; // kickoff order, then game order
+}
+
+/** A head coach's season (or the league's: no rank, coach, teams). Rates are null at den 0. */
+export interface ReviewCoachRow {
+  rank?: number; // by go_rate_spots, then go_spots
+  coach?: string;
+  teams?: string[]; // newest first
+  decisions: number;
+  go: number;
+  go_rate: number | null;
+  go_spots: number;
+  went_in_go_spots: number;
+  go_rate_spots: number | null; // the ranking: went / go spots
+  kick_spots: number; // the bot says kick (fg or punt), Confident or Lean
+  went_in_kick_spots: number;
+  go_rate_kick_spots: number | null;
+  agree: number;
+  agree_rate: number | null;
+  wp_lost: number; // expected wins given up vs the bot
+  wp_lost_timid: number; // ... by kicking where the bot says go
+  wp_lost_bold: number; // ... by going where the bot says kick
+  weeks: number;
+}
+
+export interface ReviewTrendRow {
+  week: number;
+  decisions: number;
+  go_rate_coach: number | null;
+  go_rate_bot: number | null;
+  agree_rate: number | null;
+  wp_lost: number | null;
+  attempts: number; // 4th-down go-for-its (not wiped)
+  conv_actual: number | null;
+  conv_pred: number | null;
+}
+
+export interface ReviewCalBin {
+  bin_lo: number; // 0, 0.1, ... 0.9
+  n: number;
+  mean_pred: number | null;
+  mean_outcome: number | null;
+}
+
+export interface ReviewConversionRow {
+  down: 3 | 4;
+  distance: number; // 1-10 (10 = 10 or more)
+  label: string; // "1" ... "10+"
+  n: number;
+  actual: number | null;
+  pred: number | null;
+}
+
+export interface ReviewCalibration {
+  wp: {
+    snaps: number;
+    games: number;
+    tie_games: number;
+    brier: number | null;
+    brier_vegas: number | null; // nflfastR's vegas_wp on the same snaps
+    ece: number | null;
+    ece_vegas: number | null;
+    model: ReviewCalBin[];
+    vegas: ReviewCalBin[];
+  } | null;
+  conversion: {
+    rows: ReviewConversionRow[];
+    overall: { down: 3 | 4; n: number; actual: number | null; pred: number | null; brier: number | null }[];
+  } | null;
+  fg: {
+    n: number;
+    made: number | null;
+    pred: number | null;
+    rows: { band: '<30' | '30-39' | '40-49' | '50+'; n: number; made: number | null; pred: number | null }[];
+  } | null;
+}
+
+export interface LiveSeasonReviewResponse {
+  season: number;
+  through_week: number | null; // the season through this week (null: no reviewed week yet)
+  status: ReviewStatus;
+  message: string | null;
+  model: ReviewModel | null;
+  source: 'file' | 'cache' | 'computed' | 'memory' | null;
+  weeks: number[];
+  decisions: number;
+  leaderboard: ReviewCoachRow[];
+  league: ReviewCoachRow | null;
+  trend: ReviewTrendRow[];
+  calibration: ReviewCalibration | null;
+  computed_at: string | null;
+}

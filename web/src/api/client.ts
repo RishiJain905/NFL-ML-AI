@@ -9,6 +9,8 @@ import type {
   LiveCallResponse,
   LiveContextResponse,
   LiveGamesResponse,
+  LiveReviewResponse,
+  LiveSeasonReviewResponse,
   Meta,
   MlopsArtifactsResponse,
   MlopsHealthResponse,
@@ -360,6 +362,37 @@ export function useLiveContext(
       ),
     enabled: Boolean(event && offense),
     staleTime: Infinity,
+    retry: false,
+  });
+}
+
+// ---- LD03: the decision review of a finished week and the season beside it. Read-only on the
+// server (curated plays + the models, never ESPN); a week without a stored review is computed
+// once (a second or two; the first open of a season also reads its plays from D:).
+
+/** A finished week's decision review. */
+export function useLiveReview(season: number, week: number, enabled = true) {
+  const valid = Number.isInteger(season) && Number.isInteger(week);
+  return useQuery({
+    queryKey: ['live', season, week, 'review'],
+    queryFn: () => apiGet<LiveReviewResponse>(`/api/live/${season}/${week}/review`),
+    enabled: valid && enabled,
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+/** The season through `through` (the week the tab shows): leaderboard, calibration, trend. */
+export function useLiveSeasonReview(season: number, through: number, enabled = true) {
+  const valid = Number.isInteger(season) && Number.isInteger(through);
+  return useQuery({
+    queryKey: ['live', season, 'season-review', through],
+    queryFn: () =>
+      apiGet<LiveSeasonReviewResponse>(`/api/live/${season}/season-review?through=${through}`),
+    enabled: valid && enabled,
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
     retry: false,
   });
 }

@@ -1,0 +1,239 @@
+/* Ported from documentation/live-decisions/mockup/review.css (every rule scoped under .gameday,
+   as gameday.css is). Decision review (LD03): a finished week's 4th downs and the season beside them, inside the Game
+   day tab. Control-room tokens only; the call colours follow LD02 (the accent marks the bot's best
+   option only). Series: the bot --s1, coaches --s2, nflfastR's vegas_wp --s3; what happened is
+   ink (--ink-2), never a series colour. */
+
+.gameday .rv { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.gameday .rv-h { display: flex; align-items: flex-end; gap: 10px 18px; flex-wrap: wrap; }
+.gameday .rv-h .ttl { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.gameday .rv-h h2 { font-family: var(--font-display); font-size: 24px; font-weight: 700; letter-spacing: .01em; line-height: 1.1; }
+.gameday .rv-h .right { margin-left: auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.gameday .rv-h .seg button { padding: 6px 14px; font-size: 13px; }
+.gameday .rv-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--ink-3); }
+.gameday .rv-meta b { color: var(--ink-2); font-weight: 600; }
+.gameday .rv-meta .mono { font-size: 11.5px; }
+.gameday .wkstep { display: inline-flex; gap: 6px; align-items: center; }
+
+/* the week's numbers */
+.gameday .rv-sum { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.6fr); gap: 12px; }
+.gameday .rv-sum .tile .v { font-size: 30px; }
+.gameday .rv-sum .tile .v small { font-size: 13px; }
+.gameday .calls { display: flex; flex-direction: column; gap: 8px; }
+.gameday .calls .row { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 4px 10px; align-items: center; font-size: 12.5px; }
+.gameday .calls .row .who { color: var(--ink-2); font-weight: 600; }
+.gameday .calls .bar { display: flex; height: 14px; gap: 2px; }
+.gameday .calls .bar span { display: block; height: 100%; min-width: 2px; }
+.gameday .calls .bar span:first-child { border-radius: 4px 0 0 4px; }
+.gameday .calls .bar span:last-child { border-radius: 0 4px 4px 0; }
+.gameday .calls .row small { grid-column: 2; color: var(--ink-3); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.gameday .calls .legend { font-size: 12px; }
+.gameday .calls .legend i { border-radius: 2px; }
+
+/* highlights */
+.gameday .hls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.gameday .hl { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; min-width: 0; }
+.gameday .hl .hl-k { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.gameday .hl .hl-k .eyebrow { color: var(--accent-ink); }
+.gameday .hl .hl-k small { color: var(--ink-3); font-size: 12px; }
+.gameday .hl .hl-who { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13.5px; color: var(--ink-2); }
+.gameday .hl .hl-sit { font-family: var(--font-display); font-size: 34px; font-weight: 700; line-height: 1; }
+.gameday .hl .hl-when { font-size: 13px; color: var(--ink-2); }
+.gameday .hl .hl-fig { display: flex; gap: 10px; align-items: baseline; }
+.gameday .hl .hl-fig b { font-family: var(--font-display); font-size: 44px; font-weight: 700; line-height: .95; }
+.gameday .hl .hl-fig span { font-size: 14px; color: var(--ink-2); }
+.gameday .hl .hl-vs { display: flex; gap: 6px 14px; align-items: center; flex-wrap: wrap; font-size: 13.5px; }
+.gameday .hl .hl-vs b { font-weight: 700; }
+.gameday .hl .hl-res { font-size: 13.5px; }
+.gameday .hl .none { color: var(--ink-3); font-size: 13.5px; margin: 0; }
+.gameday .desc { margin: 0; font-size: 12.5px; color: var(--ink-2); background: var(--raised); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; overflow-wrap: anywhere; }
+.gameday .desc .src { display: block; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 2px; }
+.gameday .ptag { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); border: 1px dashed var(--line-2); border-radius: 4px; padding: 0 5px; line-height: 16px; white-space: nowrap; vertical-align: 1px; }
+
+/* the five costliest */
+.gameday .top5 { display: flex; flex-direction: column; }
+.gameday .top5 button { display: grid; grid-template-columns: 22px minmax(150px, 1.2fr) minmax(120px, 1fr) minmax(90px, 1.1fr) 46px; gap: 10px; align-items: center; padding: 8px 18px; border-top: 1px solid var(--line); color: inherit; text-decoration: none; font-size: 13px; }
+.gameday .top5 li:first-child > button { border-top: 0; }
+.gameday .top5 button:hover, .gameday .top5 button:focus-visible { background: var(--raised); }
+.gameday .top5 .n { font-family: var(--font-display); font-size: 18px; font-weight: 700; color: var(--ink-3); }
+.gameday .top5 .s b { font-weight: 700; }
+.gameday .top5 .s small, .gameday .top5 .c small { display: block; color: var(--ink-3); font-size: 11.5px; }
+.gameday .top5 .tr { position: relative; height: 12px; background: var(--raised); border-radius: 0 4px 4px 0; box-shadow: inset 0 0 0 1px var(--line); }
+.gameday .top5 .tr i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ink-2); border-radius: 0 4px 4px 0; }
+.gameday .top5 .v { font-family: var(--font-display); font-size: 20px; font-weight: 700; text-align: right; }
+
+/* every 4th down */
+.gameday .rv-list .card-h .right { gap: 12px; }
+.gameday .edgekey { display: inline-flex; gap: 12px; align-items: center; font-size: 12px; color: var(--ink-2); flex-wrap: wrap; }
+.gameday .edgekey span { display: inline-flex; gap: 6px; align-items: center; }
+.gameday .edgekey i { width: 12px; height: 8px; border-radius: 2px; display: inline-block; }
+.gameday .rv-game { border-top: 1px solid var(--line); }
+.gameday .rv-game:first-of-type { border-top: 0; }
+.gameday .rv-gh { display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; padding: 12px 18px 8px; background: var(--raised); border-bottom: 1px solid var(--line); }
+.gameday .rv-gh .gm { display: flex; gap: 8px; align-items: center; font-weight: 600; font-size: 14.5px; }
+.gameday .rv-gh .gm .sc { font-family: var(--font-display); font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.gameday .rv-gh .gm .sc.lost { color: var(--ink-3); }
+.gameday .rv-gh .meta { color: var(--ink-3); font-size: 12.5px; }
+.gameday .rv-gh .lost-w { margin-left: auto; font-size: 12.5px; color: var(--ink-2); display: flex; gap: 12px; flex-wrap: wrap; }
+.gameday .rv-gh .lost-w b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.gameday .rv-cols, .gameday .rv-row > summary {
+  display: grid; grid-template-columns: 66px minmax(92px, .8fr) minmax(130px, 1.1fr) 92px minmax(150px, 1.2fr) 112px minmax(140px, 1.3fr) 16px;
+  gap: 10px; align-items: center; padding: 7px 18px;
+}
+.gameday .rv-cols { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; padding-top: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.gameday .rv-cols .r { text-align: right; }
+.gameday .rv-row { border-bottom: 1px solid var(--line); }
+.gameday .rv-row:last-child { border-bottom: 0; }
+.gameday .rv-row > summary { list-style: none; cursor: pointer; font-size: 13px; }
+.gameday .rv-row > summary::-webkit-details-marker { display: none; }
+.gameday .rv-row > summary:hover, .gameday .rv-row > summary:focus-visible, .gameday .rv-row[open] > summary { background: var(--raised); }
+.gameday .rv-row > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.gameday .rv-row.flash > summary { box-shadow: inset 3px 0 0 var(--accent); }
+.gameday .rv-row .when { color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gameday .rv-row .off { display: flex; gap: 6px; align-items: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.gameday .rv-row .off small { color: var(--ink-3); font-size: 12px; }
+.gameday .rv-row .sit { font-weight: 600; }
+.gameday .rv-row .coach { font-weight: 600; }
+.gameday .rv-row .bot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.gameday .rv-row .bot .nm { font-weight: 600; color: var(--ink-2); }
+.gameday .rv-row.dis .bot .nm { color: var(--ink); font-weight: 700; }
+.gameday .rv-row .res { color: var(--ink-2); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.gameday .rv-row .chev { color: var(--ink-3); transition: transform .15s; font-size: 12px; }
+.gameday .rv-row[open] .chev { transform: rotate(90deg); }
+.gameday .lbl-ph { display: none; }
+
+/* the edge: one bar around 0 (cost to the left in ink, gain to the right in a light ink), the number in ink */
+.gameday .edge { display: grid; grid-template-columns: 60px 42px; gap: 6px; align-items: center; justify-content: end; }
+.gameday .edge .eb { position: relative; height: 12px; }
+.gameday .edge .eb .z { position: absolute; left: 50%; top: -2px; bottom: -2px; border-left: 1px solid var(--ink-3); }
+.gameday .edge .eb i { position: absolute; top: 2px; height: 8px; }
+.gameday .edge .eb i.cost { right: 50%; background: var(--ink-2); border-radius: 3px 0 0 3px; }
+.gameday .edge .eb i.gain { left: 50%; background: color-mix(in srgb, var(--ink-3) 45%, var(--panel)); border-radius: 0 3px 3px 0; }
+.gameday .edge .ev { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.gameday .edge .ev.cost { font-weight: 700; color: var(--ink); }
+.gameday .edge .ev.gain { color: var(--ink-2); }
+
+/* a row opened: the three options on one 0-100% axis, the odds, the play text */
+.gameday .rv-more { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px 26px; padding: 10px 18px 16px 94px; background: var(--raised); border-top: 1px dashed var(--line); }
+.gameday .mopts { display: flex; flex-direction: column; gap: 3px; }
+.gameday .mopt { display: grid; grid-template-columns: 82px minmax(0, 1fr) 54px 60px; gap: 8px; align-items: center; font-size: 12.5px; }
+.gameday .mopt .on { color: var(--ink-2); font-weight: 600; }
+.gameday .mopt.best .on { color: var(--ink); font-weight: 700; }
+.gameday .mopt .tr { position: relative; height: 12px; }
+.gameday .mopt .tr .bg { position: absolute; inset: 5px 0 auto 0; height: 2px; background: var(--line); }
+.gameday .mopt .tr .fill { position: absolute; left: 0; top: 0; height: 12px; border-radius: 0 3px 3px 0; background: color-mix(in srgb, var(--ink-3) 42%, var(--panel)); }
+.gameday .mopt.best .tr .fill { background: var(--accent); }
+.gameday .mopt .pv { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.gameday .mopt .pv.na { font-weight: 500; color: var(--ink-3); font-size: 11.5px; }
+.gameday .mopt .who { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
+.gameday .modds { display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; color: var(--ink-2); }
+.gameday .modds .kv { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.gameday .modds .kv b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ---------- the season ---------- */
+.gameday .rv-sum.season { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.gameday .lb .tbl td, .gameday .lb .tbl th { padding: 8px 9px; }
+.gameday .lb .tbl td.num, .gameday .lb .tbl th.num { text-align: right; }
+.gameday .lb .tbl .rk { color: var(--ink-3); font-family: var(--font-display); font-size: 16px; font-weight: 700; width: 28px; }
+.gameday .lb .tbl .cn { font-weight: 600; white-space: nowrap; }
+.gameday .lb .tbl .cn small { display: block; color: var(--ink-3); font-weight: 400; font-size: 11.5px; }
+.gameday .lb .tbl td small.sub { display: block; color: var(--ink-3); font-size: 11.5px; white-space: nowrap; }
+.gameday .lb .tbl tfoot td { background: var(--raised); font-weight: 600; border-top: 2px solid var(--line-2); border-bottom: 0; }
+.gameday .lb .tbl tr.few td { color: var(--ink-3); }
+.gameday .lb .tbl tr.few td .ratebar i { opacity: .55; }
+.gameday .ratecell { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.gameday .ratecell b { min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
+.gameday .ratebar { position: relative; width: 110px; height: 12px; flex: none; }
+.gameday .ratebar .bg { position: absolute; inset: 5px 0 auto 0; height: 2px; background: var(--line); }
+.gameday .ratebar i { position: absolute; left: 0; top: 1px; height: 10px; background: var(--s1); border-radius: 0 3px 3px 0; }
+.gameday .ratebar .lg { position: absolute; top: -2px; bottom: -2px; border-left: 2px solid var(--ink-2); transform: translateX(-1px); }
+.gameday .sm-only { display: none; }
+.gameday .lb-key { display: inline-flex; gap: 14px; align-items: center; font-size: 12px; color: var(--ink-2); flex-wrap: wrap; }
+.gameday .lb-key span { display: inline-flex; gap: 6px; align-items: center; }
+.gameday .lb-key i.b { width: 14px; height: 8px; background: var(--s1); border-radius: 0 2px 2px 0; display: inline-block; }
+.gameday .lb-key i.l { width: 0; height: 12px; border-left: 2px solid var(--ink-2); display: inline-block; }
+.gameday .th-sort { background: none; border: 0; padding: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
+.gameday .th-sort[aria-pressed="true"] { color: var(--ink); }
+
+.gameday .rv-grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.gameday .cal { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(220px, 1fr); gap: 16px 22px; padding: 14px 18px 16px; align-items: start; }
+.gameday .calstats { display: flex; flex-direction: column; gap: 10px; }
+.gameday .calstats .st { border: 1px solid var(--line); border-radius: var(--r); padding: 9px 12px; display: flex; flex-direction: column; gap: 2px; }
+.gameday .calstats .st .k { font-size: 12px; color: var(--ink-3); }
+.gameday .calstats .st .v { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+.gameday .calstats .st .v span { display: inline-flex; gap: 6px; align-items: baseline; font-size: 12.5px; color: var(--ink-2); }
+.gameday .calstats .st .v b { font-family: var(--font-display); font-size: 24px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.gameday .calstats .st .v i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; align-self: center; }
+.gameday .calstats p { margin: 0; font-size: 12.5px; color: var(--ink-2); }
+.gameday .chartpad { padding: 14px 18px 16px; display: flex; flex-direction: column; gap: 10px; }
+.gameday .conv { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px 26px; }
+.gameday .conv h3 { font-size: 14px; font-weight: 700; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.gameday .conv h3 small { font-weight: 400; color: var(--ink-3); font-size: 12px; }
+.gameday .conv .ov { font-size: 12.5px; color: var(--ink-2); margin: 2px 0 6px; }
+.gameday .conv .ov b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.gameday .chart .hit { fill: transparent; cursor: default; outline: none; }
+.gameday .chart .hit:hover, .gameday .chart .hit:focus-visible { fill: color-mix(in srgb, var(--ink-3) 10%, transparent); }
+.gameday .chart .nlab { font-size: 10px; fill: var(--ink-3); }
+.gameday .legend i.hollow { background: none; border: 2px solid var(--ink-2); width: 9px; height: 9px; }
+.gameday .legend i.dash { width: 16px; height: 0; border-radius: 0; border-top: 2px dashed var(--ink-3); background: none; }
+.gameday .fgt td.num, .gameday .fgt th.num { text-align: right; }
+.gameday .fgdots { position: relative; width: 120px; height: 14px; display: inline-block; vertical-align: middle; }
+.gameday .fgdots .bg { position: absolute; inset: 6px 0 auto 0; height: 2px; background: var(--line); }
+.gameday .fgdots .p { position: absolute; top: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--s1); transform: translateX(-50%); box-shadow: 0 0 0 2px var(--panel); }
+.gameday .fgdots .a { position: absolute; top: 2px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink-2); background: var(--panel); transform: translateX(-50%); }
+
+@media (max-width: 1240px) {
+  .gameday .rv-sum { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gameday .rv-sum .calls-tile { grid-column: 1 / -1; }
+  .gameday .rv-sum.season { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .gameday .cal { grid-template-columns: minmax(0, 1fr); }
+  .gameday .rv-cols, .gameday .rv-row > summary { grid-template-columns: 58px minmax(84px, .8fr) minmax(120px, 1.1fr) 84px minmax(130px, 1.2fr) 108px minmax(110px, 1fr) 14px; gap: 8px; padding-left: 14px; padding-right: 14px; }
+}
+@media (max-width: 900px) {
+  .gameday .hls, .gameday .rv-grid2, .gameday .conv { grid-template-columns: minmax(0, 1fr); }
+  .gameday .rv-cols { display: none; }
+  .gameday .rv-row > summary {
+    grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px;
+    grid-template-areas: "sit edge" "off edge" "calls calls" "res res";
+  }
+  .gameday .rv-row > summary .when { display: none; }
+  .gameday .rv-row > summary .sit { grid-area: sit; }
+  .gameday .rv-row > summary .off { grid-area: off; }
+  .gameday .rv-row > summary .edge { grid-area: edge; align-self: start; }
+  .gameday .rv-row > summary .coach { grid-area: calls; display: inline; }
+  .gameday .rv-row > summary .bot { grid-area: calls; justify-self: end; }
+  .gameday .rv-row > summary .res { grid-area: res; font-size: 12.5px; }
+  .gameday .rv-row > summary .chev { display: none; }
+  .gameday .lbl-ph { display: inline; color: var(--ink-3); font-weight: 500; }
+  .gameday .rv-more { grid-template-columns: minmax(0, 1fr); padding-left: 18px; }
+  .gameday .top5 button { grid-template-columns: 22px minmax(0, 1fr) 46px; }
+  .gameday .top5 .c, .gameday .top5 .tr { display: none; }
+}
+@media (max-width: 560px) {
+  .gameday .rv-sum, .gameday .rv-sum.season { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .gameday .rv-h .right { margin-left: 0; width: 100%; }
+  .gameday .hl .hl-sit { font-size: 28px; }
+  .gameday .hl .hl-fig b { font-size: 36px; }
+  .gameday .rv-gh .lost-w { margin-left: 0; }
+  .gameday .mopt { grid-template-columns: 70px minmax(0, 1fr) 50px; }
+  .gameday .mopt .who { grid-column: 1 / -1; grid-row: 2; display: none; }
+  .gameday .lb .hide-sm, .gameday .fgt .hide-sm { display: none; }
+  .gameday .lb .sm-only { display: inline; }
+  .gameday .lb small.sm-only { display: block; }
+  .gameday .ratebar { width: 56px; }
+  .gameday .rv-row > summary .bot .conf .lt { display: none; }
+}
+
+/* ---------- React port only ---------- */
+.gameday .top5 { list-style: none; margin: 0; padding: 0; }
+.gameday .top5 button { width: 100%; background: none; border: 0; border-top: 1px solid var(--line); text-align: left; cursor: pointer; font-family: inherit; color: inherit; }
+.gameday .top5 li:first-child > button { border-top: 0; }
+.gameday .top5 button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.gameday .rv-rows { list-style: none; margin: 0; padding: 0; }
+.gameday .rv-rows > li:last-child .rv-row { border-bottom: 0; }
+.gameday .rv-loading { margin: 0; padding: 0 18px 18px; font-size: 13px; display: flex; gap: 8px; align-items: center; }
+.gameday .fgkey { justify-content: flex-end; font-size: 11px; text-transform: none; letter-spacing: 0; }
+.gameday .calls .bar > span { display: block; height: 100%; min-width: 2px; }
+.gameday .calls .bar > span:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.gameday .rv-h .wkstep:empty { display: none; }
+

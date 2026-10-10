@@ -32,6 +32,10 @@ SCANNED_GETS = [
     "/api/health",
     # LD02: Game day (scanned with leaky ESPN text in test_app_live.py)
     "/api/live/2026/5/games",
+    # LD03: the decision review (the empty state here; scanned with planted text, a key-shaped
+    # string and the root's path in test_app_decision_review.py)
+    "/api/live/2026/5/review",
+    "/api/live/2026/season-review",
 ]
 
 
