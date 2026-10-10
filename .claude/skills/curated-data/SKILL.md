@@ -183,6 +183,15 @@ Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/particip
 - **nflfastR's own models:** `xpass` was fit on 2006-2019 and the EP / WP models on seasons through 2019, so `vegas_wp`, `wp`, `xpass` are in-sample baselines before 2020 (an LD00 pass model lost every season 2014-2019 to `xpass` and won every season 2020-2025).
 - **`ep`** isn't in the live package's play columns: read it straight from `plays/*.parquet` when needed.
 
+## Quirks found in LD01 (checked live 2026-10-10)
+- **`espn_scoreboard`** maps every 2026 `espn_event_id` to our `game_id` (93 games through week 6 on 2026-10-10); ESPN's codes are `home_team_espn` / `away_team_espn` (WSH, LAR), canonical in `home_team` / `away_team`. Prefer it to matching on teams and dates.
+- **`games.roof` is null for unplayed games at retractable-roof stadiums** (34 of 2026's 272 games on 2026-10-10: AT&T, State Farm, Mercedes-Benz, Lucas Oil, NRG / "Reliant Stadium" ...); nflverse fills `closed` / `open` after the game. AT&T Stadium: closed in 109 of 112 games with a value. A pre-game reader needs a fallback (the stadium's usual roof).
+- **`lines` keeps only the latest snapshot per (game, source, provider)** (`snapshot_date` = the day of the last ingest, e.g. all 2026 rows 2026-10-06): no line history. For a played game the `nflverse_schedules` row is the closing line and equals `plays.spread_line`; `odds_api` / `espn` rows saved on or after game day could be in-game lines.
+- **nflverse play ids vs ESPN:** ESPN's play id is its event id + nflverse's `play_id` for every snap (`40187298040` = event 401872980, play 40); timeout rows differ (ESPN 4832 vs nflverse 4855 for the same timeout), and nflverse numbers some timeout rows out of order (its `order_sequence` is right, its `play_id` isn't): sort by `order_sequence`.
+- **`plays.posteam_timeouts_remaining` / `defteam_timeouts_remaining` are the counts before the snap** (a timeout called at the same clock just before the snap is already counted, even when its `play_id` is larger).
+- **Weeks 1-4 of 2026 had three overtime games** (2026_01_NO_DET, 2026_02_IND_KC, 2026_02_GB_NYJ): each team starts the regular-season OT period with 2 timeouts.
+- **Curated `plays` lag the games:** on Saturday 2026-10-10, Thursday's week-5 TB@DAL wasn't in curated `plays` yet (the last curate ran on Tuesday's weekly run). `nflreadpy.load_pbp([season])` reads nflverse's latest file (after `configure_tool_env(paths)` it lands in nflreadpy's download cache, `cache/nflreadpy`; never write curated data from it).
+
 ## Recipes
 
 **Open the data:**

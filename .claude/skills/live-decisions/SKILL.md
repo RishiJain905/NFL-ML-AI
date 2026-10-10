@@ -1,6 +1,6 @@
 ---
 name: live-decisions
-description: How the live 3rd- and 4th-down bot is built, trained, backtested, scored and tested (LD00+, documentation/live-decisions/). Use when touching src/nflengine/live/ or tests/live/, the six decision models (wp, gain, fg, punt, kickoff, pass), the decision engine (go / field goal / punt, the 3rd-down if-stopped table, confidence labels and the bootstrap gate), `nfl live train | backtest | call`, the `live-decision-models` W&B artifact and its own production alias, the `live:` block of settings.yaml, or when a call looks wrong. Also covers the no-touch rule (D107) and the production-unchanged check every LD / PC / AE phase closes with.
+description: How the live 3rd- and 4th-down bot is built, trained, backtested, scored and tested (LD00+, documentation/live-decisions/). Use when touching src/nflengine/live/ or tests/live/, the six decision models (wp, gain, fg, punt, kickoff, pass), the decision engine (go / field goal / punt, the 3rd-down if-stopped table, confidence labels and the bootstrap gate), ESPN's live feed (LD01: the client, the state parser and its quirks, replay, latency, the parity check vs nflverse), `nfl live train | backtest | call | games | replay | latency | parity`, the `live-decision-models` W&B artifact and its own production alias, the `live:` block of settings.yaml, or when a call looks wrong. Also covers the no-touch rule (D107) and the production-unchanged check every LD / PC / AE phase closes with.
 ---
 
 # Live decisions (the 3rd / 4th-down bot)
@@ -25,8 +25,14 @@ Spec: `documentation/live-decisions/README.md` (+ phase files LD00-LD03). Plain-
 | `decide.py` | `Engine(models, cfg, threads=4)`: `fourth_down(state, bootstrap=True|False|"all")` → `Decision`, `third_down(state)` → `ThirdDown` (convert %, pass %, the if-stopped table), `fourth_downs(states)` for backtests; `kneel_out`, `wp_row`, `compress` |
 | `train.py` | `run_train` (`nfl live train`), `run_checks` (hand-made calls, timing, the bootstrap gate), `production_folder` / `load_production` |
 | `backtest.py` | `run_backtest` (`nfl live backtest`, leave one season out), `ship_verdict` |
+| `espn.py` (LD01) | `EspnClient`: `scoreboard(season, week)`, `game(event)`, `summary(event)` -> `Fetched` (`data`, `fetched_at`, `ms`, `cached`, `stale`, `error`, `age_s()`); `check_url` (only `https://site.api.espn.com`), `check_event_id` (digits), `espn_week` (playoffs = type 3, weeks 1/2/3/5); `EspnError` (message safe to show) |
+| `state.py` (LD01) | `GameContext` + `load_contexts(season)` -> `Contexts` (`game_id_for`, `context(event, json)`; curated `games`, `lines`, `espn_scoreboard`, `weather_forecasts`, read only); `pre_game_lines`; `build_state(ctx, Snap)` (the one builder for live and replay); `parse_event(event, ctx, fetched_at, summary)` -> `LiveState` (`state` or `reason`, `warnings`, `is_decision`); ESPN helpers `event_teams`, `summary_plays`, `opening_receiver`, `play_times`, `last_real_play`; `plain` (text as data) |
+| `replay.py` (LD01) | `replay(summary, ctx)` -> `ReplayPlay` list (state, choice, converted, timeouts from text, score before, scoring-play snap clock), `decision_plays`, `load_summary` (saves finished games under `live/summaries/`), `timeout_window`, `choice_of`, `team_names`, `scoring_start_clock` |
+| `latency.py` (LD01) | `run_latency` (`nfl live latency`: game every 2 s, summary every 20 s, JSONL log), `summarize` (lag, lead, 4th-down lead) |
+| `parity.py` (LD01) | `run_parity` (ESPN replay vs nflverse on 3rd / 4th downs), `decision_parity` (the same 4th downs scored from both sources) |
+| `show.py` (LD01) | terminal text: `header_lines`, `fourth_lines`, `third_lines`, `replay_row`, `game_rows`, `down_text`, `spot` |
 
-Data on D:: `models/live-decisions/<first>-<last>_<UTC stamp>/` (wp.txt, gain.txt, pass.txt, gain_boot/NN.txt, fg.json with the bootstrap coefficients, punt.json, kickoff.json, pat.json, meta.json, checks.json) and `models/live-decisions/production.json` (the pointer the live code loads; the app reads files, not the alias). Backtests: `runs/backtests/live-decisions/<label>/`.
+Data on D:: `models/live-decisions/<first>-<last>_<UTC stamp>/` (wp.txt, gain.txt, pass.txt, gain_boot/NN.txt, fg.json with the bootstrap coefficients, punt.json, kickoff.json, pat.json, meta.json, checks.json) and `models/live-decisions/production.json` (the pointer the live code loads; the app reads files, not the alias). Backtests: `runs/backtests/live-decisions/<label>/`. The feed's files (`paths.live_data` = `{root}/live/`, **not** `paths.live`, which rehearsal paths use for the real root): `summaries/<event>.json.gz`, `latency/<event>.jsonl`, `parity/`, `probe/` (ESPN responses + Wayback live scoreboards from 2026-10-10).
 
 ## 3. Commands
 
@@ -35,7 +41,12 @@ uv run nfl live backtest                 # LOSO 2014-2025, W&B group live-decisi
 uv run nfl live backtest --smoke --no-wandb --no-save   # two seasons, a code check
 uv run nfl live train --promote          # fit 2010-2025, checks, artifact live-decision-models:production
 uv run nfl live call --state '{"season": 2025, "score_diff": 0, "game_seconds": 2400, "half_seconds": 600, "down": 4, "ydstogo": 1, "yardline_100": 40}'
-uv run pytest -q tests/live              # 294 unit tests (stub models, no data, ~6 s)
+uv run nfl live games [--week N]         # ESPN's games, event ids, status, down & distance (1 call)
+uv run nfl live call --event ID [--json] # a game right now (+ the summary in the first half / on down -1)
+uv run nfl live replay --event ID [--downs 4] [--bootstrap] [--refresh]
+uv run nfl live latency --event ID --minutes 200   # live lag log -> live/latency/<event>.jsonl
+uv run nfl live parity --season 2026 --weeks 1-5 [--decisions ev1,ev2]
+uv run pytest -q tests/live              # unit tests (stub models, fixtures, fake transport; no data, no network)
 uv run pytest -q -m integration tests/live/test_bundle_integration.py   # the promoted bundle
 ```
 
@@ -65,6 +76,22 @@ uv run pytest -q -m integration tests/live/test_bundle_integration.py   # the pr
 - **The bot is aggressive** (go on 51% of 4th downs vs coaches' 17%). It comes from the 4th-down conversion chances (between the 3rd-down rate and the attempted-4th-down rate), not the WP model: an engine valuing the same futures with nflfastR's `ep` was *more* aggressive. Don't "fix" it inside LD01 / LD02; LD03 measures the bot's chances against real attempts.
 - Timing on this machine: 3rd & 6 14.6 ms, 3rd & 10 19.6 ms (budget 20): any engine change must re-run `run_checks` on an idle machine.
 
+## 5c. The live feed (LD01): rules that bite
+
+- **Only `site.api.espn.com`**, through `EspnClient` (never `ingest/http.PoliteClient`: `ingest/` is protected, and the live rules differ). 2 s per game (game + summary share it), 0.5 s between any two requests, 5 s timeout, back-off 2 -> 60 s, stale answers instead of errors when there's an earlier one. `follow_redirects=False`.
+- **`yardLine` is from ESPN's home team's goal line** (`100 - yardLine` when the offense is ESPN's home team). Never read `yardsToEndzone` (mirrored on home punts, 0 on timeouts). ESPN's home can differ from nflverse's at neutral sites: yard lines use ESPN's, `home` / spread sign use nflverse's.
+- **`down = -1`** = no snap pending (TV timeout before a kickoff or try); a team timeout keeps the down. The summary fallback for the next snap is cut at the scoreboard's `lastPlay.id` and refused when the summary doesn't have that play yet (separate requests: Sol review). `End of Half` (0:00 Q2) shows a bogus 1st & 10 with no `possession`: `parse_event` returns "halftime".
+- **The situation's `lastPlay` has no `wallclock`**: snap times come from the summary (joined by play id). Summary plays have only `clock.displayValue` (no `value`); it's the **snap** clock except on scoring plays (the clock at the score: `scoring_start_clock` estimates the snap).
+- **ESPN play id = event id + nflverse `play_id`** for snaps (timeouts' ids differ). The summary has no timeouts remaining: count "Timeout #N by TEAM" per half (2 in regular-season OT) plus lost challenges ("... challenged ..., and the play was Upheld", "(Timeout #N.)" sometimes missing). Scores move only on `scoringPlay` rows (stray 0-0 on some timeout / two-minute-warning rows). PATs and two-point tries are inside the touchdown play's text; the TD row's score includes the try.
+- **ESPN's play type isn't what happened** (`choice_of` reads the text first): "No Play" in the text = a penalty whatever the type (73 snaps typed Rush / Pass / Punt in 2026 weeks 1-5, all nflverse `no_play`); " punts " / "field goal is" = punt / fg whatever the type (a fumbled punt return is typed "Fumble Recovery (Opponent)"); a fake punt is "Rush" + "(Punt formation)" = go.
+- **Spread / total are pre-game only** (`pre_game_lines`: nflverse -> Odds API median -> ESPN, the last two only if saved before kickoff day **in Eastern time**: `snapshot_date` is the ingest machine's local date, and a Thursday 20:15 ET game is Friday in UTC; Sol review).
+- **Latency:** `pre_snap_penalty(text)` ("No Play" with no play described before "PENALTY") marks false starts / delays of game; they are logged but never counted as snaps or the "next snap". A restart keeps each play's earliest sighting; Ctrl+C still writes the `end` report.
+- **Parity gate:** `share_equal` counts states found on one side only as not equal (a feed that drops plays can't pass); `share_equal_overlap` is the share among states both sides have. Never ESPN's live odds (null in game anyway).
+- **Roof:** `games.roof` is null at retractable-roof stadiums until nflverse fills it after the game: `load_contexts` uses the stadium's usual roof, then ESPN's `venue.indoor`.
+- **ESPN text is data:** `plain()` in the package, `rich.markup.escape` in the CLI, `clean()` in the app (LD02). A test prints `[bold red]` literally.
+- **Live fixtures:** our ingest never captured a game in progress; real `situation` blocks came from Wayback captures of the scoreboard (`web.archive.org/cdx/search/cdx?url=site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard&matchType=prefix`, fetched with `.../web/<ts>id_/<url>`). Trimmed copies live in `tests/fixtures/live/`.
+- **Rich in tests:** `CliRunner` gives Rich an 80-column console, which wraps table cells and long lines; set `cli.console._width` (monkeypatch) before asserting on text.
+
 ## 6. Tests
 
 - `tests/live/test_live_{schema,data,models,decide,train_cli}.py` (unit, stubs in `tests/live/live_stubs.py`): schema types and edges, data frames on hand-made plays, models (monotone wp, legal_gain, leakage in `fit_all`, save / load), the engine's rules worked by hand (game over, halftime, kneel-out, miss spot, safety, the table, labels, the gate), CLI.
@@ -72,6 +99,7 @@ uv run pytest -q -m integration tests/live/test_bundle_integration.py   # the pr
 - `tests/live/test_live_sol_fixes.py`: the Sol review's edge cases (playoff OT, halftime timeouts, whole-number floats, zero refits, the try after a return TD; D115).
 - **Test basenames must be unique across `tests/`** (no `__init__.py`: two `test_backtest.py` files break collection). Prefix new files `test_live_`.
 - `tests/live/test_bundle_integration.py` (`-m integration`): the hand-made calls, timing and meta on the promoted bundle.
+- LD01: `test_live_espn.py` (the client on `httpx.MockTransport` + fake clocks: allowlist, redirects, the 2 s / 0.5 s clocks, back-off, stale answers), `test_live_state.py` and `test_live_replay.py` (the parser and replay on `tests/fixtures/live/`, trimmed real ESPN JSON; its README says where each came from), `test_live_parity.py`, `test_live_latency.py` (a scripted game), `test_live_feed_cli.py` (`nfl live call --event / games / replay / latency / parity` with a fake client and the stub engine). **No test may reach the network**: patch `nflengine.live.espn.EspnClient` or pass a `MockTransport`.
 
 ## 7. The production-unchanged check (how LD00 ran it)
 

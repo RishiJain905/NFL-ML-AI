@@ -2,7 +2,7 @@
 
 A personal ML system that produces a weekly NFL digest during the season. It shows game win probabilities and predicted scores, team trends, a look back at last week's tracking stats, projections for offensive and defensive players, and insights from a knowledge graph. It tracks its own accuracy every week. A separate research track models player movement on the NFL Big Data Bowl tracking data.
 
-Last updated: 2026-10-08 (three new feature tracks planned: Live decisions, Play calling, Ask the Engine; D107–D112). Before that 2026-10-06 (CR03: the control room's MLOps tab and season pages; the control-room track is complete).
+Last updated: 2026-10-10 (LD01: the live ESPN feed, replay and the parity check; D116). Before that 2026-10-08 (three new feature tracks planned: Live decisions, Play calling, Ask the Engine; D107–D112). Before that 2026-10-06 (CR03: the control room's MLOps tab and season pages; the control-room track is complete).
 
 ## Start here
 
@@ -20,7 +20,7 @@ Three tracks added after the control room (D107–D112), each with a spec and ph
 
 | Track | Folder | What it adds |
 |---|---|---|
-| Live decisions (LD00–LD03; **LD00 done**: the six models, the engine, `nfl live train / backtest / call`; [guide](guides/live-decisions.md)) | [`live-decisions/`](live-decisions/README.md) | A live 3rd- and 4th-down bot: pick a game in progress, press **Check this play**, get go / kick / punt with win probabilities, a confidence label and "is this team good at this?"; a weekly decision review. New win-probability, yards-gained, field-goal, punt and pass models; ESPN's live feed |
+| Live decisions (LD00–LD03; **LD00–LD01 done**: the six models, the engine, ESPN's live feed, replay and the parity check, `nfl live train / backtest / call / games / replay / latency / parity`; [guide](guides/live-decisions.md)) | [`live-decisions/`](live-decisions/README.md) | A live 3rd- and 4th-down bot: pick a game in progress, press **Check this play**, get go / kick / punt with win probabilities, a confidence label and "is this team good at this?"; a weekly decision review. New win-probability, yards-gained, field-goal, punt and pass models; ESPN's live feed |
 | Play calling (PC00–PC03) | [`play-calling/`](play-calling/README.md) | Team tendency pages (offense and defense, drawn like a playbook), a weekly forecast of each team's calls against its next opponent, and a play browser with reconstructed play animations |
 | Ask the Engine (AE00–AE04) | [`ask-the-engine/`](ask-the-engine/README.md) | Questions in plain English answered from the graph or the curated data, with the query shown; a second **history graph** with every play since 2018; "six degrees" connections; graph experiments; a shortest-path benchmark |
 
@@ -53,7 +53,7 @@ One guide per major technology or component, written for a reader who's new to i
 | [Player projections](guides/player-projections.md) | The player model (P06): LightGBM, quantile ranges, count distributions, SHAP drivers in a few minutes; how projections become the watch list, tough spots, the look-back and the accuracy scoreboard; files, W&B runs, commands, how to change it safely; P08: chances of a TD / sack / interception (calibrated), QB TDs and interceptions, CB/S coverage |
 | [Season operations](guides/season-operations.md) | The season beyond one week (P10): the 2026–27 calendar, the Tuesday season log, **rehearsals** (the live steps on any week in a sandbox), what playoff weeks do, the season review, roster churn, the pre-season checklist, Big Data Bowl 2027 |
 | [The control room](guides/control-room.md) | The local web app (CR00–CR03, complete): starting it (`uv run nfl app`), what each part of the screen shows and the week-status rules, each week tab and the files it reads (CR01), the three pipeline views, running the week from it (pre-flight, Run, the live views, resume, Saturday, rehearsal mode; CR02), the MLOps tab and the season pages and what each reads (CR03), how the app reads W&B (local first, the cache, working offline), how a run is launched, themes and modes, how it's wired (FastAPI + React), the safety rules in plain words, troubleshooting, how to extend it safely |
-| [Live decisions](guides/live-decisions.md) | The 3rd- and 4th-down bot (LD00+): what a 4th-down model is, the six models, how a call is computed (worked through on a real 2025 4th down), the confidence labels and the bootstrap gate, the 3rd-down check, commands, files, limits |
+| [Live decisions](guides/live-decisions.md) | The 3rd- and 4th-down bot (LD00+): what a 4th-down model is, the six models, how a call is computed (worked through on a real 2025 4th down), the confidence labels and the bootstrap gate, the 3rd-down check; ESPN's live feed, from its JSON to a game state (a real 4th & Goal), freshness, the TV delay and "as of", the latency log, replaying a game and the parity check vs nflverse (LD01); commands, files, limits |
 | [Weekly operations](guides/weekly-operations.md) | How the weekly run is operated (P07, manual-first): the calendar (which week, the deadline, special weeks), `nfl weekly run --auto` and its exit codes, the lock, Neo4j start-up, the run records and W&B pipeline run, alerts, drift checks and their 2019–2025 replay, the season dashboard, the Saturday injury update, time-travel simulations |
 
 ## Weekly graph queries

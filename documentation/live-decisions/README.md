@@ -33,12 +33,29 @@ Next to the call he sees whether this team tends to pull it off: its conversions
 - **Quirks:**
   - `yardLine` counts from the **home** team's goal line, not the offense's.
   - `yardsToEndzone` was wrong in about 1 snap in 10 (0 on timeouts, mirrored on home punts): derive yards to goal from `yardLine` and possession.
-  - Timeouts in goal-to-go read `down = -1, distance = 0`.
+  - Timeouts in goal-to-go read `down = -1, distance = 0`. (LD01: in every archived case it was an "Official Timeout" right after a score, a kickoff or try next, with a junk yard line and no `possession`; see below.)
   - The summary's plays have no timeouts remaining (nfl4th parses "Timeout #N by TEAM").
   - Team codes differ from nflverse (WSH / WAS, LAR / LA).
   - Fake punts are typed "Rush" with "(Punt formation)" in the text.
   - No wind in the feed (temperature and conditions only); `venue.indoor` exists.
 - `api.nfl.com` needs a token (HTTP 401). The licensed option is Sportradar (2 s updates, paid).
+
+**Checked again in LD01 (2026-10-10), with the 2026 summaries of weeks 1–5 and archived live scoreboards:**
+- Every path above still holds. Sizes today (JSON / gzipped): the scoreboard 270 KB / ~22 KB (ESPN caches it 6 s), one game 18 KB / ~3.4 KB (1 s), a summary ~600 KB / ~50 KB (3 s); answers in 45–170 ms.
+- **The `situation`'s `lastPlay` has no `wallclock`**; snap times come only from the summary (joined by play id). In game, `competitions[0].odds` is null.
+- **ESPN's play id = event id + nflverse's `play_id`** for every snap (`40187298040` = event 401872980, play 40). Timeout rows' ids differ.
+- **Summary clocks:** `clock.displayValue` only (no `value`). It's the **snap** clock (equal to nflverse's `quarter_seconds_remaining` on all 8,813 non-scoring snaps of weeks 1–4), except on **scoring plays, where it's the clock at the score**.
+- **Summary scores** (`homeScore` / `awayScore`) are after the play, the try included (extra points and two-point tries are inside the touchdown play's text, not rows of their own); some timeout and two-minute-warning rows show 0–0, and a plain play can carry a stray score: only `scoringPlay` rows move the score.
+- **`down = -1`** means no snap is pending (a TV timeout before a kickoff or a try); a team timeout keeps the down. **At halftime** the state stays `in` (detail "Halftime") and the situation keeps a stale 1st & 10 with no `possession` and no `downDistanceText`: only `lastPlay.type.text == "End of Half"` tells. In summaries, Official Timeout, two-minute-warning and End Period rows carry a down and a yard line too (a two-minute warning can read "4th & 9"): they're not snaps.
+- **Roof:** the scoreboard's `venue.indoor` exists; the summary's `gameInfo.venue` has no `indoor` (65 of 65).
+- **Timeouts in the summary:** "Timeout #N by TEAM" (GSIS codes too: BLT, HST, CLV, ARZ), "Timeout #4" exists (an excess timeout), some "Timeout"-typed rows are really "Official Timeout" or the two-minute warning, and a **lost challenge costs a timeout that only the play text shows** ("Indianapolis challenged …, and the play was Upheld. (Timeout #1.)"; the marker is missing in 4 of 14).
+- **The play's type isn't what happened:** a play wiped out by a penalty is often typed as the play that was run ("Rush", "Pass Incompletion", even "Punt": 73 snaps in weeks 1–5, all `no_play` in nflverse; 655 more are typed "Penalty"), and a punt with a fumbled return is typed "Fumble Recovery (Opponent)". Read the text: "No Play", " punts ", "field goal is" decide; a fake punt is typed "Rush" with "(Punt formation)".
+- **Rare text and typing slips:** 9 of 11,976 plays have short-form text ("Kirk Cousins Pass Complete for 5 Yds to …") that drops challenges and penalty details; a real play can be typed "End Period"; the start spot can be a yard off ESPN's own text, and a spot correction can be missed.
+- At both 2026 neutral sites (Melbourne, Rio) ESPN's home team is nflverse's.
+
+**Parity with nflverse (LD01):** replaying every finished 2026 game (weeks 1–5, 65 games), **2,745 of 2,788 3rd / 4th-down states equal nflverse's (98.5%; the 3 on one side only count as not equal)**; the offense, down, quarter and score always agree; the rest are scoring-play clocks (14), the two feeds' timeout logs (12), nflverse charging a lost challenge one play early (8) and one-yard spot differences (6). The same engine on the same 73 4th downs (five games) makes the same call from both sources, 73 of 73 (guide §8).
+
+**Measured lag on a live game:** run on Sun 2026-10-11 (`nfl live latency`; LD01's dated step, PROGRESS → Season calendar); the numbers go here.
 
 **Timing:**
 - In week 4 a 3rd-down snap came a median 42 s before the next 4th-down snap (p10 36 s, p90 51 s, 219 pairs).
@@ -142,3 +159,10 @@ Each phase adds what it built and any differences from this spec here, with deci
   - **State semantics:** the second-half kickoff goes to the team that didn't receive the opening one (2,227 / 2,227 games); timeouts are never missing on a snap; `games.neutral_site` (not the raw `location`) marks neutral sites.
 - **Differences from this spec:** the bootstrap uses 20 refits and only for calls closer than 5 points (the 20 ms budget; D113); the win-probability model is boosted from a logistic base (D113, model card → Tuning); goal-to-go defensive-penalty first downs are left out of the yards-gained model; the bot's live use reads `models/live-decisions/production.json` (the app reads files, not the alias).
 - **For LD01:** build a `GameState` (offense's side: `yardline_100` from `yardLine` + possession, both timeouts, the pre-game spread and total from the offense's side, `season`, `home` +1 / 0 / −1, `receive_2h_ko` from the opening kickoff); `GameState` rejects bad input with a readable message; `Engine(load_production()).fourth_down(state)` / `.third_down(state)`.
+
+### LD01: the live feed and replay (2026-10-10; D116, D117)
+
+- **Built:** `src/nflengine/live/` + `espn.py` (the client: one host, 2 s per game, 0.5 s between requests, 5 s timeout, back-off 2 → 60 s, stale answers instead of errors), `state.py` (`load_contexts` from curated games / lines / espn_scoreboard / weather_forecasts, `build_state`, `parse_event` → `LiveState`), `replay.py` (a summary as if live; timeouts, scores and scoring-play clocks rebuilt), `latency.py`, `parity.py`, `show.py`; `nfl live games | call --event | replay | latency | parity`; `paths.live_data` (`{NFL_DATA_ROOT}/live/`: `probe/`, `summaries/`, `latency/`, `parity/`). Tests: trimmed real ESPN JSON in `tests/fixtures/live/`, a fake transport (no test reaches the network). Guide [`guides/live-decisions.md`](../guides/live-decisions.md) §7–8, runbook → Game day, skill `live-decisions` §5c.
+- **Results:** state parity 98.5% (2,745 / 2,788, target 98%); decision replay 73 / 73; production unchanged (guard test + the week-5 rehearsal identical). The live lag: Sunday 2026-10-11 (above).
+- **Differences from this spec / the phase file:** `nfl live call --event` extends LD00's `call` (`--state` still works); `nfl live parity` added (the check as a command); finished games' summaries are kept under `live/summaries/` (ESPN is asked once per game); the CLI reads the summary too in the first half (who received the opening kickoff) and when the scoreboard shows `down = -1`; a 0.5 s spacing between any two requests on top of the 2 s per game; a null `games.roof` (retractable roofs before the game) falls back to the stadium's usual roof, then ESPN's `venue.indoor`; outdoor wind and temperature come from nflverse (played games) or the pre-game forecast; no W&B for the parity check (a data check, not a model run); the latency measurement moved to Sunday (Rishi: close now, measure Sunday).
+- **For LD02:** call `EspnClient.game(event)` (one shared client in the app, so the 2 s rule and the back-off hold for every browser tab), `load_contexts(season).context(event, json)` (cache it per season), `parse_event(...)` and `Engine(load_production(), decide_settings())`. Show `LiveState.reason` when there's no state, `warnings` as notes, `Fetched.stale` / `error` / `age_s()` as the "as of" line, and ESPN's text through `clean()`. A first-half check needs the summary (`opening_receiver`): fetch it once per game and keep the answer.

@@ -92,6 +92,11 @@ uv run nfl graph coaching-seed --refresh   # rebuild config/coaching_seed.csv fr
 uv run nfl live backtest           # LD00: leave-one-season-out backtest of the 3rd / 4th-down bot's models (W&B live-backtest)
 uv run nfl live train --promote    # LD00: fit 2010-2025, run the decision checks, log + promote live-decision-models
 uv run nfl live call --state '{"season": 2025, "score_diff": 0, "game_seconds": 2400, "half_seconds": 600, "down": 4, "ydstogo": 1, "yardline_100": 40}'   # one call
+uv run nfl live games             # LD01: this week's games from ESPN's live feed (event ids, score, down & distance)
+uv run nfl live call --event 401872981    # LD01: a game right now: its next snap and the 3rd / 4th-down call
+uv run nfl live replay --event 401872980  # LD01: every 3rd / 4th down of a game, the bot next to the coach
+uv run nfl live latency --event 401872981 --minutes 200   # LD01: ESPN's lag on a live game
+uv run nfl live parity --season 2026 --weeks 1-5          # LD01: ESPN's states vs nflverse play-by-play
 # guide: documentation/guides/live-decisions.md
 
 uv run pytest                      # tests (integration tests excluded by default)
