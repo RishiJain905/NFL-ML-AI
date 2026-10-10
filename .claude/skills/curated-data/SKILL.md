@@ -192,6 +192,15 @@ Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/particip
 - **Weeks 1-4 of 2026 had three overtime games** (2026_01_NO_DET, 2026_02_IND_KC, 2026_02_GB_NYJ): each team starts the regular-season OT period with 2 timeouts.
 - **Curated `plays` lag the games:** on Saturday 2026-10-10, Thursday's week-5 TB@DAL wasn't in curated `plays` yet (the last curate ran on Tuesday's weekly run). `nflreadpy.load_pbp([season])` reads nflverse's latest file (after `configure_tool_env(paths)` it lands in nflreadpy's download cache, `cache/nflreadpy`; never write curated data from it).
 
+## Quirks found in LD02 (checked live 2026-10-10)
+
+- **Drives in `plays`:** kickoff and extra-point rows carry the *previous* drive's `fixed_drive` and `fixed_drive_result` under the other team's `posteam` (2025: 90 drive numbers with two posteams, 47 drives with no snap), and `drive_inside20` is null on extra-point rows. Count a team's drives from rows with a down (`down` not null): red-zone drives 1,824 in 2025, not 1,826.
+- **Punts:** a blocked punt has `kick_distance` 0 and `return_yards` 0 (10 in 2025); a touchback punt has `return_yards` 0; no null returns or punters on 2025 punts. Net = (gross - returns - 20 x touchbacks) / punts.
+- **Kickers:** 6 of 1,330 2025 extra-point rows have a null `kicker_player_id`; `kick_distance` is never null on 2025 field goals.
+- **Coaches:** `plays.home_coach` / `away_coach` equal `games`' on all 285 2025 games; 2026 still carries nflverse's errors (ARI Gannon, ATL Morris, BUF McDermott, LV "Kubliak"): apply `config/head_coach_fixes.csv` (D92; the graph's reader, or `live/context.coach_fixes`). NYG's John Harbaugh is listed right.
+- **`games.kickoff_utc`** is tz-aware UTC (compare with an aware `now`); 2026 week 5's last kickoff is Monday 2026-10-13T00:15Z, so "the week being played" must run past the calendar's switch at that kickoff (the Game day tab: until 6 h after it).
+- **ESPN's saved summaries** (`live/summaries/`): one 2026 "Official Timeout" row has a `wallclock` a day late (2026-09-12 in a 09-11 game): order plays by `sequenceNumber`, and even out times that run ahead of the next play's.
+
 ## Recipes
 
 **Open the data:**

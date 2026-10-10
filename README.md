@@ -39,6 +39,7 @@ uv run nfl data-status             # newest week per source, row counts, join ra
 npm --prefix web ci; npm --prefix web run build   # once: build the control room's web app (CR00)
 uv run nfl app                     # the control room on http://127.0.0.1:8765: the Run button, every week tab, MLOps and the season pages (CR00-CR03; local only; documentation/guides/control-room.md)
 uv run nfl app --rehearsal         # the Run button rehearses the newest published week instead (nothing live touched)
+uv run nfl app --live-replay 401872966 --replay-at 2026-10-04T15:57:15   # LD02: the Game day tab on a replayed week (no ESPN call)
 uv run nfl ingest --check-ready --week N   # are week N's games final and in play-by-play?
 
 uv run nfl ratings build           # team_ratings / team_elo / team_trends tables (P02)

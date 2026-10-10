@@ -264,16 +264,24 @@ Each summer, before week 1 (for 2027: August 2027). The dated plan is in `docume
 6. **Big Data Bowl:** check whether the next edition is announced (usually in the fall); see the [season operations guide](guides/season-operations.md).
 7. ✋ **Ready for the season:** Rishi signs off.
 
-### Game day: check a live 3rd or 4th down (LD01)
+### Game day: check a live 3rd or 4th down (LD01, LD02)
 
-The live bot reads ESPN's unofficial feed and never changes anything (no pipeline, no models, no W&B). Background: [live-decisions guide §7–8](guides/live-decisions.md).
+The live bot reads ESPN's unofficial feed and never changes anything (no pipeline, no models, no W&B). Background: [live-decisions guide §7–9](guides/live-decisions.md).
 
+**In the control room (LD02):**
+1. `uv run nfl app`, the current week, the **Game day** tab (after Graph). The list shows every game (on now, later, final) and refreshes every 30 s while the tab is open; **Refresh** asks now.
+2. Pick the game you're watching; on a 3rd or 4th down you care about, press **Check this play**. The card shows the call (4th down: go / field goal / punt, the win chance after each, how sure; 3rd down: the chance to convert and to pass, and the if-stopped table) and, under it, **Is this team good at this?** Check on **3rd down**: ESPN can trail your TV, and the table already has the 4th-down call for every distance.
+3. Read the stamp: **"ESPN as of 8:41:07 PM · last play 12 s ago"**. If the last play isn't the one you just watched, ESPN hasn't caught up; the card says so when the last play is over 55 s old. "No new play since your last check" means ESPN hasn't moved (a commercial, a review).
+4. The first check after starting the app takes ~1 s more (the models load), and the first check of a game in the first half ~2 s (it reads who received the opening kickoff, once per game).
+5. **Practice outside game times:** `uv run nfl app --live-replay 401872966 --replay-at 2026-10-04T15:57:15` serves that game's week from the saved play logs as if live (no ESPN call; a banner says so; `--replay-speed 4`, `--replay-lag 30` to vary it).
+
+**In a terminal (LD01):**
 1. `uv run nfl live games` lists this week's games with ESPN's event ids, status, score and down & distance.
-2. On a 3rd or 4th down you care about: `uv run nfl live call --event <id>`. It prints the score, ESPN's situation, an **as of** stamp (when ESPN answered, and the last play it knows) and the call: on 4th down go / field goal / punt with the win probability after each; on 3rd down the chance they convert, the chance they pass and the 4th-down call for every distance they could be left with. Check on **3rd down**: ESPN can trail your TV, and the table is ready before the 4th-down snap.
+2. On a 3rd or 4th down you care about: `uv run nfl live call --event <id>`. It prints the score, ESPN's situation, an **as of** stamp (when ESPN answered, and the last play it knows) and the call: on 4th down go / field goal / punt with the win probability after each; on 3rd down the chance they convert, the chance they pass and the 4th-down call for every distance they could be left with.
 3. If the last play shown isn't the one you just watched, ESPN hasn't caught up: wait a few seconds and run it again (at most one call per game every 2 s).
 4. After the game: `uv run nfl live replay --event <id>` shows every 3rd and 4th down with the bot next to the coach.
 
-**When ESPN fails:** a yellow line says so ("ESPN didn't answer (HTTP 503); showing its answer from 14 s ago"); with no earlier answer the command stops with the reason. After errors the client waits 2 s, then 4, 8 … up to 60 s. **If every check fails the same way**, ESPN has probably changed the feed: look at what `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard/<id>` returns now, fix `src/nflengine/live/state.py`, and add the new shape to `tests/fixtures/live/` (the steps of [An unofficial endpoint changed](#an-unofficial-endpoint-changed-p10) apply; nothing weekly depends on it).
+**When ESPN fails:** the card (or a yellow line in the terminal) says so ("ESPN didn't answer (HTTP 503). Showing the last good answer, from 3:57:50 PM"); with no earlier answer the card offers Try again and the command stops with the reason. After errors the client waits 2 s, then 4, 8 … up to 60 s. **If every check fails the same way**, ESPN has probably changed the feed: look at what `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard/<id>` returns now, fix `src/nflengine/live/state.py`, and add the new shape to `tests/fixtures/live/` (the steps of [An unofficial endpoint changed](#an-unofficial-endpoint-changed-p10) apply; nothing weekly depends on it).
 
 **Measuring the feed's lag** (LD01): `uv run nfl live latency --event <id> --minutes 200`, started a few minutes before kickoff; it logs to `live\latency\<event>.jsonl` and prints the median, p90 and worst lag at the end.
 
