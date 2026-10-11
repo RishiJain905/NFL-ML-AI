@@ -1,18 +1,24 @@
-// The Play calls tab (PC01; mockup: weekView): the week's matchups of tendencies, descriptive for
-// now (PC02 adds the forecast). The week's biggest matchup shifts (the server's sentences), then
-// each game with two columns: each offense against the other defense, one row per metric: what
-// the offense does, what the defense allows (or, for a defense's call, calls), the league.
+// The Play calls tab (mockup: weekView). PC02: once the week's forecast is made, the forecast view
+// comes first (the note, the made-after-kickoff note, the week's grade, the biggest expected
+// moves, each game's forecast rows: pages/explore/forecast.tsx), and PC01's tendencies so far sit
+// behind a switch. PC01 (no forecast): the week's biggest matchup shifts (the server's
+// sentences), then each game with two columns: each offense against the other defense, one row
+// per metric: what the offense does, what the defense allows (or, for a defense's call, calls),
+// the league; with the hint naming the command that makes the forecast.
 
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { usePlayCalls } from '../../api/client';
 import type { PlayCallsGame, PlayCallsMatchup, PlayCallsResponse, PlaycallMetric } from '../../api/types';
 import { MatchStrip } from '../../charts/MatchStrip';
 import { TipTarget } from '../../charts/TipTarget';
 import { TeamChip } from '../../components/TeamChip';
-import { Card, CardHeader, Notice } from '../../components/ui';
+import { Card, CardHeader, Notice, Segmented } from '../../components/ui';
 import { kickoffLabel } from '../../lib/format';
 import { ALLOWED_NOTE, fmtRate, perWord } from '../../lib/playcall';
 import { PlaycallEmpty } from '../explore/common';
+import { ForecastLegend } from '../../charts/ForecastStrip';
+import { BackfillNotice, ExpectedMoves, ForecastGames, HintNotice, WeekGrade } from '../explore/forecast';
 import { TabError, TabLoading, WarnNotice } from './WeekEmpty';
 
 const MINUS = '−';
@@ -121,18 +127,24 @@ function Game({ g, metrics, season }: { g: PlayCallsGame; metrics: Map<string, P
   );
 }
 
-function Calls({ r }: { r: PlayCallsResponse }) {
+function FtnNotice({ r }: { r: PlayCallsResponse }) {
+  if (!r.ftn_waiting.length) return null;
+  return (
+    <WarnNotice>
+      <b>FTN hasn't charted {r.ftn_waiting.length === 1 ? 'one game' : `${r.ftn_waiting.length} games`} yet:</b> {r.ftn_waiting.join(' · ')}.
+      Play-action, screens, RPO, motion, blitz and box rates wait for it.
+    </WarnNotice>
+  );
+}
+
+type View = 'forecast' | 'tendencies';
+
+/** PC01's view: the tendencies so far (the descriptive shifts only when the answer's are). */
+function Tendencies({ r }: { r: PlayCallsResponse }) {
   const metrics = new Map(r.metrics.map((m) => [m.metric, m]));
   return (
     <>
-      <Notice tone="accent">{r.note}</Notice>
-      {r.ftn_waiting.length ? (
-        <WarnNotice>
-          <b>FTN hasn't charted {r.ftn_waiting.length === 1 ? 'one game' : `${r.ftn_waiting.length} games`} yet:</b> {r.ftn_waiting.join(' · ')}.
-          Play-action, screens, RPO, motion, blitz and box rates wait for it.
-        </WarnNotice>
-      ) : null}
-      {r.shifts.length ? (
+      {r.shifts_kind === 'descriptive' && r.shifts.length ? (
         <Card>
           <CardHeader title="Biggest matchup shifts" sub="where a defense allows or calls something far from the league · in standard deviations of the 32 defenses" />
           <ol className="shifts">
@@ -175,6 +187,55 @@ function Calls({ r }: { r: PlayCallsResponse }) {
           <Game key={g.game_id} g={g} metrics={metrics} season={r.season} />
         ))}
       </div>
+    </>
+  );
+}
+
+function Calls({ r }: { r: PlayCallsResponse }) {
+  const hasForecast = r.forecast != null;
+  const [picked, setPicked] = useState<View>('forecast');
+  const view: View = hasForecast ? picked : 'tendencies';
+  return (
+    <>
+      {view === 'forecast' || !hasForecast ? <Notice tone="accent">{r.note}</Notice> : null}
+      {view === 'forecast' ? <BackfillNotice meta={r.forecast} /> : null}
+      <HintNotice hint={r.forecast_hint} />
+      <FtnNotice r={r} />
+      {hasForecast ? (
+        <div className="wintool">
+          <span className="eyebrow">Show</span>
+          <Segmented<View>
+            label="View"
+            options={[
+              { value: 'forecast', label: 'Forecast' },
+              { value: 'tendencies', label: 'Tendencies so far' },
+            ]}
+            value={view}
+            onChange={setPicked}
+          />
+          <span className="muted">
+            {view === 'forecast'
+              ? "each team's rate for this game, its 80% range and its rate so far"
+              : "each offense's rates so far next to what the other defense has allowed (no forecast)"}
+          </span>
+        </div>
+      ) : null}
+      {view === 'forecast' ? (
+        <>
+          <WeekGrade r={r} />
+          <ExpectedMoves r={r} />
+          <div className="sec-h">
+            <h2>Every game</h2>
+            <p>each team's calls for this game · the offense's, then the defense's · hover or focus a rate for its pieces</p>
+            <div className="right">
+              <ForecastLegend />
+            </div>
+          </div>
+          <ForecastGames r={r} />
+        </>
+      ) : (
+        <Tendencies r={r} />
+      )}
     </>
   );
 }

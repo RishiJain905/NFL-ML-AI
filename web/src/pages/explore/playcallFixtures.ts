@@ -167,7 +167,8 @@ export const TEAM: PlaycallTeamResponse = {
     games: [1, 2, 3, 4].map((week) => ({ week, game_id: `2026_0${week}_KC_X`, opponent: ['LAC', 'PHI', 'NYG', 'BAL'][week - 1], home: week % 2 === 0 })),
     series: [{ ...PROE, league: -0.019, points: [0.02, 0.06, -0.01, 0.08].map((value, i) => ({ week: i + 1, value, n: i === 2 ? 14 : 36 })) }],
   },
-  next_game: { season: 2026, week: 5, game_id: '2026_05_KC_JAX', opponent: 'JAX', home: false, kickoff: '2026-10-11T17:00:00Z' },
+  next_game: { season: 2026, week: 5, game_id: '2026_05_KC_JAX', opponent: 'JAX', home: false, kickoff: '2026-10-11T17:00:00Z', forecast: null, forecast_hint: null },
+  forecast_record: null,
   notes: ['FTN rates count a game 48 hours after kickoff.'],
 };
 
@@ -236,11 +237,13 @@ export const PLAY_CALLS: PlayCallsResponse = {
             { metric: 'play_action_rate', offense: cell(0.366, 0.241, 130), defense: cell(0.33, 0.241, 12), league: 0.241, shift: 2.1, same_way: true },
             { metric: 'blitz_rate', offense: cell(0.3, 0.311, 130), defense: cell(0.18, 0.311, 130), league: 0.311, shift: -2.4, same_way: false },
           ],
+          forecast: [],
         },
         {
           offense: 'JAX',
           defense: 'KC',
           rows: [{ metric: 'proe', offense: cell(-0.05, -0.019, 140), defense: cell(-0.06, -0.019, 140), league: -0.019, shift: -1.0, same_way: true }],
+          forecast: [],
         },
       ],
     },
@@ -248,6 +251,10 @@ export const PLAY_CALLS: PlayCallsResponse = {
   shifts: [
     { game_id: '2026_05_KC_JAX', offense: 'KC', defense: 'JAX', metric: 'play_action_rate', shift: 2.1, text: "KC's play-action meets JAX, which allows the league's second-most (33.0%, league 24.1%)." },
   ],
+  shifts_kind: 'descriptive',
+  forecast: null,
+  graded: null,
+  forecast_hint: null,
 };
 
 const NOT_BUILT_MESSAGE = 'No play-calling tables for 2026 yet: run `uv run nfl playcalling build --season 2026`.';

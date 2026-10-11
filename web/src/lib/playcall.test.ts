@@ -8,6 +8,7 @@ describe('play-calling formats', () => {
     expect(fmtRate(PROE, 0.037)).toBe('+3.7');
     expect(fmtRate(PROE, -0.019)).toBe('−1.9');
     expect(fmtRate(PROE, 0)).toBe('0.0');
+    expect(fmtRate(PROE, -0.0002)).toBe('0.0'); // rounds to zero: no sign (PC02, real week-5 PROE)
     expect(fmtRate(ADOT, 7.71)).toBe('7.7');
     expect(fmtRate(PROE, null)).toBe('—');
     expect(fmtDiff(PLAY_ACTION, 0.125)).toBe('+12.5 pts');

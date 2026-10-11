@@ -9,8 +9,11 @@ import type { PlaycallCell, PlaycallMetric, PlaycallSide, PlaycallWindow } from 
 type Fmt = Pick<PlaycallMetric, 'unit' | 'digits'>;
 
 const MINUS = '−';
-const signedNum = (x: number, d: number) =>
-  `${x > 0 ? '+' : x < 0 ? MINUS : ''}${Math.abs(x).toFixed(d)}`;
+/** Signed, rounded first: a value that rounds to zero has no sign ("0.0", never "−0.0"; PC02). */
+const signedNum = (x: number, d: number) => {
+  const r = Number(x.toFixed(d));
+  return `${r > 0 ? '+' : r < 0 ? MINUS : ''}${Math.abs(r).toFixed(d)}`;
+};
 
 /** A metric's value in its unit. */
 export function fmtRate(m: Fmt, v: number | null | undefined): string {

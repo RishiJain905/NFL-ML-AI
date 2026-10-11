@@ -6,7 +6,9 @@ grid, a team page) and the Play calls week tab. It is drawn inside the control r
 so it reuses the control room mockup's styles.css unchanged
 and adds playcalling.css on top. The data it shows is the reader's answers (the shapes in
 web/src/api/types.ts, PC01 block) in a payloads JSON, plus the team colours from the curated
-tables; nothing is committed. The payloads come from dump_payloads.py (the real app API).
+tables; nothing is committed. PC02 adds the forecast (the Play calls tab's forecast view,
+the team page's Next game and season cards). The payloads come from dump_payloads.py (the
+real app API).
 
     uv run python documentation/play-calling/mockup/build_mockup.py [--payloads PATH]
 
@@ -40,9 +42,23 @@ TEAM_NEEDS = (
     "field",
     "runs",
     "weekly",
+    "next_game",
+    "forecast_record",
 )
 HISTORY_NEEDS = ("status", "seasons", "source_note", "groups")
-WEEK_NEEDS = ("status", "season", "week", "note", "metrics", "games", "shifts")
+WEEK_NEEDS = (
+    "status",
+    "season",
+    "week",
+    "note",
+    "metrics",
+    "games",
+    "shifts",
+    "shifts_kind",
+    "forecast",
+    "graded",
+    "forecast_hint",
+)
 
 
 def clean(o: Any) -> Any:

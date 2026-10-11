@@ -11,6 +11,12 @@ The layout (README.md in this folder): `meta`, `weeks`, `team_info` (the shell);
 `teams["<S>"]` (the grid); `team["<S>"]["<TEAM>"]["<side>"]` (a team page);
 `history["<TEAM>"]["<side>"]`; `play_calls["<S>_<W>"]` (the week tab); `states` (the empty
 answers: `not_built.{teams,team,week}`, `not_yet.week`, `unknown_team`).
+
+PC02 (the forecast): `play_calls["2026_5"]` is a forecast week not graded yet (the clock's week),
+`["2026_4"]` a graded week (ATL at NO waiting for FTN), `["2026_1"]` graded on last season's
+rates, `["2026_6"]` not yet, `["2025_10"]` no forecast (descriptive, with `forecast_hint`). The
+team pages carry `next_game.forecast` (week 5) or `next_game.forecast_hint` (KC: a week-5 bye,
+week 6 not forecast yet) and `forecast_record` (weeks 1-4).
 """
 
 from __future__ import annotations
@@ -30,10 +36,10 @@ from nflengine.paths import ensure_data_root
 BASE = "http://127.0.0.1:8765"
 SEASON = 2026
 # the team pages in the mockup: strong identities on both sides of the ball, plus a 2025 view
-TEAMS_NOW = ("KC", "MIN", "CIN", "LA", "BAL", "PHI", "NYG", "DAL")
+TEAMS_NOW = ("MIN", "KC", "CIN", "LA", "BAL", "PHI", "NYG", "DAL", "ATL")
 TEAMS_2025 = ("KC", "MIN", "LA", "BAL")
-WEEKS = ((2026, 5), (2026, 1), (2026, 6), (2025, 10))
-NOW = datetime(2026, 10, 10, 16, 0, tzinfo=UTC)  # Saturday noon ET: week 5 under way
+WEEKS = ((2026, 5), (2026, 4), (2026, 1), (2026, 6), (2025, 10))
+NOW = datetime(2026, 10, 10, 16, 0, tzinfo=UTC)  # Saturday noon ET: week 5 next (KC: bye -> week 6)
 
 
 def get(tc: TestClient, path: str) -> Any:

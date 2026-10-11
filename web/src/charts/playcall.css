@@ -107,6 +107,29 @@
 .mv .md.d { background: var(--s2); }
 .mv .md.small { background: var(--panel); border: 2px dashed var(--ink-3); }
 
+/* ---------- PC02: the forecast strip (mockup: fStrip) ----------
+   The 80% range a band in the caller's colour (--s1 offense, --s2 defense), the forecast a bar, the
+   team's rate so far a ring, the league a tick, the actual (after the game) an ink dot. */
+.fs { position: relative; display: block; height: 22px; min-width: 110px; }
+.fs .fs-t { position: absolute; left: 0; right: 0; top: 10px; height: 2px; background: var(--line); }
+.fs .fs-band { position: absolute; top: 4px; height: 14px; border-radius: 4px; }
+.fs .fs-band.o { background: color-mix(in srgb, var(--s1) 24%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--s1) 45%, transparent); }
+.fs .fs-band.d { background: color-mix(in srgb, var(--s2) 24%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--s2) 45%, transparent); }
+.fs .fs-lg { position: absolute; top: 2px; width: 2px; height: 18px; margin-left: -1px; background: var(--ink-3); border-radius: 1px; }
+.fs .fs-f { position: absolute; top: 1px; width: 4px; height: 20px; margin-left: -2px; border-radius: 2px; box-shadow: 0 0 0 1.5px var(--panel); }
+.fs .fs-f.o { background: var(--s1); }
+.fs .fs-f.d { background: var(--s2); }
+.fs .fs-sd { position: absolute; top: 5px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; border: 2.5px solid var(--ink-2); background: var(--panel); }
+.fs .fs-sd.small { border-style: dashed; border-color: var(--ink-3); }
+.fs .fs-a { position: absolute; top: 6px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2px var(--panel); }
+.fs .fs-a.out { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--ink-3); }
+.fleg .lk { display: inline-block; vertical-align: middle; }
+.fleg .lk.band { width: 18px; height: 10px; border-radius: 3px; background: color-mix(in srgb, var(--s1) 24%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--s1) 45%, transparent); }
+.fleg .lk.fbar { width: 4px; height: 14px; border-radius: 2px; background: var(--s1); }
+.fleg .lk.ring { width: 10px; height: 10px; border-radius: 50%; border: 2.5px solid var(--ink-2); }
+.fleg .lk.tick { width: 2px; height: 14px; background: var(--ink-3); }
+.fleg .lk.adot { width: 10px; height: 10px; border-radius: 50%; background: var(--ink); }
+
 @media (max-width: 640px) {
   .rrow { grid-template-columns: minmax(0, 1fr) 64px minmax(70px, 1fr); }
   .rrow .rlg, .rrow .pctm { display: none; }

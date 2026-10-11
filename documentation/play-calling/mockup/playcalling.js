@@ -48,6 +48,7 @@ const S = {
   sort: { id: 'team', dir: 1 },
   gridView: 'tiles', // tiles | table
   weekKey: WEEK_KEYS[0],
+  pcView: 'fc', // the Play calls tab: fc (the forecast) | tend (PC01's tendencies so far)
   other: '',
 };
 if (!PALS.some(p => p.id === S.pal)) S.pal = 'turf';
@@ -60,7 +61,8 @@ const ETF = o => new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: 'Ame
 const tKick = iso => iso ? ETF({ weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(iso)) : '';
 const tDay = iso => iso ? ETF({ weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(iso)) : '';
 const MINUS = '−';
-const signed = (x, d) => (x > 0 ? '+' : x < 0 ? MINUS : '') + Math.abs(x).toFixed(d);
+/** Signed, rounded first: a value that rounds to zero has no sign ("0.0", never "−0.0"). */
+const signed = (x, d) => { const r = Number(x.toFixed(d)); return (r > 0 ? '+' : r < 0 ? MINUS : '') + Math.abs(r).toFixed(d); };
 /** A metric's value in its unit: shares as %, PROE as signed points (0.037 → "+3.7"), means as is. */
 function fmt(m, v) {
   if (v == null) return '—';
@@ -101,7 +103,7 @@ function cellTip(m, c, who, where, meta, extra) {
   if (m.help) lines.push(m.help);
   return lines.join('\n');
 }
-const ALLOWED_NOTE = "What offenses do against this defense depends on the offenses it faced (PC02 adjusts for it).";
+const ALLOWED_NOTE = "What offenses do against this defense depends on the offenses it faced (the forecast adjusts for it).";
 const allowedNote = (m, side) => side === 'defense' && m.caller === 'offense' ? ALLOWED_NOTE : null;
 
 /* ---------- the rate bar: the team's rate, the league marker, the percentile ---------- */
@@ -164,7 +166,7 @@ function syncMockbar() {
   $$('#screenPick button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S.screen)));
   $('#teamPick').innerHTML = TEAMS_WITH_PAGES.map(t => `<button type="button" data-v="${esc(t)}" aria-pressed="${t === S.team}">${esc(t)}</button>`).join('');
   $('#teamGrp').style.opacity = S.screen === 'team' ? '' : '.45';
-  $('#weekPick').innerHTML = WEEK_KEYS.map(k => { const [sn, w] = k.split('_'); const st = weekFor(k).status; return `<button type="button" data-v="${esc(k)}" aria-pressed="${k === S.weekKey}">${sn} wk ${w}${st === 'ok' ? '' : ' · ' + st.replace('_', ' ')}</button>`; }).join('');
+  $('#weekPick').innerHTML = WEEK_KEYS.map(k => { const [sn, w] = k.split('_'); const st = weekFor(k).status; const wa = weekFor(k); const tag = st !== 'ok' ? st.replace('_', ' ') : !wa.forecast ? 'no forecast' : wa.graded && wa.graded.graded ? 'graded' : 'forecast'; return `<button type="button" data-v="${esc(k)}" aria-pressed="${k === S.weekKey}">${sn} wk ${w} · ${tag}</button>`; }).join('');
   $('#weekGrp').style.opacity = S.screen === 'week' ? '' : '.45';
   $$('#statePick button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S.state)));
   applyTheme();
@@ -289,8 +291,14 @@ $('#top').addEventListener('click', e => {
   const s = e.target.closest('[data-season]'); if (s) { S.season = Number(s.dataset.season); if (S.win === 'last_season' && S.season !== NEWEST) S.win = 'season'; render(); return; }
   const d = e.target.closest('[data-side]'); if (d) { S.side = d.dataset.side; store.set('pc.side', S.side); render(); return; }
   if (e.target.closest('[data-nav-grid]')) { S.screen = 'grid'; syncMockbar(); render(); return; }
-  if (e.target.closest('[data-go-week]')) { S.screen = 'week'; syncMockbar(); render(); window.scrollTo({ top: 0 }); }
+  if (e.target.closest('[data-go-week]')) { goNextWeek(); }
 });
+function goNextWeek() {
+  const r = teamFor(S.season, S.team, S.side); const ng = r && r.next_game;
+  const k = ng && `${ng.season}_${ng.week}`;
+  if (k && P.play_calls[k]) S.weekKey = k;
+  S.screen = 'week'; S.state = 'ok'; syncMockbar(); render(); window.scrollTo({ top: 0 });
+}
 
 /* ------------------------------------------------------------------ views */
 function render() {
@@ -413,11 +421,13 @@ function teamView() {
       <ul class="sumlist">${r.summary.map(s => `<li>${esc(s)}</li>`).join('')}</ul>
       ${S.side === 'defense' ? `<p class="sumnote">A defense's page shows its own calls (blitz, rushers, box) and what offenses do against it; the second depends on the offenses it faced.</p>` : ''}
     </div>
+    ${nextGameCard(r)}
     <div class="wintool"><span class="eyebrow">Window</span>${winSeg}<span class="muted">${esc(winHelp(r))}</span></div>
     ${identityCard(r)}
     ${situationsCard(r)}
     ${fieldCard(r)}
     ${weeklyCard(r)}
+    ${recordCard(r)}
     ${historyCard(r)}
     ${r.notes && r.notes.length ? `<div class="foot">${r.notes.map(esc).join('<br>')}</div>` : ''}`;
 }
@@ -636,12 +646,21 @@ function weekView() {
   }
   const wk = weekFor(S.weekKey);
   if (wk.status !== 'ok') return emptyCard(wk, 'PC', wk.status === 'not_yet' ? `Week ${wk.week}'s matchups aren't ready yet` : 'No play-calling tables yet');
-  const shifts = wk.shifts.length ? `<div class="card"><div class="card-h"><h2>Biggest matchup shifts</h2><span class="muted">where a defense allows or calls something far from the league · in standard deviations of the 32 defenses</span></div>
+  const hasF = !!wk.forecast;
+  const view = hasF ? S.pcView : 'tend';
+  const ftn = wk.ftn_waiting && wk.ftn_waiting.length ? `<div class="notice"><span class="ic">!</span><div><b>FTN hasn't charted ${wk.ftn_waiting.length === 1 ? 'one game' : wk.ftn_waiting.length + ' games'} yet:</b> ${esc(wk.ftn_waiting.join(' · '))}. Play-action, screens, RPO, motion, blitz and box rates wait for it.</div></div>` : '';
+  const sw = hasF ? `<div class="wintool"><span class="eyebrow">Show</span><span class="seg" role="group" aria-label="View"><button type="button" data-pcv="fc" aria-pressed="${view === 'fc'}">Forecast</button><button type="button" data-pcv="tend" aria-pressed="${view === 'tend'}">Tendencies so far</button></span><span class="muted">${view === 'fc' ? "each team's rate for this game, its 80% range and its rate so far" : "each offense's rates so far next to what the other defense has allowed (no forecast)"}</span></div>` : '';
+  if (view === 'fc') {
+    return `<div class="notice accent"><span class="ic">i</span><div>${esc(wk.note)}</div></div>
+      ${backfillNote(wk.forecast)}${hintNotice(wk.forecast_hint)}${ftn}${sw}${forecastWeek(wk)}`;
+  }
+  return `${hasF ? '' : `<div class="notice accent"><span class="ic">i</span><div>${esc(wk.note)}</div></div>`}${hintNotice(wk.forecast_hint)}${ftn}${sw}${tendWeek(wk)}`;
+}
+function tendWeek(wk) {
+  const shifts = wk.shifts_kind !== 'forecast' && wk.shifts.length ? `<div class="card"><div class="card-h"><h2>Biggest matchup shifts</h2><span class="muted">where a defense allows or calls something far from the league · in standard deviations of the 32 defenses</span></div>
     <ol class="shifts">${wk.shifts.map(sh => { const w = Math.min(100, Math.abs(sh.shift) / 3 * 100); return `<li><span class="shm" aria-hidden="true"><span class="shb ${sh.shift > 0 ? 'up' : 'dn'}" style="width:${w.toFixed(0)}%"></span></span><span class="sht">${esc(sh.text)}</span><span class="num muted shv">${signed(sh.shift, 1)} SD</span></li>`; }).join('')}</ol></div>` : '';
   const games = wk.games.map(g => gameCard(g, wk)).join('');
-  return `<div class="notice accent"><span class="ic">i</span><div>${esc(wk.note)}</div></div>
-    ${wk.ftn_waiting && wk.ftn_waiting.length ? `<div class="notice"><span class="ic">!</span><div><b>FTN hasn't charted ${wk.ftn_waiting.length === 1 ? 'one game' : wk.ftn_waiting.length + ' games'} yet:</b> ${esc(wk.ftn_waiting.join(' · '))}. Play-action, screens, RPO, motion, blitz and box rates wait for it.</div></div>` : ''}
-    ${shifts}
+  return `${shifts}
     <div class="sec-h"><h2>Every game</h2><p>${esc(wk.window === 'season' ? `${wk.season} season before week ${wk.week}` : `${wk.season - 1} season`)} · each offense against the other defense</p><div class="right"><span class="legend"><span><i style="background:var(--s1)"></i>offense does</span><span><i style="background:var(--s2)"></i>defense allows</span><span><i class="line" style="background:var(--ink-2)"></i>league</span></span></div></div>
     <div class="pcgames">${games}</div>`;
 }
@@ -685,6 +704,225 @@ function matchViz(m, o, d, L) {
   return `<span class="mv"><span class="mt"></span>${L != null ? `<span class="ml" style="left:${X(L)}%"></span>` : ''}${d && d.value != null ? `<span class="md d${d.small ? ' small' : ''}" style="left:${X(d.value)}%"></span>` : ''}${o && o.value != null ? `<span class="md o${o.small ? ' small' : ''}" style="left:${X(o.value)}%"></span>` : ''}</span>`;
 }
 
+/* ================================================================== PC02: the forecast
+   The shapes: PlaycallForecastValue (one team's rate for one game, + its grade), PlaycallForecastMeta
+   (wk.forecast / next_game.forecast: the targets, the note, the backfill), PlaycallWeekGrade
+   (wk.graded), PlaycallForecastRecord (a team page's forecast_record). "Don't oversell": every
+   forecast shows its 80% range and the team's own rate so far (the baseline it has to beat). */
+const SCRIPT_TARGETS = ['proe', 'dropback_rate'];
+/** A change in a target's unit: points for shares and PROE ("+2.7 pts"), rushers as is ("−0.23"). */
+function fmtChange(t, d) {
+  if (d == null) return '—';
+  if (t.unit === 'mean') return signed(d, t.digits);
+  return signed(d * 100, 1) + ' pts';
+}
+/** An error (MAE) in a target's unit: points for shares and PROE, rushers for rushers. */
+function fmtErr(t, e) {
+  if (e == null) return '—';
+  if (t.unit === 'mean') return e.toFixed(t.digits) + (t.target === 'rushers_avg' ? ' rushers' : '');
+  return (e * 100).toFixed(1) + ' pts';
+}
+const pctTxt = x => x == null ? '—' : Math.round(x * 100) + '%';
+/** What the baseline is called: the season so far, or last season's rate before a team's first game. */
+const soFarName = v => v.games_so_far === 0 ? 'last season' : 'so far';
+const soFarLabel = v => v.games_so_far === 0 ? 'Last season' : 'Season so far';
+const STATUS = {
+  waiting_ftn: { tone: 'warn', text: 'FTN not in yet', short: 'waiting for FTN', tip: 'FTN charts a game about two days after it is played: graded once it lands.' },
+  waiting_build: { tone: 'flat', text: 'Waiting for the tables', short: 'played, waiting for the tables', tip: 'Played; graded after the next `nfl playcalling build` and `nfl playcalling grade`.' },
+  not_played: { tone: 'flat', text: 'Not played yet', short: 'not played yet', tip: 'Graded after the game.' },
+  no_plays: { tone: 'ghost', text: 'No plays to grade', short: 'with no plays to grade', tip: 'The game had none of the plays this rate counts.' },
+};
+/** The second piece's name: the opponent, or for run direction the home team's stats crew (it charts run location). */
+const ctxName = (t, v) => t.context === 'venue' ? `the home team's stats crew (${v.context_team || 'home'})` : `the opponent${v.context_team ? ` (${v.context_team})` : ''}`;
+const ctxShort = (t, v) => t.context === 'venue' ? `crew ${v.context_team || ''}`.trim() : 'opp';
+const targetMap = meta => new Map(((meta && meta.targets) || []).map(t => [t.target, t]));
+
+/** One scale per target over a set of forecasts, so a target's rows compare across games. */
+function fDomains(values) {
+  const by = {};
+  values.forEach(v => { (by[v.target] = by[v.target] || []).push(...[v.lo, v.hi, v.forecast, v.season_to_date, v.league, v.actual].filter(x => x != null)); });
+  const out = {};
+  Object.entries(by).forEach(([k, xs]) => { const lo = Math.min(...xs), hi = Math.max(...xs); const pad = (hi - lo) * 0.05 || 0.01; out[k] = { lo: lo - pad, hi: hi + pad }; });
+  return out;
+}
+/** The tooltip: the forecast, its range, the baseline, the league, the pieces, the grade. */
+function fTip(t, v) {
+  const lines = [`${t.label} · ${v.team} vs ${v.opponent}`];
+  lines.push(`Forecast: ${fmt(t, v.forecast)} (80% range ${fmt(t, v.lo)} to ${fmt(t, v.hi)})`);
+  lines.push(`${soFarLabel(v)}: ${fmt(t, v.season_to_date)}${v.games_so_far ? ` (${v.n_so_far} ${per(t, v.n_so_far)}, ${v.games_so_far} game${v.games_so_far === 1 ? '' : 's'})` : ''}${v.small ? ' · small sample' : ''}`);
+  lines.push(`Change from ${soFarName(v)}: ${fmtChange(t, v.shift)}`);
+  if (v.league != null) lines.push(`League: ${fmt(t, v.league)}`);
+  lines.push(`Pieces: ${v.team}'s rate shrunk toward last season and the league ${fmt(t, v.team_term)}, ${ctxName(t, v)} ${fmtChange(t, v.opponent_effect)}${SCRIPT_TARGETS.includes(v.target) ? `, the game script ${fmtChange(t, v.script_effect)}` : ''}`);
+  if (v.status === 'graded') {
+    lines.push(`Actual: ${fmt(t, v.actual)}${v.n != null ? ` (${v.n} ${per(t, v.n)})` : ''} · ${v.in_range ? 'inside' : 'outside'} the range`);
+    lines.push(v.beat_season_to_date ? `The forecast was closer than ${soFarName(v)}` : `${soFarLabel(v)} was closer (or as close)`);
+  } else if (v.status && STATUS[v.status]) lines.push(`${STATUS[v.status].text}: ${STATUS[v.status].tip.replace(/`/g, '')}`);
+  if (t.help) lines.push(t.help);
+  return lines.join('\n');
+}
+/** The strip: the 80% range as a band, the forecast as a bar, the season so far as a ring, the
+ *  league as a tick, and after the game the actual as a dot. The caller's colour: --s1 offense, --s2 defense. */
+function fStrip(t, v, dom, tip) {
+  if (v.forecast == null || !dom) return '';
+  const X = x => Math.max(0, Math.min(100, (x - dom.lo) / (dom.hi - dom.lo) * 100)).toFixed(1);
+  const side = v.caller === 'defense' ? 'd' : 'o';
+  const band = v.lo != null && v.hi != null ? `<span class="fs-band ${side}" style="left:${X(v.lo)}%;width:${Math.max(0.5, X(v.hi) - X(v.lo)).toFixed(1)}%"></span>` : '';
+  return `<span class="fs" data-tip="${esc(tip)}"><span class="fs-t"></span>${band}${v.league != null ? `<span class="fs-lg" style="left:${X(v.league)}%"></span>` : ''}${v.season_to_date != null ? `<span class="fs-sd${v.small ? ' small' : ''}" style="left:${X(v.season_to_date)}%"></span>` : ''}<span class="fs-f ${side}" style="left:${X(v.forecast)}%"></span>${v.status === 'graded' && v.actual != null ? `<span class="fs-a${v.in_range ? '' : ' out'}" style="left:${X(v.actual)}%"></span>` : ''}</span>`;
+}
+const fLegend = () => `<span class="legend fleg"><span><i class="lk band"></i>80% range</span><span><i class="lk fbar"></i>forecast</span><span><i class="lk ring"></i>season so far</span><span><i class="lk tick"></i>league</span><span><i class="lk adot"></i>actual</span></span>`;
+/** After the game: the actual and two marks; before: the status chip. */
+function fResult(t, v) {
+  if (v.status === 'graded') {
+    return `<span class="num fact">${esc(fmt(t, v.actual))}</span><span class="fmarks"><span class="fmk ${v.in_range ? 'ok' : 'miss'}">${v.in_range ? '✓ in range' : '✗ outside'}</span><span class="fmk ${v.beat_season_to_date ? 'ok' : 'miss'}">${v.beat_season_to_date ? '✓ beat ' : '✗ '}${v.beat_season_to_date ? soFarName(v) : soFarName(v) + ' closer'}</span></span>`;
+  }
+  const st = v.status && STATUS[v.status];
+  return st ? `<span class="chip ${st.tone} fchip" tabindex="0" data-tip="${esc(st.text + '\n' + st.tip.replace(/`/g, ''))}">${esc(st.text)}</span>` : '';
+}
+/** One forecast row (a table row): the name (the focusable tooltip), the forecast and its range,
+ *  the strip, the season so far and the change, the result. `pieces` adds the breakdown line. */
+function fRow(t, v, dom, pieces) {
+  const tip = fTip(t, v);
+  const pc = pieces ? `<small class="fpieces">${esc(v.team)} ${esc(fmt(t, v.team_term))} · ${esc(ctxShort(t, v))} ${esc(fmtChange(t, v.opponent_effect))}${SCRIPT_TARGETS.includes(v.target) ? ` · script ${esc(fmtChange(t, v.script_effect))}` : ''}</small>` : '';
+  return `<tr class="${v.status === 'graded' ? 'graded' : ''}"><th scope="row"><span class="fname" tabindex="0" data-tip="${esc(tip)}">${esc(t.short)}<small>${esc(t.per === 'play' ? 'per play' : 'per ' + t.per)}</small></span></th>
+    <td class="r ffc"><b class="num">${esc(fmt(t, v.forecast))}</b><small class="num">${esc(fmt(t, v.lo))} to ${esc(fmt(t, v.hi))}</small>${pc}</td>
+    <td class="fviz">${fStrip(t, v, dom, tip)}</td>
+    <td class="r fsd${v.small ? ' smallv' : ''}"><span class="num">${esc(fmt(t, v.season_to_date))}</span><small class="num">${esc(fmtChange(t, v.shift))}</small></td>
+    <td class="fres">${fResult(t, v)}</td></tr>`;
+}
+function fTable(rows, tm, doms, opts) {
+  const o = opts || {};
+  const body = rows.map(g => {
+    const head = g.title ? `<tr class="fgrp"><th colspan="5" scope="colgroup">${g.title}</th></tr>` : '';
+    return head + g.values.map(v => { const t = tm.get(v.target); return t ? fRow(t, v, doms[v.target], o.pieces) : ''; }).join('');
+  }).join('');
+  const soFar = o.lastSeason ? 'Last season' : 'So far';
+  return `<div class="tablewrap"><table class="tbl ftbl"><thead><tr><th></th><th class="r">Forecast<small>80% range</small></th><th class="fviz"></th><th class="r">${soFar}<small>change</small></th><th>${o.graded ? 'Actual' : 'After the game'}</th></tr></thead><tbody>${body}</tbody></table></div>`;
+}
+/** The made-after-kickoff note (a backfill from the as-of tables: the forecast still saw only earlier games). */
+function backfillNote(meta) {
+  if (!meta || !meta.backfill) return '';
+  const n = meta.after_kickoff.length;
+  return `<div class="notice"><span class="ic">!</span><div><b>Made after kickoff (a backfill).</b> This forecast was made on ${esc(tDay(meta.made_at))}, after ${n === 1 ? 'one game' : n + ' games'} had kicked off, from the tables as of week ${meta.as_of_week}: its tendencies saw only the games before this week, but its lines may be the closing ones (a Tuesday forecast uses Tuesday's). <details class="fdet"><summary>The ${n === 1 ? 'game' : n + ' games'}</summary>${esc(meta.after_kickoff.join(' · '))}</details></div></div>`;
+}
+/** A hint ("No forecast for week 6 yet: `cmd` (after ...).") as its text, command and tail. */
+function splitHint(hint) {
+  const parts = hint.split('`');
+  const text = (parts[0] || '').replace(/:\s*$/, '.').trim();
+  const cmd = parts.length >= 3 ? parts[1] : null;
+  const tail = parts.length >= 3 ? parts.slice(2).join('`').replace(/`/g, '').replace(/^\s*\(|\)?\.?\s*$/g, '').trim() : '';
+  return { text, cmd, tail: tail || null };
+}
+function hintNotice(hint) {
+  if (!hint) return '';
+  const h = splitHint(hint);
+  return `<div class="notice"><span class="ic">i</span><div>${esc(h.text)}${h.cmd ? `<div class="cmd" style="margin-top:6px">${esc(h.cmd)}</div>` : ''}${h.tail ? `<span class="muted">${esc(h.tail)}</span>` : ''}</div></div>`;
+}
+/** The grade's numbers: closer in N of M, the 80% hit rate, the MAE in points (shares and PROE). */
+function gradeStats(s, waiting) {
+  return `<div class="gstats">
+    <div class="gst"><span class="eyebrow">Closer than the season so far</span><b class="num">${s.beat}<small> of ${s.graded}</small></b><span class="muted">${s.graded ? pctTxt(s.beat / s.graded) + ' of the forecasts' : '—'}</span></div>
+    <div class="gst"><span class="eyebrow">Inside the 80% range</span><b class="num">${pctTxt(s.in_range)}</b><span class="muted">a fair range lands near 80%</span></div>
+    <div class="gst"><span class="eyebrow">Average miss · points</span><b class="num">${s.mae != null ? (s.mae * 100).toFixed(1) : '—'}<small> vs ${s.mae_season_to_date != null ? (s.mae_season_to_date * 100).toFixed(1) : '—'}</small></b><span class="muted">forecast vs season so far · shares and PROE</span></div>
+    ${waiting != null ? `<div class="gst"><span class="eyebrow">Still waiting</span><b class="num">${waiting}</b><span class="muted">not graded yet</span></div>` : ''}
+  </div>`;
+}
+/** Per target: graded, the two MAEs as a pair of bars, closer in N, in range. */
+function gradeTable(rows, tm) {
+  const body = rows.filter(r => r.graded).map(r => {
+    const t = tm.get(r.target) || r;
+    const top = Math.max(r.mae || 0, r.mae_season_to_date || 0) || 1;
+    // bold the smaller miss, neither when they round the same
+    const a = fmtErr(t, r.mae), b = fmtErr(t, r.mae_season_to_date);
+    const better = r.mae != null && r.mae_season_to_date != null && a !== b && r.mae < r.mae_season_to_date;
+    const worse = r.mae != null && r.mae_season_to_date != null && a !== b && r.mae > r.mae_season_to_date;
+    return `<tr><th scope="row">${esc(t.short)}<small>${esc(t.caller === 'defense' ? "defense's call" : "offense's call")}</small></th><td class="r num gn">${r.graded}</td>
+      <td class="r num${better ? ' win' : ''}">${esc(a)}</td><td class="r num${worse ? ' win' : ''}">${esc(b)}</td>
+      <td class="gbars" aria-hidden="true"><span class="gb f ${t.caller === 'defense' ? 'd' : 'o'}" style="width:${((r.mae || 0) / top * 100).toFixed(0)}%"></span><span class="gb b" style="width:${((r.mae_season_to_date || 0) / top * 100).toFixed(0)}%"></span></td>
+      <td class="r num">${r.beat} of ${r.graded}</td><td class="r num">${pctTxt(r.in_range)}</td></tr>`;
+  }).join('');
+  return `<div class="tablewrap"><table class="tbl gtbl"><thead><tr><th>Rate</th><th class="r gn">Graded</th><th class="r">Forecast miss</th><th class="r">Season-so-far miss</th><th class="gbars"><span class="legend"><span><i style="background:var(--s1)"></i>forecast</span><span><i style="background:var(--ink-3)"></i>so far</span></span></th><th class="r">Closer</th><th class="r">In range</th></tr></thead><tbody>${body}</tbody></table></div>`;
+}
+function statusCounts(values) {
+  const c = {};
+  values.forEach(v => { if (v.status && v.status !== 'graded') c[v.status] = (c[v.status] || 0) + 1; });
+  return Object.entries(c).map(([k, n]) => `${n} ${STATUS[k] ? STATUS[k].short : k}`).join(' · ');
+}
+function weekGradeCard(wk, values) {
+  const g = wk.graded;
+  if (!g) return '';
+  const tm = targetMap(wk.forecast);
+  if (!g.graded) {
+    return `<div class="notice"><span class="ic">i</span><div><b>Waiting for the games:</b> none of the week's ${g.rows} forecasts is graded yet (${esc(statusCounts(values))}). The grade appears here after <span class="mono">nfl playcalling grade</span>.</div></div>`;
+  }
+  return `<div class="card"><div class="card-h"><h2>How the forecast did · week ${wk.week}</h2><span class="muted">${g.graded} graded${g.waiting ? ` · ${g.waiting} waiting (${esc(statusCounts(values))})` : ''} · the bar to beat: each team's own rate so far</span></div>
+    <div class="card-b">${gradeStats(g.overall)}${gradeTable(g.targets, tm)}
+    <p class="gnote">A miss is |forecast − actual| in the rate's unit (points for shares and PROE, rushers for pass rushers). One week is a few dozen games: noisy, so read it with the season's record on each team page.</p></div></div>`;
+}
+function movesCard(wk) {
+  if (!wk.shifts.length) return '';
+  const tm = targetMap(wk.forecast);
+  return `<div class="card"><div class="card-h"><h2>Biggest expected moves</h2><span class="muted">the forecast against the team's own rate so far · the bar: the move over the 80% range's half-width (1 = the range's edge)</span></div>
+    <ol class="shifts fmoves">${wk.shifts.map(sh => { const t = tm.get(sh.metric) || { unit: 'share', digits: 1 }; const w = Math.min(100, sh.shift / 1.5 * 100); return `<li><span class="shm" aria-hidden="true"><span class="shb" style="width:${w.toFixed(0)}%"></span></span><span class="sht">${esc(sh.text)}</span><span class="num muted shv">${esc(fmtChange(t, sh.change))}<small>${sh.shift.toFixed(2)}× half-range</small></span></li>`; }).join('')}</ol></div>`;
+}
+function fGameCard(g, wk, tm, doms) {
+  const graded = !!(wk.graded && wk.graded.graded);
+  const lastSeason = wk.window === 'last_season';
+  const mm = g.matchups.map(mu => {
+    const off = mu.forecast.filter(v => v.caller === 'offense'), dfn = mu.forecast.filter(v => v.caller === 'defense');
+    if (!mu.forecast.length) return `<section><h3 class="mh">${tchip(mu.offense)} offense <span class="muted">vs</span> ${tchip(mu.defense)} defense</h3><p class="muted">No forecast for this matchup.</p></section>`;
+    return `<section aria-label="${esc(`${mu.offense} offense against ${mu.defense} defense`)}"><h3 class="mh">${tchip(mu.offense)} offense <span class="muted">vs</span> ${tchip(mu.defense)} defense</h3>
+      ${fTable([{ title: `${esc(mu.offense)}'s calls`, values: off }, { title: `${esc(mu.defense)}'s calls`, values: dfn }], tm, doms, { graded, lastSeason })}</section>`;
+  }).join('');
+  return `<div class="card pcgame"><div class="card-h"><h2>${tchip(g.away, true)} <span class="muted" style="font-family:var(--font-body);font-size:13px;font-weight:500">at</span> ${tchip(g.home, true)}</h2><span class="muted">${esc(tKick(g.kickoff))}${g.kickoff ? ' ET' : ''}</span>
+    <div class="right"><button class="btn sm" data-open-team="${esc(g.away)}">${esc(g.away)} page</button><button class="btn sm" data-open-team="${esc(g.home)}">${esc(g.home)} page</button></div></div>
+    <div class="pcmatch fc">${mm}</div></div>`;
+}
+function forecastWeek(wk) {
+  const tm = targetMap(wk.forecast);
+  const values = wk.games.flatMap(g => g.matchups.flatMap(mu => mu.forecast));
+  const doms = fDomains(values);
+  return `${weekGradeCard(wk, values)}
+    ${movesCard(wk)}
+    <div class="sec-h"><h2>Every game</h2><p>each team's calls for this game · the offense's, then the defense's · hover or focus a rate for its pieces</p><div class="right">${fLegend()}</div></div>
+    <div class="pcgames">${wk.games.map(g => fGameCard(g, wk, tm, doms)).join('')}</div>`;
+}
+/* ---------- a team page: the Next game card and the season card ---------- */
+function nextGameCard(r) {
+  const ng = r.next_game;
+  if (!ng) return '';
+  const where = `${ng.home ? 'vs' : 'at'} ${ng.opponent}`;
+  const link = `<button class="btn sm" data-go-week>Week ${ng.week} · Play calls →</button>`;
+  const head = `<div class="card-h"><h2>Next game <span class="muted ngwhere">${ng.home ? 'vs' : 'at'}</span> ${tchip(ng.opponent, true)}</h2><span class="muted">week ${ng.week}${ng.kickoff ? ' · ' + esc(tKick(ng.kickoff)) + ' ET' : ''}</span><div class="right">${link}</div></div>`;
+  if (!ng.forecast) {
+    const h = ng.forecast_hint ? splitHint(ng.forecast_hint) : null;
+    const cmd = h && h.cmd;
+    return `<div class="card nextg">${head}<div class="card-b"><p class="muted" style="margin:0">${esc(h ? h.text : 'No forecast yet.')} The forecast for ${esc(r.team)} ${esc(where)} appears here once it's made.</p>${cmd ? `<div class="cmd" style="margin-top:8px">${esc(cmd)}</div>` : ''}</div></div>`;
+  }
+  const f = ng.forecast;
+  const tm = targetMap(f);
+  const all = f.own.concat(f.opponent);
+  const doms = fDomains(all);
+  const other = r.side === 'offense' ? 'defense' : 'offense';
+  const graded = all.some(v => v.status === 'graded');
+  const lastSeason = all.some(v => v.games_so_far === 0);
+  return `<div class="card nextg">${head}
+    <div class="card-b"><div class="fnote">${esc(f.note)}</div>
+      <div class="ngrid">
+        <section><h3 class="dh">${esc(r.team)}'s ${r.side} calls</h3>${fTable([{ values: f.own }], tm, doms, { pieces: true, graded, lastSeason })}</section>
+        <section><h3 class="dh">${esc(ng.opponent)}'s ${other} calls against it</h3>${fTable([{ values: f.opponent }], tm, doms, { pieces: true, graded, lastSeason })}</section>
+      </div>
+      <div class="heatfoot">${fLegend()}${f.backfill ? `<span class="chip warn" tabindex="0" data-tip="${esc('Made after kickoff (a backfill from the as-of tables: only earlier games seen)\n' + f.after_kickoff.join('\n'))}"><span class="ic">!</span>made after kickoff</span>` : ''}</div></div></div>`;
+}
+function recordCard(r) {
+  const fr = r.forecast_record;
+  if (!fr) return '';
+  const tm = new Map(fr.targets.map(t => [t.target, t]));
+  const wks = fr.weeks.length ? (fr.weeks.length > 1 ? `weeks ${fr.weeks[0]}–${fr.weeks[fr.weeks.length - 1]}` : `week ${fr.weeks[0]}`) : '';
+  return `<div class="card"><div class="card-h"><h2>How the forecast has done for ${esc(r.team)}</h2><span class="muted">its ${r.side} calls · ${esc(wks)} · against its own rate so far</span></div>
+    <div class="card-b">${gradeStats(fr.overall)}${gradeTable(fr.targets, tm)}
+    <p class="gnote">A few games per rate: one team's record is noisy. ${fr.targets.some(t => t.backtest) ? 'The backtest (every team, 2019–2025) is the fairer test of the model.' : ''}</p></div></div>`;
+}
+
 /* ------------------------------------------------------------------ interactions */
 $('#view').addEventListener('click', e => {
   if (e.target.closest('[data-nav-grid]')) { S.screen = 'grid'; syncMockbar(); render(); return; }
@@ -695,7 +933,9 @@ $('#view').addEventListener('click', e => {
   if (e.target.closest('#sortDir')) { S.sort.dir = -S.sort.dir; render(); return; }
   const w = e.target.closest('[data-win]'); if (w) { S.win = w.dataset.win; render(); return; }
   const f = e.target.closest('[data-fam]'); if (f) { S.fam = f.dataset.fam; render(); return; }
-  if (e.target.closest('#histBtn')) { S.hist = !S.hist; render(); }
+  if (e.target.closest('#histBtn')) { S.hist = !S.hist; render(); return; }
+  const pv = e.target.closest('[data-pcv]'); if (pv) { S.pcView = pv.dataset.pcv; render(); return; }
+  if (e.target.closest('[data-go-week]')) goNextWeek();
 });
 $('#view').addEventListener('change', e => { if (e.target.id === 'sortSel') { const id = e.target.value; S.sort = { id, dir: id === 'team' ? 1 : -1 }; render(); } });
 $('#view').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr.teamrow')) { e.preventDefault(); e.target.click(); } });

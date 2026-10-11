@@ -210,6 +210,89 @@ code { font-family: var(--font-mono); font-size: 12px; }
 .mv .md.d { background: var(--s2); }
 .mv .md.small { background: var(--panel); border: 2px dashed var(--ink-3); }
 
+
+/* ---------- PC02: the forecast (the Play calls tab's forecast view, the team page's cards) ----------
+   The strip: the 80% range a band in the caller's colour (--s1 offense, --s2 defense), the forecast a
+   bar, the team's rate so far a ring, the league a tick, the actual (after the game) an ink dot. */
+.ftbl { min-width: 560px; }
+/* fixed columns, so a card's stacked tables line up */
+.ftbl { table-layout: fixed; width: 100%; }
+.ftbl thead th:nth-child(1) { width: 20%; }
+.ftbl thead th:nth-child(2) { width: 17%; }
+.ftbl thead th:nth-child(4) { width: 11%; }
+.ftbl thead th:nth-child(5) { width: 17%; }
+.ftbl thead th small, .gtbl thead th small { display: block; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--ink-3); }
+.ftbl th[scope="row"] { text-align: left; font-weight: 600; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--ink); position: static; }
+.ftbl .fname { display: block; border-radius: 4px; }
+.ftbl .fname:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ftbl .fname small { display: block; font-size: 10.5px; color: var(--ink-3); font-weight: 400; }
+.ftbl tr.fgrp th { text-align: left; padding: 10px 10px 4px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); font-weight: 700; border-bottom: 1px solid var(--line-2); background: none; }
+.ftbl tbody tr:last-child th[scope="row"] { border-bottom: 0; }
+.ftbl td { vertical-align: middle; }
+.ftbl td.ffc b { font-family: var(--font-display); font-size: 19px; font-weight: 700; line-height: 1; display: block; }
+.ftbl td.ffc small, .ftbl td.fsd small { display: block; font-size: 10.5px; color: var(--ink-3); white-space: nowrap; }
+.ftbl td.ffc small.fpieces { color: var(--ink-2); }
+.ftbl td.fsd .num { color: var(--ink-2); font-weight: 600; }
+.ftbl td.fsd.smallv .num { color: var(--ink-3); font-weight: 500; }
+.ftbl .fviz { width: 34%; min-width: 120px; }
+.ftbl td.fres { white-space: nowrap; font-size: 12px; }
+.fact { font-weight: 700; font-size: 14px; margin-right: 6px; }
+.fmarks { display: inline-flex; flex-direction: column; vertical-align: middle; gap: 1px; font-size: 11px; line-height: 1.25; }
+.fmk.ok { color: var(--ok); }
+.fmk.miss { color: var(--ink-3); }
+.fchip { font-size: 11px; padding: 2px 8px; }
+.fs { position: relative; display: block; height: 22px; }
+.fs .fs-t { position: absolute; left: 0; right: 0; top: 10px; height: 2px; background: var(--line); }
+.fs .fs-band { position: absolute; top: 4px; height: 14px; border-radius: 4px; }
+.fs .fs-band.o { background: color-mix(in srgb, var(--s1) 24%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--s1) 45%, transparent); }
+.fs .fs-band.d { background: color-mix(in srgb, var(--s2) 24%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--s2) 45%, transparent); }
+.fs .fs-lg { position: absolute; top: 2px; width: 2px; height: 18px; margin-left: -1px; background: var(--ink-3); border-radius: 1px; }
+.fs .fs-f { position: absolute; top: 1px; width: 4px; height: 20px; margin-left: -2px; border-radius: 2px; box-shadow: 0 0 0 1.5px var(--panel); }
+.fs .fs-f.o { background: var(--s1); }
+.fs .fs-f.d { background: var(--s2); }
+.fs .fs-sd { position: absolute; top: 5px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; border: 2.5px solid var(--ink-2); background: var(--panel); }
+.fs .fs-sd.small { border-style: dashed; border-color: var(--ink-3); }
+.fs .fs-a { position: absolute; top: 6px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2px var(--panel); }
+.fs .fs-a.out { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--ink-3); }
+.fleg .lk { display: inline-block; vertical-align: middle; }
+.fleg .lk.band { width: 18px; height: 10px; border-radius: 3px; background: color-mix(in srgb, var(--s1) 24%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--s1) 45%, transparent); }
+.fleg .lk.fbar { width: 4px; height: 14px; border-radius: 2px; background: var(--s1); }
+.fleg .lk.ring { width: 10px; height: 10px; border-radius: 50%; border: 2.5px solid var(--ink-2); }
+.fleg .lk.tick { width: 2px; height: 14px; background: var(--ink-3); }
+.fleg .lk.adot { width: 10px; height: 10px; border-radius: 50%; background: var(--ink); }
+.fdet { display: inline; }
+.fdet summary { display: inline; cursor: pointer; color: var(--accent-ink); }
+.fdet[open] summary { margin-right: 6px; }
+/* the grade: three or four numbers, then a table per rate */
+.gstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.gst { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; }
+.gst b { font-family: var(--font-display); font-size: 26px; font-weight: 700; line-height: 1.05; }
+.gst b small { font-family: var(--font-body); font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.gst .muted { font-size: 12px; }
+.gtbl { min-width: 620px; }
+.gtbl th[scope="row"] { text-align: left; font-weight: 600; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--ink); position: static; }
+.gtbl th[scope="row"] small { display: block; font-size: 10.5px; color: var(--ink-3); font-weight: 400; }
+.gtbl td.win { font-weight: 700; }
+.gtbl tbody tr:last-child th[scope="row"] { border-bottom: 0; }
+.gtbl + .gnote, .tablewrap + .gnote { margin-top: 10px; }
+.gtbl .gbars { width: 22%; min-width: 110px; }
+.gtbl .gb { display: block; height: 6px; border-radius: 0 3px 3px 0; margin: 2px 0; }
+.gtbl .gb.f.o { background: var(--s1); }
+.gtbl .gb.f.d { background: var(--s2); }
+.gtbl .gb.b { background: var(--ink-3); }
+.gtbl thead .legend { font-size: 11px; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.fmoves .shv { display: flex; flex-direction: column; align-items: flex-end; }
+.fmoves .shv small { font-size: 10.5px; }
+/* the team page's Next game card */
+.nextg { border-left: 5px solid var(--s1); }
+.nextg .ngwhere { font-family: var(--font-body); font-size: 14px; font-weight: 500; }
+.nextg .card-h h2 { display: flex; gap: 8px; align-items: center; }
+.fnote { font-size: 12.5px; color: var(--ink-2); max-width: 110ch; margin-bottom: 10px; }
+/* the forecast's matchups stack: a forecast row needs the card's full width */
+.pcmatch.fc { grid-template-columns: minmax(0, 1fr); }
+.pcmatch.fc > section + section { border-left: 0; border-top: 1px solid var(--line); }
+.ngrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; } /* stacked: a forecast row needs the width */
+
 @media (max-width: 1100px) {
   .idgrid, .hgrid { grid-template-columns: minmax(0, 1fr); }
   .fieldgrid { grid-template-columns: minmax(0, 1fr); }
@@ -230,4 +313,21 @@ code { font-family: var(--font-mono); font-size: 12px; }
   .mtbl th, .mtbl td { padding-left: 5px; padding-right: 5px; }
   .mtbl th[scope="row"] { white-space: normal; }
   .wintool { position: static; }
+  .ftbl .fviz, .gtbl .gbars { display: none; }
+  .ftbl, .ngrid .ftbl { min-width: 0; }
+  .gtbl { min-width: 0; }
+  .ftbl th, .ftbl td { padding-left: 5px; padding-right: 5px; }
+  .ftbl th[scope="row"] { white-space: normal; }
+  .ftbl { table-layout: auto; }
+  .ftbl thead th:nth-child(n) { width: auto; }
+  .ftbl .fname small { display: none; }
+  .ftbl td.ffc small, .ftbl td.fsd small, .ftbl td.fres { white-space: normal; }
+  .ftbl td.ffc b { font-size: 16px; }
+  .fact { display: block; margin: 0 0 2px; }
+  .ftbl .fchip { white-space: normal; text-align: center; }
+  .gtbl .gn, .gtbl th[scope="row"] small { display: none; }
+  .gtbl th, .gtbl td { padding-left: 5px; padding-right: 5px; }
+  .gtbl th[scope="row"] { white-space: normal; }
+  .gtbl thead th { white-space: normal; }
+  .fmoves .shv small { display: none; }
 }

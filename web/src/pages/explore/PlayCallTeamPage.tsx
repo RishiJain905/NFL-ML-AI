@@ -1,7 +1,9 @@
 // Explore → Play calling → a team (mockup: teamView). An Offense / Defense switch (remembered in
 // this browser), the season (`?season=`), then: the five-second summary (the server's sentences),
 // one window switch (Season / Last 4 / Last season) for Identity, By situation and Where the ball
-// goes; Week by week; and History 2023-2025 (research data), fetched only when opened.
+// goes; Week by week; and History 2023-2025 (research data), fetched only when opened. PC02: the
+// Next game card (the forecast of this team's calls and the opponent's in the next matchup, or the
+// command that makes it) after the summary, and "How the forecast has done" after Week by week.
 
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
@@ -23,6 +25,7 @@ import { Card, CardHeader, Chip, EmptyState, Notice, Segmented } from '../../com
 import { WINDOW_LABEL, allowedNote, cellTip, fmtRate, perWord, rateDomain, readSide, writeSide } from '../../lib/playcall';
 import { PageError } from '../season/common';
 import { ExploreHeader, FtnWaiting, PlaycallEmpty, PlaycallLoading, SeasonSwitch } from './common';
+import { NextGameCard, RecordCard } from './forecast';
 import { asOfText, emptyTitle, seasonParam } from './text';
 
 const WINDOWS: PlaycallWindow[] = ['season', 'last4', 'last_season'];
@@ -362,6 +365,7 @@ function TeamBody({ r, nick }: { r: PlaycallTeamResponse; nick: string }) {
   return (
     <>
       <Summary r={r} nick={nick} />
+      <NextGameCard r={r} />
       <div className="wintool">
         <span className="eyebrow">Window</span>
         <Segmented label="Window" options={wins.map((w) => ({ value: w, label: windowText(r, w) }))} value={win} onChange={setPicked} />
@@ -371,6 +375,7 @@ function TeamBody({ r, nick }: { r: PlaycallTeamResponse; nick: string }) {
       <Situations r={r} win={win} />
       <BallGoes r={r} win={win} />
       <Weekly r={r} />
+      <RecordCard r={r} />
       <History team={r.team} side={r.side} />
       {r.notes.length ? (
         <div className="foot">

@@ -1540,6 +1540,8 @@ export interface PlaycallNextGame {
   opponent: string;
   home: boolean;
   kickoff: string | null;
+  forecast: PlaycallNextForecast | null; // PC02: null until that week's forecast is made
+  forecast_hint: string | null; // then: the command that makes it
 }
 export interface PlaycallTeamResponse extends PlaycallMeta {
   team: string;
@@ -1552,6 +1554,7 @@ export interface PlaycallTeamResponse extends PlaycallMeta {
   runs: PlaycallLane[];
   weekly: PlaycallWeekly | null;
   next_game: PlaycallNextGame | null; // links the week's Play calls tab
+  forecast_record: PlaycallForecastRecord | null; // PC02: null before any graded week
   notes: string[];
 }
 
@@ -1593,6 +1596,9 @@ export interface PlayCallsMatchup {
   offense: string;
   defense: string;
   rows: PlayCallsRow[];
+  // PC02: the shipped forecasts of this matchup, the offense's calls (team = offense) then the
+  // defense's (team = defense); [] when the week has no forecast
+  forecast: PlaycallForecastValue[];
 }
 export interface PlayCallsGame {
   game_id: string;
@@ -1605,15 +1611,107 @@ export interface PlayCallsShift {
   game_id: string;
   offense: string;
   defense: string;
-  metric: string;
-  shift: number; // standard deviations, signed
-  text: string; // one plain sentence, numbers included
+  metric: string; // a PC01 metric (descriptive) or a PC02 target key (forecast)
+  // descriptive: the defense's distance from the league in SDs of the 32 defenses, signed;
+  // forecast: |forecast - season so far| over the half-width of the 80% range (unsigned)
+  shift: number;
+  change?: number; // forecast only: forecast - season so far (rate units), signed
+  text: string; // one or two plain sentences, numbers included
 }
 export interface PlayCallsResponse extends PlaycallMeta {
   week: number;
   window: PlaycallWindow; // 'season' (games before this week); 'last_season' for week 1
-  note: string; // what the tab is (descriptive) and isn't (a forecast: PC02)
+  note: string; // what the tab is: descriptive (no forecast yet) or how to read the forecast
   metrics: PlaycallMetric[]; // the rows of every matchup, in order (only metrics the season has)
   games: PlayCallsGame[];
   shifts: PlayCallsShift[]; // the week's biggest, largest |shift| first (up to 8)
+  shifts_kind: 'descriptive' | 'forecast'; // forecast once the week's forecast is made (PC02)
+  forecast: PlaycallForecastMeta | null; // null: no forecast for this week (see forecast_hint)
+  graded: PlaycallWeekGrade | null; // null: not graded yet
+  forecast_hint: string | null; // the command to run next (forecast, or grade), when one is due
+}
+
+// ---- PC02: the tendency forecast (documentation/play-calling/PC02-tendency-forecast.md) ----
+// Files: playcalling/<S>/week<NN>/forecast.parquet (+ forecast.json) from `nfl playcalling
+// forecast`, playcalling/<S>/playcall_scoreboard.parquet from `nfl playcalling grade`, the model
+// models/playcall/<version>/params.json. Only shipped targets reach the pages. Values use the
+// target's unit (share 0-1, PROE 0-1 shown x100 as signed points, rushers in rushers).
+
+/** A forecast target: a PC01 metric, or `run_outside` (end runs), with the backtest's record. */
+export interface PlaycallTarget extends PlaycallMetric {
+  target: string; // "dropback_rate", "run_outside" ...
+  // the forecast's second term: what the opponent allows / draws, or (run direction) the venue's
+  // stats crew: the home team's crew charts run location, and crews differ by ~9 points
+  context: 'opponent' | 'venue';
+  backtest: {
+    shipped: boolean;
+    mae: number | null; // game-level MAE of the forecast, every backtest season pooled
+    mae_season_to_date: number | null; // the same games, the team's season-to-date rate
+    wins: number | null; // seasons the forecast beat season-to-date
+    seasons: number | null; // seasons scored (7 for play-by-play targets, 4 for FTN ones)
+    coverage: number | null; // share of backtest games inside the 80% range
+  } | null;
+}
+/** One team's forecast rate for one game (+ how it did, once graded). */
+export interface PlaycallForecastValue {
+  target: string;
+  team: string; // whose call it is (the offense for play-action, the defense for blitz)
+  opponent: string;
+  caller: PlaycallSide;
+  forecast: number | null;
+  lo: number | null; // the 80% range of the game's rate (sampling noise included)
+  hi: number | null;
+  season_to_date: number | null; // baseline 2: the team's rate so far (last season's in week 1)
+  league: number | null; // baseline 1: the league rate (dropback rate: + xpass on the game script)
+  shrunk: number | null; // baseline 3: the team's rate shrunk toward last season and the league
+  team_term: number | null; // the forecast's pieces: team + opponent_effect + script_effect
+  opponent_effect: number | null; // the second term: the opponent's effect, or the venue crew's
+  context_team: string | null; // whose effect it is: the opponent, or the home team (venue)
+  script_effect: number | null; // PROE and dropback rate only (0 otherwise)
+  shift: number | null; // forecast - season_to_date
+  n_so_far: number; // plays behind season_to_date
+  games_so_far: number;
+  small: boolean; // n_so_far < min_n
+  // after the games (null before grading):
+  status: 'graded' | 'waiting_ftn' | 'waiting_build' | 'not_played' | 'no_plays' | null;
+  actual: number | null;
+  n: number | null; // plays in the game behind `actual`
+  in_range: boolean | null;
+  beat_season_to_date: boolean | null; // |forecast - actual| < |season_to_date - actual|
+}
+export interface PlaycallForecastMeta {
+  version: string | null; // the playcall-model version
+  made_at: string | null; // ISO time the forecast was made
+  as_of_week: number | null;
+  backfill: boolean; // made after some games kicked off (from the as-of tables: no peeking)
+  after_kickoff: string[]; // those games ("KC at LV, week 4")
+  range_level: number; // 0.8
+  targets: PlaycallTarget[]; // the shipped targets, in display order
+  note: string; // how to read a forecast and its range (the noise floor, plainly)
+}
+export interface PlaycallGradeSummary {
+  graded: number;
+  mae: number | null;
+  mae_season_to_date: number | null;
+  beat: number; // forecasts closer than season-to-date
+  in_range: number | null; // share inside the 80% range
+}
+export interface PlaycallWeekGrade {
+  rows: number;
+  graded: number;
+  waiting: number; // rows waiting for FTN, the build or the game
+  overall: PlaycallGradeSummary;
+  targets: (PlaycallGradeSummary & { target: string })[];
+}
+/** The team page's Next game card: its own calls and the opponent's in the same matchup. */
+export interface PlaycallNextForecast extends PlaycallForecastMeta {
+  own: PlaycallForecastValue[]; // this team, this page's side
+  opponent: PlaycallForecastValue[]; // the opponent's calls on the other side of the matchup
+}
+/** The team page's season card: how the forecast has done for this team's calls. */
+export interface PlaycallForecastRecord {
+  season: number;
+  weeks: number[]; // graded weeks
+  overall: PlaycallGradeSummary;
+  targets: (PlaycallTarget & PlaycallGradeSummary)[];
 }
