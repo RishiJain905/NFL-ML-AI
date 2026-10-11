@@ -38,6 +38,8 @@ import polars as pl
 from nflengine.curate.teams import CANONICAL_TEAMS
 from nflengine.paths import DataPaths
 from nflengine.playcalling import build as B
+from nflengine.playcalling import forecast as PF
+from nflengine.playcalling import forecast_runs as FR
 from nflengine.playcalling import labels as L
 
 TEAMS = sorted(CANONICAL_TEAMS)
@@ -654,6 +656,8 @@ class World:
     paths: DataPaths
     tend: dict[int, Tend] = field(default_factory=dict)
     tg: dict[int, TeamGames] = field(default_factory=dict)
+    fc: dict[int, list[dict[str, Any]]] = field(default_factory=dict)  # PC02: week -> rows
+    sb: list[dict[str, Any]] = field(default_factory=list)  # PC02: the scoreboard's rows
 
 
 def make_world(
@@ -665,8 +669,10 @@ def make_world(
     history_2026: bool = False,
     built_at: str = "2026-10-11T00:15:21+00:00",
     extra_games: list[dict[str, Any]] | None = None,
+    pc02: bool = False,
 ) -> World:
-    """The standard tree:
+    """The standard tree (`pc02=True` adds the forecasts, the scoreboard and the model: see
+    `write_pc02`; the PC01 tests run without them):
 
     - 2026: as-of weeks 1-5 (rows for the full page at 5, the grid / matchup metrics at 1 and 3),
       KC's and MIN's cells pinned, decoys, non-finite numbers, KC's games, FTN waiting for
@@ -730,6 +736,8 @@ def make_world(
         write_games(paths, extra=extra_games)
     if teams_table:
         write_teams(paths)
+    if pc02:
+        write_pc02(paths, w)
     return w
 
 
@@ -759,6 +767,358 @@ def write_custom_games(
         ],
         schema=GAME_SCHEMA,
     ).write_parquet(paths.curated / "games.parquet")
+
+
+# ---- PC02: forecasts, grades and the model -------------------------------------------------------
+# What `nfl playcalling forecast | grade | backtest --promote` write (forecast_runs): per week the
+# `week<NN>/forecast.parquet` (+ forecast.json), the season's `playcall_scoreboard.parquet`, and
+# `models/playcall/production.json` + `<version>/params.json`. The columns are the runs' own lists
+# (a test compares them). Every default row is a small, boring forecast (a shift of 0.3 points,
+# under the pages' 1.5-point floor); the interesting ones are pinned by hand in PINS_*.
+#
+# Defaults per unit: share b2 0.20 (league 0.21, range +-0.05); PROE b2 +0.010 (league
+# -0.020, +-0.06); mean b2 4.30 (league 4.20, +-0.5). forecast = b2 + shrink + opp + script;
+# shrunk = b2 + shrink.
+
+PC02_VERSION = "2019-2025_20261008T120000Z"
+MADE_AT = dt.datetime(2026, 10, 6, 10, 5, tzinfo=dt.UTC)  # Tuesday morning: week 5's forecast
+GRADED_AT = dt.datetime(2026, 10, 10, 16, 0, tzinfo=dt.UTC)  # Saturday, after Thursday's game
+FC_TARGETS = (
+    "proe",
+    "run_middle",
+    "play_action_rate",
+    "blitz_rate",
+    "rushers_avg",
+    "deep_shot_rate",
+)
+SHIPPED_TARGETS = FC_TARGETS[:-1]  # deep_shot_rate did not ship
+PBP_TARGETS = ("proe", "run_middle", "deep_shot_rate")  # the others wait for FTN's charting
+
+_F, _I, _S, _B = pl.Float64, pl.Int64, pl.String, pl.Boolean
+_DT = pl.Datetime("us", "UTC")
+FC_SCHEMA = {
+    "season": pl.Int32, "week": pl.Int32, "game_id": _S, "team": _S, "opponent": _S, "side": _S,
+    "target": _S, "shipped": _B, "forecast": _F, "lo": _F, "hi": _F, "b1": _F, "b2": _F,
+    "b3": _F, "b4": _F, "team_term": _F, "opponent_term": _F, "context": _S, "context_team": _S,
+    "script_term": _F, "prior": _F, "strength": _F, "league": _F, "n_so_far": _F,
+    "games_so_far": _I, "expected_plays": _F, "kickoff_utc": _DT, "spread": _F, "total": _F,
+    "line_source": _S, "made_at": _DT, "after_kickoff": _B, "version": _S,
+}  # fmt: skip
+SB_SCHEMA = {
+    "season": pl.Int32, "week": pl.Int32, "game_id": _S, "team": _S, "opponent": _S, "side": _S,
+    "target": _S, "shipped": _B, "status": _S, "forecast": _F, "lo": _F, "hi": _F, "b1": _F,
+    "b2": _F, "b3": _F, "b4": _F, "actual": _F, "n": _I, "in_range": _B, "err_model": _F,
+    "err_b1": _F, "err_b2": _F, "err_b3": _F, "err_b4": _F, "after_kickoff": _B,
+    "made_at": _DT, "graded_at": _DT, "version": _S,
+}  # fmt: skip
+assert list(FC_SCHEMA) == FR.FORECAST_COLUMNS, "the forecast fixture drifted from the runs"
+assert list(SB_SCHEMA) == FR.SCOREBOARD_COLUMNS, "the scoreboard fixture drifted from the runs"
+
+FC_UNIT = {
+    "share": dict(b2=0.20, b1=0.21, half=0.05, shrink=0.001, opp=0.002, script=0.0),
+    "over_expected": dict(b2=0.010, b1=-0.020, half=0.06, shrink=0.001, opp=0.002, script=0.001),
+    "mean": dict(b2=4.30, b1=4.20, half=0.50, shrink=0.01, opp=0.02, script=0.0),
+}  # fmt: skip
+FC_GAMES = {  # the games each week's forecast covers (away, home)
+    1: [("KC", "LV"), ("LA", "LAC"), ("BAL", "BUF")],
+    3: [("MIN", "CHI"), ("LA", "SEA")],
+    4: [("KC", "DEN"), ("ATL", "NO")],
+    5: [("ARI", "ATL"), ("MIA", "MIN"), ("NE", "NO"), ("DAL", "DEN"), ("CAR", "CHI"),
+        ("DET", "GB"), ("HOU", "IND")],
+}  # fmt: skip
+
+
+def g5(away: str, home: str, week: int = 5) -> str:
+    return game_id(2026, week, away, home)
+
+
+# week 5's pinned rows: (game id, team, target) -> overrides of the unit's defaults. z is the
+# shift over the half-width of the 80% range; the week's listed shifts, best first:
+#   NO blitz 1.10, MIN rushers 0.90 (MIN's PROE, 0.84, loses the team-game), DEN play-action
+#   0.80, IND blitz 0.75 (a shift of exactly 1.5 points), CHI run_middle 0.56, GB PROE 0.50,
+#   DET rushers 0.4545 (exactly 0.05), MIA PROE 0.4286;  cut by the cap of 8: NE blitz 0.4167,
+#   HOU play-action 0.16, DAL rushers 0.109;  never candidates: DET PROE (1.49 points), CAR
+#   rushers (0.0499), HOU blitz (a zero-width range), DAL PROE (no lower end).
+PINS_5: dict[tuple[str, str, str], dict[str, Any]] = {
+    (g5("NE", "NO"), "NO", "blitz_rate"): dict(b2=0.30, shrink=-0.045, opp=-0.010, half=0.05),
+    (g5("MIA", "MIN"), "MIN", "rushers_avg"): dict(b2=4.30, shrink=0.05, opp=0.40, half=0.50),
+    (g5("MIA", "MIN"), "MIN", "proe"): dict(
+        b2=0.010, shrink=0.002, opp=0.030, script=0.010, half=0.05
+    ),
+    (g5("DAL", "DEN"), "DEN", "play_action_rate"): dict(b2=0.25, shrink=0.03, opp=0.01, half=0.05),
+    (g5("HOU", "IND"), "IND", "blitz_rate"): dict(
+        b2=0.25, shrink=-0.020, opp=0.005, half=0.02, n=70, games=2
+    ),
+    (g5("CAR", "CHI"), "CHI", "run_middle"): dict(b2=0.30, shrink=0.002, opp=-0.030, half=0.05),
+    (g5("DET", "GB"), "GB", "proe"): dict(
+        b2=0.005, shrink=0.001, opp=0.004, script=0.025, half=0.06
+    ),
+    (g5("DET", "GB"), "DET", "rushers_avg"): dict(b2=4.30, shrink=0.0, opp=0.05, lo=4.24, hi=4.46),
+    (g5("MIA", "MIN"), "MIA", "proe"): dict(
+        b2=0.020, shrink=0.0, opp=-0.010, script=-0.020, lo=-0.080, hi=0.060
+    ),
+    (g5("NE", "NO"), "NE", "blitz_rate"): dict(b2=0.28, shrink=0.0, opp=0.025, lo=0.245, hi=0.365),
+    (g5("HOU", "IND"), "HOU", "play_action_rate"): dict(b2=0.22, shrink=0.0, opp=0.02, half=0.125),
+    (g5("DAL", "DEN"), "DAL", "rushers_avg"): dict(
+        b2=4.30, shrink=0.0, opp=0.06, lo=3.81, hi=4.91
+    ),
+    # never candidates
+    (g5("DET", "GB"), "DET", "proe"): dict(
+        b2=0.010, shrink=0.0009, opp=0.0140, script=0.0, lo=0.0245, hi=0.0253
+    ),
+    (g5("CAR", "CHI"), "CAR", "rushers_avg"): dict(
+        b2=4.30, shrink=0.0, opp=0.0499, lo=4.349, hi=4.351
+    ),
+    (g5("HOU", "IND"), "HOU", "blitz_rate"): dict(b2=0.20, shrink=0.0, opp=0.10, lo=0.30, hi=0.30),
+    (g5("DAL", "DEN"), "DAL", "proe"): dict(
+        b2=0.010, shrink=0.0, opp=0.040, lo=float("nan"), hi=0.10
+    ),
+    # a target that did not ship: a huge shift that must never be read
+    (g5("DAL", "DEN"), "DEN", "deep_shot_rate"): dict(b2=0.10, shrink=0.0, opp=0.20, half=0.01),
+}  # fmt: skip
+# the pre-game lines (a team's spread: + = favoured), the same on every row of a team's game
+LINES = {
+    (g5("MIA", "MIN"), "MIN"): (3.0, 44.0),
+    (g5("MIA", "MIN"), "MIA"): (-3.0, 44.0),
+    (g5("DET", "GB"), "GB"): (6.5, 47.5),
+    (g5("DET", "GB"), "DET"): (-6.5, 47.5),
+    # week 1: a half-point favourite (still named) and a one-point underdog (not a pick'em)
+    (g5("LA", "LAC", 1), "LAC"): (0.5, 41.0),
+    (g5("LA", "LAC", 1), "LA"): (-0.5, 41.0),
+    (g5("BAL", "BUF", 1), "BUF"): (-1.0, 38.5),
+    (g5("BAL", "BUF", 1), "BAL"): (1.0, 38.5),
+}
+# week 1: LV's blitz in a new season (no games yet: the comparison is last season's rate)
+PINS_1: dict[tuple[str, str, str], dict[str, Any]] = {
+    (g5("KC", "LV", 1), "LV", "blitz_rate"): dict(
+        b2=0.28, shrink=-0.030, opp=0.010, half=0.05, n=0, games=0
+    ),
+    # the game script is what moves these two (the lines are in LINES)
+    (g5("LA", "LAC", 1), "LAC", "proe"): dict(
+        b2=0.010, shrink=0.0, opp=0.0, script=0.020, half=0.045
+    ),
+    (g5("BAL", "BUF", 1), "BUF", "proe"): dict(
+        b2=0.010, shrink=0.0, opp=0.0, script=-0.025, half=0.05
+    ),
+}  # fmt: skip
+# week 3: PROE at the 1.5-point floor (listed) and a hair under it (not), and the sample-size edge
+PINS_3: dict[tuple[str, str, str], dict[str, Any]] = {
+    (g5("MIN", "CHI", 3), "CHI", "proe"): dict(
+        b2=0.010, shrink=0.0, opp=0.014, script=0.001, half=0.03, n=20
+    ),
+    (g5("MIN", "CHI", 3), "MIN", "proe"): dict(
+        b2=0.010, shrink=0.0, opp=0.0139, script=0.001, half=0.03, n=19
+    ),
+    # how many games a team has played decides the wording: one is "few", three are "games"
+    (g5("LA", "SEA", 3), "SEA", "blitz_rate"): dict(
+        b2=0.25, shrink=-0.020, opp=0.005, half=0.02, n=30, games=1
+    ),
+    (g5("LA", "SEA", 3), "LA", "play_action_rate"): dict(
+        b2=0.22, shrink=0.030, opp=0.005, half=0.05, games=3
+    ),
+}  # fmt: skip
+# a graded tie (the forecast and season-to-date are equally far from what happened) in week 1,
+# and a scoreboard row whose status the pages do not know, also in week 1
+TIE_KEY = (g5("BAL", "BUF", 1), "BAL", "proe")
+ACTUAL_1 = {TIE_KEY: 0.012}  # forecast 0.014, season to date 0.010: both 0.002 away
+ODD_KEY = (g5("KC", "LV", 1), "LV", "run_middle")
+
+# what happened: (game id, team, target) -> the rate (graded rows only)
+ACTUAL_4 = {
+    (g5("KC", "DEN", 4), "KC", "proe"): 0.050,
+    (g5("KC", "DEN", 4), "KC", "play_action_rate"): 0.12,
+    (g5("KC", "DEN", 4), "KC", "run_middle"): 0.21,
+    (g5("KC", "DEN", 4), "KC", "blitz_rate"): 0.25,
+    (g5("KC", "DEN", 4), "KC", "rushers_avg"): 4.60,
+    (g5("KC", "DEN", 4), "DEN", "proe"): -0.010,
+    (g5("KC", "DEN", 4), "DEN", "play_action_rate"): 0.30,
+    (g5("KC", "DEN", 4), "DEN", "run_middle"): 0.15,
+    (g5("KC", "DEN", 4), "DEN", "blitz_rate"): 0.18,
+    (g5("KC", "DEN", 4), "DEN", "rushers_avg"): 4.10,
+    (g5("ATL", "NO", 4), "ATL", "proe"): 0.020,
+    (g5("ATL", "NO", 4), "ATL", "run_middle"): 0.25,
+    (g5("ATL", "NO", 4), "NO", "proe"): 0.000,
+    (g5("ATL", "NO", 4), "NO", "run_middle"): 0.19,
+}  # fmt: skip
+ACTUAL_5 = {  # Thursday night: the play-by-play targets are in, FTN's charting is not
+    (g5("ARI", "ATL"), "ARI", "proe"): 0.030,
+    (g5("ARI", "ATL"), "ARI", "run_middle"): 0.26,
+    (g5("ARI", "ATL"), "ATL", "proe"): -0.020,
+    (g5("ARI", "ATL"), "ATL", "run_middle"): 0.21,
+}  # fmt: skip
+UNSHIPPED_ACTUAL = 0.35  # what the unshipped deep-shot rows scored: a loud decoy
+
+
+def _r(x: float) -> float:
+    return round(x, 9)
+
+
+def fc_row(week: int, gid: str, team: str, target: str, **over: Any) -> dict[str, Any]:
+    """One forecast row from the unit's defaults and the overrides (b2, shrink, opp, script,
+    half, lo, hi, forecast, n, games, shipped, after)."""
+    t = PF.get_target(target)
+    away, home = gid.split("_")[2:4]
+    opp = home if team == away else away
+    d = {**FC_UNIT[t.unit], **{k: v for k, v in over.items() if k in FC_UNIT[t.unit]}}
+    team_term = d["b2"] + d["shrink"]
+    f = over.get("forecast", team_term + d["opp"] + d["script"])
+    kick = {game_id(2026, w, a, h): k for w, a, h, k in schedule()}.get(gid)
+    lines = LINES.get((gid, team), (None, None))
+    return {
+        "season": 2026, "week": week, "game_id": gid, "team": team, "opponent": opp,
+        "side": t.side, "target": target,
+        "shipped": over.get("shipped", target != "deep_shot_rate"),
+        "forecast": _r(f), "lo": over.get("lo", _r(f - d["half"])),
+        "hi": over.get("hi", _r(f + d["half"])), "b1": d["b1"], "b2": d["b2"],
+        "b3": _r(team_term), "b4": _r(team_term + d["opp"]), "team_term": _r(team_term),
+        "opponent_term": d["opp"], "context": t.context,
+        "context_team": home if t.context == "venue" else opp, "script_term": d["script"],
+        "prior": _r(team_term), "strength": 600.0, "league": d["b1"],
+        "n_so_far": float(over.get("n", 400)), "games_so_far": int(over.get("games", 4)),
+        "expected_plays": 30.0, "kickoff_utc": kick, "spread": lines[0], "total": lines[1],
+        "line_source": "nflverse_schedules",
+        "made_at": MADE_AT, "after_kickoff": bool(over.get("after", False)),
+        "version": PC02_VERSION,
+    }  # fmt: skip
+
+
+def fc_rows(week: int, pins: dict | None = None, *, after: bool = False) -> list[dict[str, Any]]:
+    rows = []
+    for away, home in FC_GAMES[week]:
+        gid = g5(away, home, week)
+        for team in (away, home):
+            for target in FC_TARGETS:
+                over = (pins or {}).get((gid, team, target), {})
+                rows.append(fc_row(week, gid, team, target, after=after, **over))
+    return sorted(rows, key=lambda r: (r["game_id"], r["side"], r["team"], r["target"]))
+
+
+def decoy_rows(week: int = 5) -> list[dict[str, Any]]:
+    """Rows a page must drop: a code that is no team, a target nobody forecasts, and a game the
+    schedule does not have (a real team in it)."""
+    base = fc_row(week, g5("MIA", "MIN"), "MIN", "proe", b2=0.0, opp=0.30, half=0.01)
+    return [
+        {**base, "team": "XYZ"},
+        {**base, "target": "bogus_target"},
+        {**base, "game_id": g5("KC", "WAS"), "team": "KC", "opponent": "WAS"},
+    ]
+
+
+def sb_rows(rows: list[dict[str, Any]], status, actuals: dict) -> list[dict[str, Any]]:
+    """The scoreboard rows `run_grade` would write for these forecast rows: `status(row)`, and a
+    graded row's actual from `actuals` (the unshipped deep shots get `UNSHIPPED_ACTUAL`)."""
+    out = []
+    for r in rows:
+        st = status(r)
+        row = {k: r[k] for k in SB_SCHEMA if k in r}
+        row.update(status=st, actual=None, n=0, in_range=None, graded_at=GRADED_AT)
+        row.update({f"err_{k}": None for k in ("model", "b1", "b2", "b3", "b4")})
+        if st == "graded":
+            a = actuals.get((r["game_id"], r["team"], r["target"]), UNSHIPPED_ACTUAL)
+            row.update(actual=a, n=50, in_range=bool(r["lo"] <= a <= r["hi"]))
+            row["err_model"] = _r(abs(r["forecast"] - a))
+            for k in ("b1", "b2", "b3", "b4"):
+                row[f"err_{k}"] = _r(abs(r[k] - a))
+        out.append(row)
+    return out
+
+
+def model_doc() -> dict[str, Any]:
+    """params.json: the backtest's record per target (the pages read nothing else of it)."""
+    bt = {  # target: (model MAE, season-to-date MAE, wins, seasons, coverage, shipped)
+        "proe": (0.0412, 0.0431, 5, 7, 0.8123, True),
+        "run_middle": (0.1105, 0.1131, 5, 7, 0.7911, True),
+        "play_action_rate": (0.0842, 0.0869, 3, 4, 0.8012, True),
+        "blitz_rate": (0.0731, 0.0759, 3, 4, 0.8100, True),
+        "rushers_avg": (0.512, 0.530, 3, 4, 0.7899, True),
+        "deep_shot_rate": (0.0950, 0.0948, 2, 7, 0.8000, False),
+    }  # fmt: skip
+    return {
+        "family": "playcall-model", "version": PC02_VERSION, "schema_version": 1,
+        "shipped": [k for k, v in bt.items() if v[5]],
+        "targets": {
+            k: {
+                "shipped": v[5], "fit_seasons": list(range(2019, 2026)),
+                "backtest": {
+                    "mae": {"model": v[0], "b2": v[1]}, "wins_vs_b2": v[2], "seasons": v[3],
+                    "need": 3 if v[3] == 4 else 5, "coverage_80": v[4],
+                },
+            }
+            for k, v in bt.items()
+        },
+    }  # fmt: skip
+
+
+def forecast_meta(week: int, rows: list[dict[str, Any]], after: list[str]) -> dict[str, Any]:
+    return {
+        "schema_version": 1, "season": 2026, "week": week, "as_of_week": week,
+        "cutoff_utc": "2026-10-07T03:59:59+00:00", "made_at": MADE_AT.isoformat(),
+        "version": PC02_VERSION, "shipped": list(SHIPPED_TARGETS),
+        "games": len(FC_GAMES[week]), "rows": len(rows), "games_after_kickoff": after,
+        "backfill": bool(after), "lines": {"with_line": 0, "sources": []}, "curve": None,
+        "notes": [],
+    }  # fmt: skip
+
+
+def write_forecast(paths: DataPaths, week: int, rows: list[dict[str, Any]], meta: dict) -> None:
+    d = paths.playcalling / "2026" / f"week{week:02d}"
+    d.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(rows, schema=FC_SCHEMA).write_parquet(d / "forecast.parquet")
+    (d / "forecast.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def write_model(paths: DataPaths, doc: dict[str, Any] | None = None, version: str | None = None):
+    doc = doc or model_doc()
+    version = version or doc["version"]
+    root = paths.models / "playcall"
+    (root / version).mkdir(parents=True, exist_ok=True)
+    (root / version / "params.json").write_text(json.dumps(doc), encoding="utf-8")
+    (root / "production.json").write_text(json.dumps({"version": version}), encoding="utf-8")
+
+
+def write_scoreboard(paths: DataPaths, rows: list[dict[str, Any]], season: int = 2026) -> None:
+    d = paths.playcalling / str(season)
+    d.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(rows, schema=SB_SCHEMA).write_parquet(d / "playcall_scoreboard.parquet")
+
+
+def write_pc02(paths: DataPaths, w: World | None = None, *, scoreboard: bool = True) -> World:
+    """Week 5 (the as-of week): a forecast of seven games, one of them (Thursday's) partly
+    graded; week 4: a forecast made after the games (a backfill) and fully graded, FTN waiting
+    for ATL at NO; week 3: a forecast nobody graded; week 1: the new season's. The model's
+    record. Weeks 2 and 6 have no forecast."""
+    w = w or World(paths)
+    after4 = [g5(a, h, 4) for a, h in FC_GAMES[4]]
+    w.fc[5] = fc_rows(5, PINS_5)
+    w.fc[4] = fc_rows(4, after=True)
+    w.fc[3] = fc_rows(3, PINS_3, after=True)
+    w.fc[1] = fc_rows(1, PINS_1, after=True)
+    for week, after in ((5, []), (4, after4), (3, [g5(a, h, 3) for a, h in FC_GAMES[3]]),
+                        (1, [g5(a, h, 1) for a, h in FC_GAMES[1]])):  # fmt: skip
+        rows = w.fc[week] + (decoy_rows() if week == 5 else [])
+        write_forecast(paths, week, rows, forecast_meta(week, rows, after))
+    thu = g5("ARI", "ATL")
+
+    def status5(r):
+        if r["game_id"] != thu:
+            return "not_played"
+        return "graded" if r["target"] in PBP_TARGETS else "waiting_ftn"
+
+    def status4(r):
+        if r["game_id"] == g5("KC", "DEN", 4) or r["target"] in PBP_TARGETS:
+            return "graded"
+        return "waiting_ftn"
+
+    def key(r):
+        return (r["game_id"], r["team"], r["target"])
+
+    w.sb = sb_rows(w.fc[4], status4, ACTUAL_4) + sb_rows(w.fc[5], status5, ACTUAL_5)
+    w.sb += sb_rows([r for r in w.fc[1] if key(r) == TIE_KEY], lambda r: "graded", ACTUAL_1)
+    w.sb += sb_rows([r for r in w.fc[1] if key(r) == ODD_KEY], lambda r: "settled", {})
+    if scoreboard:
+        write_scoreboard(paths, w.sb)
+    write_model(paths)
+    return w
 
 
 def finite(x: float | None) -> bool:

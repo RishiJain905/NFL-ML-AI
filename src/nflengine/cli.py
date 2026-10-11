@@ -1971,6 +1971,151 @@ def playcalling_build(
         console.print(f"W&B: {out['url']}")
 
 
+def _weeks_option(week: int | None, weeks: str | None) -> list[int]:
+    if week is not None and weeks:
+        raise typer.BadParameter("give --week or --weeks, not both")
+    if week is not None:
+        return [week]
+    if weeks:
+        from nflengine.playcalling.forecast import parse_seasons
+
+        out = parse_seasons(weeks)
+        if not out:  # "5-3": an empty range would silently do nothing
+            raise typer.BadParameter(f"--weeks {weeks} names no week (write it low-high, e.g. 1-5)")
+        return out
+    raise typer.BadParameter("give --week N or --weeks A-B")
+
+
+@playcalling_app.command("backtest")
+def playcalling_backtest(
+    seasons: str | None = typer.Option(
+        None, help="Reported seasons, e.g. 2019-2025 (default playcalling.forecast)."
+    ),
+    tune: str | None = typer.Option(
+        None, help="Tuning seasons inside them, e.g. 2019-2023 (FTN targets from 2022)."
+    ),
+    targets: str | None = typer.Option(None, help="Comma-separated target keys (default all)."),
+    promote: bool = typer.Option(
+        False, "--promote", help="Refit on every reported season; shipped targets -> production."
+    ),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
+    smoke: bool = typer.Option(
+        False, "--smoke", help="W&B: a logging check (group play-calling-smoke, tag smoke)."
+    ),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Walk-forward backtest of the play-calling forecast vs its four baselines (PC02, D129):
+    every team-game forecast as of its week; the ship rule (D130) per target."""
+    from rich.markup import escape
+
+    from nflengine.playcalling import forecast as PF
+    from nflengine.playcalling.forecast_runs import run_backtest
+
+    try:
+        out = run_backtest(
+            PF.parse_seasons(seasons) if seasons else None,
+            PF.parse_seasons(tune) if tune else None,
+            [k.strip() for k in targets.split(",") if k.strip()] if targets else None,
+            promote=promote,
+            use_wandb=not no_wandb,
+            launched_by=launched_by,
+            smoke=smoke,
+            log=console.print,
+        )
+    except (FileNotFoundError, ValueError, KeyError, RuntimeError) as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(1) from e
+    t = Table(title="play-calling backtest (game-level MAE)")
+    for col in ("target", "seasons", "forecast", "season to date", "shrunk", "+ opponent",
+                "league", "wins", "80% range", "verdict"):  # fmt: skip
+        t.add_column(col)
+    for r in out["results"]:
+        p, v = r.pooled, r.verdict
+        unit = 100.0 if r.target.unit != "mean" else 1.0
+        t.add_row(
+            r.target.key, f"{r.seasons[0]}-{r.seasons[-1]}",
+            *[f"{p[k]['mae'] * unit:.2f}" for k in ("model", "b2", "b3", "b4", "b1")],
+            f"{v['wins_vs_b2']}/{v['seasons']} (need {v['need']})", f"{r.coverage:.0%}",
+            "ships" if v["ships"] else "descriptive",
+        )  # fmt: skip
+    console.print(t)
+    console.print("MAE in points (percentage points; rushers in rushers).")
+    if out["version"]:
+        console.print(f"production: playcall-model {out['version']}")
+    if out["url"]:
+        console.print(f"W&B: {out['url']}")
+
+
+@playcalling_app.command("forecast")
+def playcalling_forecast(
+    season: int = typer.Option(..., help="Season (e.g. 2026)."),
+    week: int | None = typer.Option(None, help="Week to forecast."),
+    weeks: str | None = typer.Option(None, help="A range of weeks, e.g. 1-5 (a backfill)."),
+    version: str | None = typer.Option(None, help="A playcall-model version (default production)."),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
+    smoke: bool = typer.Option(False, "--smoke", help="W&B: group play-calling-smoke."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Forecast every game of a week (PC02): each team's rates against its opponent, as of the
+    week -> playcalling/<S>/week<NN>/forecast.parquet. Run after `nfl playcalling build`."""
+    from rich.markup import escape
+
+    from nflengine.playcalling.forecast_runs import run_forecast
+
+    for w in _weeks_option(week, weeks):
+        try:
+            out = run_forecast(
+                season, w, use_wandb=not no_wandb, launched_by=launched_by, smoke=smoke,
+                version=version, log=console.print,
+            )  # fmt: skip
+        except (FileNotFoundError, ValueError, KeyError) as e:
+            console.print(f"[red]{escape(str(e))}[/]")
+            raise typer.Exit(1) from e
+        if out["url"]:
+            console.print(f"W&B: {out['url']}")
+
+
+@playcalling_app.command("grade")
+def playcalling_grade(
+    season: int = typer.Option(..., help="Season (e.g. 2026)."),
+    week: int | None = typer.Option(None, help="Week to grade."),
+    weeks: str | None = typer.Option(None, help="A range of weeks, e.g. 1-4."),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
+    smoke: bool = typer.Option(False, "--smoke", help="W&B: group play-calling-smoke."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Grade a week's forecast against what the games showed (PC02) -> the season's
+    playcall_scoreboard.parquet. Run after the play-calling build that has the week's games
+    (and again after Wednesday's FTN refresh for Monday night's)."""
+    from rich.markup import escape
+
+    from nflengine.playcalling.forecast_runs import run_grade
+
+    for w in _weeks_option(week, weeks):
+        try:
+            out = run_grade(
+                season, w, use_wandb=not no_wandb, launched_by=launched_by, smoke=smoke,
+                log=console.print,
+            )  # fmt: skip
+        except (FileNotFoundError, ValueError) as e:
+            console.print(f"[red]{escape(str(e))}[/]")
+            raise typer.Exit(1) from e
+        sh = out["summary"]["shipped"]
+        if sh.get("graded"):
+            mae = (
+                f"forecast MAE {sh['mae_model'] * 100:.2f} vs season-to-date "
+                f"{sh['mae_b2'] * 100:.2f} points (shares and PROE); "
+                if sh.get("mae_model") is not None and sh.get("mae_b2") is not None
+                else ""
+            )
+            console.print(
+                f"week {w}, shipped targets: {sh['graded']} rows, {mae}closer than "
+                f"season-to-date in {sh['beat_b2']}; 80% range held {sh['in_range']:.0%}"
+            )
+        if out["url"]:
+            console.print(f"W&B: {out['url']}")
+
+
 PLACEHOLDERS: dict[str, tuple[str, str]] = {}
 
 

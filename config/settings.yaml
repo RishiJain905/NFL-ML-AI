@@ -192,3 +192,12 @@ playcalling:              # play calling (PC00+; documentation/play-calling/, D1
                                 # participation (research only; 2026's arrives ~Feb 2027)
                           # the definitions (neutral, deep shot, blitz ...) live in code:
                           # playcalling/labels.py, explained in guides/play-calling.md §3
+  forecast:               # the tendency forecast (PC02, D129; playcalling/forecast.py)
+    report_seasons: 2019-2025     # `nfl playcalling backtest` (FTN targets from 2022)
+    tune_seasons: 2019-2023       # parameters fit here, then fixed for every reported season
+    ref_seasons: 3                # the game-script curve: the last 3 seasons' plays
+    spread_bandwidth: 2.5         # points: how close a past game's spread must be to count
+    total_scale: 10.0             # the total-line term is per 10 points
+    league_prior_plays: 2000.0    # last season's league rate is worth ~a week of plays
+    pre_change_weight: 0.5        # a game before a mid-season head-coach change counts half
+    ship: {seasons_pbp: 5, seasons_ftn: 3}   # beat season-to-date in 5 of 7 / 3 of 4 (D130)

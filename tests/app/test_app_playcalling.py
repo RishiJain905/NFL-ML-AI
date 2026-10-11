@@ -757,6 +757,10 @@ def test_next_game_after_a_bye_is_the_following_week(base):
         "opponent": "WAS",
         "home": False,
         "kickoff": "2026-10-18T17:00:00Z",
+        # PC02: no forecast file in this tree, so the card names the command that makes it
+        "forecast": None,
+        "forecast_hint": "No forecast for week 6 yet: "
+        "`uv run nfl playcalling forecast --season 2026 --week 6`.",
     }
 
 
@@ -769,6 +773,9 @@ def test_next_game_this_week_home_and_away(base):
         "opponent": "LAC",
         "home": False,
         "kickoff": "2026-10-11T20:05:00Z",
+        "forecast": None,
+        "forecast_hint": "No forecast for week 5 yet: "
+        "`uv run nfl playcalling forecast --season 2026 --week 5`.",
     }
     lac = team_page(base, "LAC")["next_game"]
     assert (lac["week"], lac["opponent"], lac["home"]) == (5, "LA", True)
@@ -2045,15 +2052,16 @@ def test_sol_s7_the_shift_filter_and_ranking_use_the_unrounded_ratio(tmp_path):
 # ---- the contract with web/src/api/types.ts ----------------------------------------------------
 
 TYPES_TS = Path(__file__).resolve().parents[2] / "web" / "src" / "api" / "types.ts"
-TOKEN = re.compile(r"\s*('[^']*'|[A-Za-z_]\w*|\[\]|\d+|[{}<>|;,:()?=])")
+TOKEN = re.compile(r"\s*('[^']*'|[A-Za-z_]\w*|\[\]|\d+|[{}<>|;,:()?=&])")
 PRIMITIVES = {"string", "number", "boolean", "null", "true", "false"}
 
 
 def pc01_source() -> str:
-    """The PC01 block of types.ts without its comments (to the next phase's block, if any)."""
+    """The PC01 and PC02 blocks of types.ts without their comments (to the next phase's block,
+    if any): the PC01 interfaces point at the PC02 ones (`next_game.forecast`, ...)."""
     text = TYPES_TS.read_text(encoding="utf-8")
     start = text.index("// ---- PC01: Play calling")
-    nxt = re.search(r"^// ---- PC0[2-9]", text[start + 10 :], re.M)
+    nxt = re.search(r"^// ---- PC0[3-9]", text[start + 10 :], re.M)
     block = text[start : start + 10 + nxt.start()] if nxt else text[start:]
     block = re.sub(r"/\*.*?\*/", "", block, flags=re.S)
     return re.sub(r"//[^\n]*", "", block)
@@ -2079,11 +2087,18 @@ class TypeParser:
     def union(self):
         if self.peek() == "|":
             self.take()
-        parts = [self.postfix()]
+        parts = [self.inter()]
         while self.peek() == "|":
             self.take()
-            parts.append(self.postfix())
+            parts.append(self.inter())
         return parts[0] if len(parts) == 1 else ("union", parts)
+
+    def inter(self):
+        parts = [self.postfix()]
+        while self.peek() == "&":
+            self.take()
+            parts.append(self.postfix())
+        return parts[0] if len(parts) == 1 else ("inter", parts)
 
     def postfix(self):
         node = self.primary()
@@ -2155,6 +2170,13 @@ class Contract:
             merged |= self.fields_of(parent)
         return merged | own
 
+    def members(self, node) -> tuple[str, dict[str, tuple[Any, bool]]]:
+        """(owner name, fields) of one member of an intersection."""
+        if node[0] == "name" and node[1] in self.ifaces:
+            return node[1], self.fields_of(node[1])
+        assert node[0] == "obj", f"an intersection of {node}"
+        return "(inline)", node[1]
+
     def literals(self, node) -> set[str] | None:
         """The string values of a union of literals (or an alias for one), else None."""
         if node[0] == "lit":
@@ -2211,6 +2233,22 @@ class Contract:
                 self.check(v, node[2], f"{where}.{k}", problems, seen)
         elif kind == "obj":
             self.check_fields(value, node[1], "(inline)", where, problems, seen)
+        elif kind == "inter":  # `A & { ... }`: the value carries the fields of every member
+            members = [self.members(m) for m in node[1]]
+            if not isinstance(value, dict):
+                problems.append(f"{where}: expected an object, got {type(value).__name__}")
+                return
+            allowed = set().union(*(set(f) for _, f in members))
+            for k in sorted(set(value) - allowed):
+                problems.append(f"{where}: field {k!r} is in none of {[o for o, _ in members]}")
+            for owner, fields in members:
+                for k, (ty, optional) in fields.items():
+                    if k not in value:
+                        if not optional:
+                            problems.append(f"{where}: {owner}.{k} is missing")
+                        continue
+                    seen[(owner, k)].add("null" if value[k] is None else "value")
+                    self.check(value[k], ty, f"{where}.{k}", problems, seen)
         else:  # a name
             name = node[1]
             if name in PRIMITIVES:
@@ -2314,6 +2352,15 @@ def contract_answers(base: Base, tmp_path: Path) -> list[tuple[str, str, Any]]:
     add("PlaycallTeamResponse", "/api/playcalling/teams/KC", empty)
     add("PlaycallHistoryResponse", "/api/playcalling/teams/KC/history", empty)
     add("PlayCallsResponse", "/api/weeks/2026/5/play-calls", empty)
+    # PC02: a tree with forecasts, a graded week and the model
+    root = tmp_path / "pc02"
+    make_world(make_paths(root), pc02=True)
+    fc = make_client(root)
+    for week in (1, 3, 4, 5):
+        add("PlayCallsResponse", f"/api/weeks/2026/{week}/play-calls", fc)
+    for team, side in (("MIN", "defense"), ("MIN", "offense"), ("KC", "offense"),
+                       ("KC", "defense"), ("ARI", "offense"), ("KC", "offense")):  # fmt: skip
+        add("PlaycallTeamResponse", f"/api/playcalling/teams/{team}?season=2026&side={side}", fc)
     t = Tend(2027).fill(1, F.page_pairs(["proe", "blitz_rate", "play_action_rate"]), teams=["KC"])
     first = solo(tmp_path / "first", [(t, build_doc(2027, 1))])
     add("PlaycallTeamsResponse", "/api/playcalling/teams?season=2027", first)
@@ -2569,6 +2616,25 @@ def test_real_week_tab_lists_every_curated_game_with_the_stored_cells(real):
                     want_cell(df, mu["defense"], "defense", week, "season", row["metric"], sit),
                     "defense",
                 )
+    if b["shifts_kind"] == "forecast":  # PC02: a week with a forecast lists its expected moves
+        vals = {
+            (g["game_id"], v["team"], v["target"]): v
+            for g in b["games"]
+            for mu in g["matchups"]
+            for v in mu["forecast"]
+        }
+        caller = {t["target"]: t["caller"] for t in b["forecast"]["targets"]}
+        assert 0 < len(b["shifts"]) <= 8
+        for s in b["shifts"]:
+            # whose call it is: the offense's (PROE ...) or the defense's (blitz, rushers, box)
+            team = s["defense"] if caller[s["metric"]] == "defense" else s["offense"]
+            v = vals[(s["game_id"], team, s["metric"])]
+            assert s["change"] == pytest.approx(v["forecast"] - v["season_to_date"], abs=1e-5)
+            half = (v["hi"] - v["lo"]) / 2
+            assert s["shift"] == pytest.approx(abs(s["change"]) / half, abs=0.011)
+        mags = [s["shift"] for s in b["shifts"]]
+        assert mags == sorted(mags, reverse=True)
+        return
     # the shifts, worked out again from the stored defense rows
     defs = df.filter(
         (pl.col("side") == "defense")

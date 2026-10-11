@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime as dt
 import math
+import re
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,7 @@ import pyarrow.parquet as pq
 from nflengine.app.readers.common import clean, curated, num, read_json
 from nflengine.curate.teams import CANONICAL_TEAMS, TEAM_MAP
 from nflengine.paths import DataPaths
+from nflengine.playcalling import forecast as PF
 from nflengine.playcalling import labels as L
 
 MIN_N = 20  # the phase file: grey out rates on fewer plays
@@ -828,6 +830,7 @@ def get_team(
         "runs": [],
         "weekly": None,
         "next_game": None,
+        "forecast_record": None,
         "notes": [],
     }
     if b is None:
@@ -917,8 +920,9 @@ def get_team(
     if side == "defense":
         notes.append(
             "A defense's rates are what offenses did against it, except its own calls (blitz, "
-            "rushers, box). They depend on the offenses it faced; PC02's forecast adjusts for "
-            "them. Situations read from the offense's side: 'Down 9+' means the offense trailed."
+            "rushers, box). They depend on the offenses it faced; the Next game forecast "
+            "adjusts for them. Situations read from the offense's side: 'Down 9+' means the "
+            "offense trailed."
         )
     if as_of == 1:
         notes.append(
@@ -931,6 +935,9 @@ def get_team(
             + "; ".join(meta["ftn_waiting"][:6])
             + ". Play-action, motion, blitz and box rates count the charted games only."
         )
+    ng = _next_game(paths, season, team, as_of, now)
+    if ng is not None:  # PC02: the next game's forecast, when that week's has been made
+        ng["forecast"], ng["forecast_hint"] = _team_forecast(paths, season, ng, team, side)
     return {
         **meta,
         "team": team,
@@ -942,7 +949,8 @@ def get_team(
         "field": field,
         "runs": runs,
         "weekly": _weekly(paths, season, team, side, ix, window, as_of),
-        "next_game": _next_game(paths, season, team, as_of, now),
+        "next_game": ng,
+        "forecast_record": _forecast_record(paths, season, team, side),
         "notes": notes,
     }
 
@@ -1091,9 +1099,20 @@ def get_play_calls(paths: DataPaths, season: int, week: int) -> dict[str, Any]:
     metrics = [metric_info(m) for m in _MATCHUP]
     note = (
         "Descriptive: each offense's rates so far next to what the other defense has allowed "
-        "and the league. It isn't a forecast: PC02 adds one, adjusted for the opponents faced."
+        "and the league. It isn't a forecast: this week has none yet (the forecast adjusts for "
+        "the opponents each team faced)."
     )
-    base = {"week": week, "note": note, "metrics": metrics, "games": [], "shifts": []}
+    base = {
+        "week": week,
+        "note": note,
+        "metrics": metrics,
+        "games": [],
+        "shifts": [],
+        "shifts_kind": "descriptive",
+        "forecast": None,
+        "graded": None,
+        "forecast_hint": None,
+    }
     if b is None:
         return {**meta, **base, "window": "season"}
     newest = meta["as_of_week"]
@@ -1150,11 +1169,17 @@ def get_play_calls(paths: DataPaths, season: int, week: int) -> dict[str, Any]:
         for m in active
     }
     sds = {m: _sd(v) for m, v in def_values.items()}
+    wf = week_forecast(paths, season, week)  # PC02: the week's forecasts and grades, if made
+    fvals = wf["values"]
 
     games, candidates = [], []
     for g in _week_games(paths, season, week):
         matchups = []
         for off, dfn in ((g["away"], g["home"]), (g["home"], g["away"])):
+            gid = g["game_id"]
+            forecast = [v for v in fvals.get((gid, off), []) if v["caller"] == "offense"] + [
+                v for v in fvals.get((gid, dfn), []) if v["caller"] == "defense"
+            ]
             rows = []
             for m in active:
                 o = cells.get((off, "offense", m))
@@ -1186,8 +1211,31 @@ def get_play_calls(paths: DataPaths, season: int, week: int) -> dict[str, Any]:
                     and not o["small"]
                 ):
                     candidates.append((abs(raw), g["game_id"], off, dfn, m, shift, d, o))
-            matchups.append({"offense": off, "defense": dfn, "rows": rows})
+            matchups.append({"offense": off, "defense": dfn, "rows": rows, "forecast": forecast})
         games.append({**g, "matchups": matchups})
+
+    if wf["meta"] is not None:  # PC02: the shifts come from the forecast
+        week_ids = {g["game_id"] for g in games}
+        flat = [
+            (gid, v, *wf["lines"].get((gid, team), (None, None)))
+            for (gid, team), vs in sorted(fvals.items())
+            if gid in week_ids
+            for v in vs
+        ]
+        return {
+            **meta,
+            **base,
+            "message": None if games else f"No week-{week} games in the schedule.",
+            "note": wf["meta"]["note"],
+            "window": window,
+            "metrics": [metric_info(m) for m in active],
+            "games": games,
+            "shifts": _forecast_shifts(flat),
+            "shifts_kind": "forecast",
+            "forecast": wf["meta"],
+            "graded": wf["graded"],
+            "forecast_hint": wf["hint"],
+        }
 
     shifts, seen = [], set()
     for _, gid, off, dfn, m, shift, d, o in sorted(candidates, key=lambda c: -c[0]):
@@ -1217,4 +1265,488 @@ def get_play_calls(paths: DataPaths, season: int, week: int) -> dict[str, Any]:
         "metrics": [metric_info(m) for m in active],
         "games": games,
         "shifts": shifts,
+        "forecast_hint": wf["hint"],
+    }
+
+
+# ---- PC02: the forecast and its grading ---------------------------------------------------
+# `nfl playcalling forecast` writes `playcalling/<S>/week<NN>/forecast.parquet` (+ .json), one row
+# per game, team and target; `nfl playcalling grade` the season's `playcall_scoreboard.parquet`;
+# `nfl playcalling backtest --promote` the model folder `models/playcall/<version>/params.json`
+# and `models/playcall/production.json` (D129, D130). Only shipped targets reach the pages.
+
+FORECAST_CMD = "uv run nfl playcalling forecast --season {season} --week {week}"
+GRADE_CMD = "uv run nfl playcalling grade --season {season} --week {week}"
+MAX_FORECAST_SHIFTS = 8
+_STATUSES = ("graded", "waiting_ftn", "waiting_build", "not_played", "no_plays")
+_VERSION_RE = re.compile(r"^\d{4}-\d{4}_\d{8}T\d{6}Z$")
+_TARGET_HELP = {
+    "run_middle": "Designed runs up the middle, per designed run with a direction. Run "
+    "direction is charted by each stadium's stats crew, and crews differ a lot: the forecast's "
+    "second term is the venue's crew, not the opponent.",
+    "run_outside": "Designed runs to the left or right end, outside the tackles, per designed run "
+    "with a direction. Charted by each stadium's stats crew: the forecast's second term is the "
+    "venue's crew, not the opponent.",
+    "dropback_rate": "Passes, sacks and scrambles, per play, in every situation: the game script "
+    "(the spread and the total) moves it most.",
+}
+_SHIFT_MIN = {"share": 0.015, "over_expected": 0.015, "mean": 0.05}
+
+
+def target_info(key: str) -> dict[str, Any]:
+    """How a forecast target is named and formatted (the TypeScript `PlaycallTarget`): the
+    PC01 metric's when it's one metric, the registry's own for `run_outside`."""
+    t = PF.get_target(key)
+    base = metric_info(key) if _metric(key) is not None else None
+    per = base["per"] if base else "designed run"
+    return {
+        "metric": key,
+        "target": key,
+        "label": t.label,
+        "short": t.short,
+        "unit": t.unit,
+        "digits": _DIGITS.get(key, 1),
+        "source": t.source,
+        "situation": t.situation,
+        "per": per,
+        "caller": t.side,
+        "help": _TARGET_HELP.get(key) or (base["help"] if base else None),
+        "context": t.context,
+    }
+
+
+def _model_summary(paths: DataPaths) -> dict[str, Any] | None:
+    """The production `playcall-model`'s backtest per target (the version string is checked
+    before it names a folder)."""
+    root = paths.models / "playcall"
+    ptr = read_json(root / "production.json")
+    version = ptr.get("version") if ptr else None
+    if not isinstance(version, str) or not _VERSION_RE.fullmatch(version):
+        return None
+    doc = read_json(root / version / "params.json")
+    if doc is None or not isinstance(doc.get("targets"), dict):
+        return None
+    out: dict[str, Any] = {"version": version, "targets": {}}
+    for key, v in doc["targets"].items():
+        if key not in PF.TARGET_KEYS or not isinstance(v, dict):
+            continue
+        bt = v.get("backtest") or {}
+        mae = bt.get("mae") or {}
+        out["targets"][key] = {
+            "shipped": bool(v.get("shipped")),
+            "mae": num(mae.get("model"), 6),
+            "mae_season_to_date": num(mae.get("b2"), 6),
+            "wins": int(bt["wins_vs_b2"]) if isinstance(bt.get("wins_vs_b2"), int) else None,
+            "seasons": int(bt["seasons"]) if isinstance(bt.get("seasons"), int) else None,
+            "coverage": num(bt.get("coverage_80"), 4),
+        }
+    return out
+
+
+def _week_folder(paths: DataPaths, season: int, week: int) -> Path:
+    return _season_dir(paths, season) / f"week{week:02d}"
+
+
+def _same_forecast(r: dict[str, Any], g: dict[str, Any] | None) -> bool:
+    """A scoreboard row grades this forecast only if it was made from it (the same model
+    version and `made_at`): a forecast re-made after grading is ungraded until `nfl playcalling
+    grade` runs again (Sol review, D131)."""
+    return (
+        g is not None
+        and g.get("version") == r.get("version")
+        and g.get("made_at") is not None
+        and g.get("made_at") == r.get("made_at")
+    )
+
+
+def _fvalue(r: dict[str, Any], g: dict[str, Any] | None) -> dict[str, Any] | None:
+    """One forecast as the pages show it (the TypeScript `PlaycallForecastValue`)."""
+    if not _same_forecast(r, g):
+        g = None
+    key = r.get("target")
+    team, opp = _canon(r.get("team")), _canon(r.get("opponent"))
+    if key not in PF.TARGET_KEYS or not (team and opp):
+        return None
+    f, b2 = num(r.get("forecast"), 6), num(r.get("b2"), 6)
+    n_so_far = num(r.get("n_so_far"))
+    out: dict[str, Any] = {
+        "target": key,
+        "team": team,
+        "opponent": opp,
+        "caller": PF.get_target(key).side,
+        "forecast": f,
+        "lo": num(r.get("lo"), 6),
+        "hi": num(r.get("hi"), 6),
+        "season_to_date": b2,
+        "league": num(r.get("b1"), 6),
+        "shrunk": num(r.get("b3"), 6),
+        "team_term": num(r.get("team_term"), 6),
+        "opponent_effect": num(r.get("opponent_term"), 6),
+        "context_team": _canon(r.get("context_team")),
+        "script_effect": num(r.get("script_term"), 6),
+        "shift": round(f - b2, 6) if f is not None and b2 is not None else None,
+        "n_so_far": int(n_so_far) if n_so_far is not None else 0,
+        "games_so_far": int(num(r.get("games_so_far")) or 0),
+        "small": (n_so_far or 0) < MIN_N,
+        "status": None,
+        "actual": None,
+        "n": None,
+        "in_range": None,
+        "beat_season_to_date": None,
+    }
+    if g is not None:
+        st = g.get("status")
+        out["status"] = st if st in _STATUSES else None
+        if st == "graded":
+            a = num(g.get("actual"), 6)
+            out["actual"] = a
+            out["n"] = int(num(g.get("n")) or 0)
+            out["in_range"] = bool(g.get("in_range")) if g.get("in_range") is not None else None
+            em, e2 = num(g.get("err_model")), num(g.get("err_b2"))
+            out["beat_season_to_date"] = em < e2 if em is not None and e2 is not None else None
+    return out
+
+
+def _grades(paths: DataPaths, season: int, filters: list) -> dict[tuple, dict[str, Any]]:
+    df = _read(_season_dir(paths, season) / "playcall_scoreboard.parquet", filters)
+    if df is None or df.is_empty():
+        return {}
+    return {(r["game_id"], r["team"], r["target"]): r for r in df.iter_rows(named=True)}
+
+
+def _forecast_rows(
+    paths: DataPaths, season: int, week: int, filters: list
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """(forecast.json, the shipped rows matching `filters`); (None, []) without a forecast."""
+    folder = _week_folder(paths, season, week)
+    meta = read_json(folder / "forecast.json")
+    df = _read(folder / "forecast.parquet", [("shipped", "=", True), *filters])
+    if meta is None or df is None:
+        return None, []
+    return meta, list(df.iter_rows(named=True))
+
+
+def _forecast_meta(
+    meta: dict[str, Any], model: dict[str, Any] | None, targets: list[str]
+) -> dict[str, Any]:
+    after = [
+        lbl
+        for g in meta.get("games_after_kickoff") or []
+        if isinstance(g, str) and (lbl := _game_label(g))
+    ]
+    mt = (model or {}).get("targets", {})
+    return {
+        "version": clean(meta.get("version"), None, 40),
+        "made_at": clean(meta.get("made_at"), None, 40),
+        "as_of_week": int(meta["as_of_week"]) if isinstance(meta.get("as_of_week"), int) else None,
+        "backfill": bool(after),
+        "after_kickoff": after[:20],
+        "range_level": PF.RANGE_LEVEL,
+        "targets": [
+            {**target_info(k), "backtest": mt.get(k)} for k in PF.TARGET_KEYS if k in targets
+        ],
+        "note": (
+            "Each forecast is the team's rate for this game: its own rate shrunk toward last "
+            "season and the league, moved by what the opponent allows (beyond the teams it "
+            "faced; for run direction, by the home stadium's stats crew, who chart it) and, for "
+            "PROE and dropback rate, by the spread and the total. The range "
+            "holds 80% of games in the backtest: one game's rate is noisy (about 60 plays), so "
+            "a forecast a point or two from the season's rate is inside the noise."
+        ),
+    }
+
+
+def _graded_summary(rows: list[dict[str, Any]], meta_targets: list[str]) -> dict[str, Any] | None:
+    """The week's grade over its graded, shipped forecasts (None before any grading)."""
+    vals = [v for v in rows if v["status"] is not None]
+    if not vals:
+        return None
+    graded = [v for v in vals if v["status"] == "graded"]
+
+    def summ(xs: list[dict[str, Any]], overall: bool = False) -> dict[str, Any]:
+        if not xs:
+            return {"graded": 0, "mae": None, "mae_season_to_date": None, "beat": 0,
+                    "in_range": None}  # fmt: skip
+        # the overall MAE only over targets in points (shares, PROE): rushers are in rushers
+        pts = [x for x in xs if not overall or PF.get_target(x["target"]).unit != "mean"]
+        e = [abs(x["forecast"] - x["actual"]) for x in pts]
+        e2 = [abs(x["season_to_date"] - x["actual"]) for x in pts]
+        return {
+            "graded": len(xs),
+            "mae": round(sum(e) / len(e), 6) if e else None,
+            "mae_season_to_date": round(sum(e2) / len(e2), 6) if e2 else None,
+            "beat": sum(1 for x in xs if x["beat_season_to_date"]),
+            "in_range": round(sum(1 for x in xs if x["in_range"]) / len(xs), 4),
+        }
+
+    ok = [
+        x for x in graded
+        if x["forecast"] is not None and x["season_to_date"] is not None
+        and x["actual"] is not None
+    ]  # fmt: skip
+    waiting = [v for v in vals if v["status"] in ("waiting_ftn", "waiting_build", "not_played")]
+    return {
+        "rows": len(vals),
+        "graded": len(ok),
+        "waiting": len(waiting),
+        "overall": summ(ok, overall=True),
+        "targets": [
+            {"target": k, **summ([x for x in ok if x["target"] == k])}
+            for k in PF.TARGET_KEYS
+            if k in meta_targets
+        ],
+    }
+
+
+def _delta(unit: str, v: float) -> str:
+    if unit == "mean":
+        return _minus(f"{v:+.2f}")
+    return _minus(f"{v * 100:+.1f}") + " points"
+
+
+def _forecast_shift_text(v: dict[str, Any], spread: float | None, total: float | None) -> str:
+    info = target_info(v["target"])
+    unit = info["unit"]
+    short = info["short"][0].lower() + info["short"][1:] if info["short"] != "PROE" else "PROE"
+    new_season = not v["games_so_far"]  # week 1: the comparison is last season's rate
+    head = (
+        f"{v['team']}'s {short} against {v['opponent']}: "
+        f"{fmt_value_target(v['target'], v['forecast'])} expected, "
+        f"{fmt_value_target(v['target'], v['season_to_date'])} "
+        f"{'last season' if new_season else 'so far'} ({_delta(unit, v['shift'])})."
+    )
+    shrink = (v["team_term"] or 0.0) - (v["season_to_date"] or 0.0)
+    parts = {
+        "opponent": v["opponent_effect"] or 0.0,
+        "script": v["script_effect"] or 0.0,
+        "shrink": shrink,
+    }
+    why = max(parts, key=lambda k: abs(parts[k]))
+    d = _delta(unit, parts[why])
+    if why == "opponent" and info["context"] == "venue" and v["context_team"]:
+        more = "more" if parts[why] > 0 else "fewer"
+        tail = (
+            f"In {v['context_team']}'s home games the stats crew, who chart run direction, "
+            f"has logged {more} of them than the teams' own rates ({d})."
+        )
+    elif why == "opponent":
+        who = "defenses" if v["caller"] == "defense" else "offenses"
+        side = "offense" if v["caller"] == "defense" else "defense"
+        more = "more" if parts[why] > 0 else "less"
+        tail = (
+            f"Against {v['opponent']}'s {side}, {who} have done {more} of it than they usually "
+            f"do ({d})."
+        )
+    elif why == "script":
+        if spread is not None and abs(spread) >= 0.5:
+            fav = (
+                f"favoured by {abs(spread):g}"
+                if spread > 0
+                else f"a {abs(spread):g}-point underdog"
+            )
+        else:
+            fav = "in a pick'em"
+        tot = f", total {total:g}" if total is not None else ""
+        tail = f"The game script: {v['team']} {fav}{tot} ({d})."
+    elif new_season:
+        tail = (
+            "A new season: the forecast pulls last season's rate toward the league (rosters "
+            f"and coaches change; {d})."
+        )
+    elif v["games_so_far"] <= 2:
+        tail = (
+            f"Few {info['per']}s so far ({v['n_so_far']}): the forecast leans on last season and "
+            f"the league ({d})."
+        )
+    else:
+        tail = (
+            f"The forecast pulls {v['team']}'s rate so far toward last season and the league "
+            f"({d}): {v['games_so_far']} games move a rate less than they seem to."
+        )
+    return f"{head} {tail}"
+
+
+def fmt_value_target(key: str, v: float | None) -> str:
+    if v is None:
+        return "n/a"
+    t = PF.get_target(key)
+    if t.unit == "share":
+        return f"{v * 100:.1f}%"
+    if t.unit == "over_expected":
+        p = round(v * 100, 1)
+        return _minus(f"{p:+.1f}") if p else "0.0"
+    return _minus(f"{v:.{_DIGITS.get(key, 2)}f}")
+
+
+def _forecast_shifts(
+    values: list[tuple[str, dict[str, Any], float | None, float | None]],
+) -> list[dict[str, Any]]:
+    """The week's biggest expected moves from a team's own rate: |forecast - season so far|
+    over the half-width of the 80% range, at least 1.5 points (0.05 for rushers), one per
+    team and game, up to `MAX_FORECAST_SHIFTS`."""
+    cands = []
+    for gid, v, spread, total in values:
+        if v["shift"] is None or v["lo"] is None or v["hi"] is None:
+            continue
+        unit = PF.get_target(v["target"]).unit
+        half = (v["hi"] - v["lo"]) / 2
+        if abs(v["shift"]) < _SHIFT_MIN[unit] or half <= 0:
+            continue
+        cands.append((abs(v["shift"]) / half, gid, v, spread, total))
+    out, seen = [], set()
+    for z, gid, v, spread, total in sorted(cands, key=lambda c: -c[0]):
+        if (gid, v["team"]) in seen:
+            continue
+        seen.add((gid, v["team"]))
+        off, dfn = (
+            (v["team"], v["opponent"]) if v["caller"] == "offense" else (v["opponent"], v["team"])
+        )
+        out.append(
+            {
+                "game_id": gid,
+                "offense": off,
+                "defense": dfn,
+                "metric": v["target"],
+                "shift": round(z, 2),
+                "change": v["shift"],
+                "text": _forecast_shift_text(v, spread, total),
+            }
+        )
+        if len(out) == MAX_FORECAST_SHIFTS:
+            break
+    return out
+
+
+def week_forecast(paths: DataPaths, season: int, week: int) -> dict[str, Any]:
+    """The week's shipped forecasts by (game, team), their grades, and the answer's
+    `forecast` / `graded` blocks."""
+    meta, rows = _forecast_rows(paths, season, week, [])
+    if meta is None:
+        return {
+            "meta": None,
+            "values": {},
+            "graded": None,
+            "hint": f"No forecast for week {week} yet: "
+            f"`{FORECAST_CMD.format(season=season, week=week)}` (after the week's "
+            "`nfl playcalling build`).",
+            "lines": {},
+        }
+    grades = _grades(paths, season, [("season", "=", season), ("week", "=", week)])
+    values: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    lines: dict[tuple[str, str], tuple[float | None, float | None]] = {}
+    for r in rows:
+        v = _fvalue(r, grades.get((r.get("game_id"), r.get("team"), r.get("target"))))
+        gid = clean(r.get("game_id"), None, 40)
+        if v is None or gid is None:
+            continue
+        values.setdefault((gid, v["team"]), []).append(v)
+        lines[(gid, v["team"])] = (num(r.get("spread"), 2), num(r.get("total"), 2))
+    order = {k: i for i, k in enumerate(PF.TARGET_KEYS)}
+    for vs in values.values():
+        vs.sort(key=lambda v: order[v["target"]])
+    shipped = sorted({v["target"] for vs in values.values() for v in vs}, key=order.get)
+    model = _model_summary(paths)
+    flat = [v for vs in values.values() for v in vs]
+    graded = _graded_summary(flat, shipped) if grades else None
+    hint = None
+    if graded is None:
+        stale = bool(grades)  # grades exist, but of an earlier forecast of this week
+        cmd = GRADE_CMD.format(season=season, week=week)
+        hint = (
+            f"The forecast was made again after grading: `{cmd}` grades this one."
+            if stale
+            else f"Not graded yet: `{GRADE_CMD.format(season=season, week=week)}` after the "
+            "week's games are in the play-calling tables."
+        )
+    return {
+        "meta": _forecast_meta(meta, model, shipped),
+        "values": values,
+        "graded": graded,
+        "hint": hint,
+        "lines": lines,
+    }
+
+
+def _team_forecast(
+    paths: DataPaths, season: int, ng: dict[str, Any], team: str, side: str
+) -> tuple[dict[str, Any] | None, str | None]:
+    """The next game's forecast for the team page: its own calls on this side, and the
+    opponent's calls on the other side of the same matchup."""
+    week, opp = ng["week"], ng["opponent"]
+    meta, rows = _forecast_rows(paths, season, week, [("team", "in", [team, opp])])
+    if meta is None:
+        return None, (
+            f"No forecast for week {week} yet: `{FORECAST_CMD.format(season=season, week=week)}`."
+        )
+    grades = _grades(
+        paths, season, [("season", "=", season), ("week", "=", week), ("team", "in", [team, opp])]
+    )
+    own, other = [], []
+    for r in rows:
+        if clean(r.get("game_id"), None, 40) != ng["game_id"]:
+            continue
+        v = _fvalue(r, grades.get((r.get("game_id"), r.get("team"), r.get("target"))))
+        if v is None:
+            continue
+        if v["team"] == team and v["caller"] == side:
+            own.append(v)
+        elif v["team"] == opp and v["caller"] != side:
+            other.append(v)
+    if not own and not other:  # the week's forecast predates this game (or skipped it)
+        return None, (
+            f"Week {week}'s forecast has nothing for this game (made before it was scheduled?): "
+            f"`{FORECAST_CMD.format(season=season, week=week)}` makes it again."
+        )
+    order = {k: i for i, k in enumerate(PF.TARGET_KEYS)}
+    own.sort(key=lambda v: order[v["target"]])
+    other.sort(key=lambda v: order[v["target"]])
+    shipped = sorted({v["target"] for v in own + other}, key=order.get)
+    return {
+        **_forecast_meta(meta, _model_summary(paths), shipped),
+        "own": own,
+        "opponent": other,
+    }, None
+
+
+def _forecast_record(paths: DataPaths, season: int, team: str, side: str) -> dict[str, Any] | None:
+    """How the forecast has done for this team's calls this season (graded, shipped rows)."""
+    df = _read(
+        _season_dir(paths, season) / "playcall_scoreboard.parquet",
+        [
+            ("team", "=", team),
+            ("side", "=", side),
+            ("shipped", "=", True),
+            ("status", "=", "graded"),
+        ],  # fmt: skip
+    )
+    if df is None or df.is_empty():
+        return None
+    df = df.filter(pl.col("target").is_in(list(PF.TARGET_KEYS)))
+    if df.is_empty():
+        return None
+
+    means = [k for k in PF.TARGET_KEYS if PF.get_target(k).unit == "mean"]
+
+    def summ(x: pl.DataFrame, overall: bool = False) -> dict[str, Any]:
+        # the overall MAE only over targets in points (shares, PROE): rushers are in rushers
+        pts = x.filter(~pl.col("target").is_in(means)) if overall else x
+        return {
+            "graded": x.height,
+            "mae": num(pts["err_model"].mean(), 6) if pts.height else None,
+            "mae_season_to_date": num(pts["err_b2"].mean(), 6) if pts.height else None,
+            "beat": int((x["err_model"] < x["err_b2"]).sum()),
+            "in_range": num(x["in_range"].cast(pl.Float64).mean(), 4),
+        }
+
+    order = {k: i for i, k in enumerate(PF.TARGET_KEYS)}
+    targets = sorted(set(df["target"].to_list()), key=order.get)
+    mt = (_model_summary(paths) or {}).get("targets", {})
+    return {
+        "season": season,
+        "weeks": sorted({int(w) for w in df["week"].to_list()}),
+        "overall": summ(df, overall=True),
+        "targets": [
+            {**target_info(k), "backtest": mt.get(k), **summ(df.filter(pl.col("target") == k))}
+            for k in targets
+        ],
     }
