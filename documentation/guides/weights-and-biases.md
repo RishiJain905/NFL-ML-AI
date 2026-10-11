@@ -74,6 +74,8 @@ W&B also records the exact command line, the full git commit and the machine on 
 | `live-decisions` | `live-train` | `live-train-<version>` | `nfl live train` (LD00, §6.7) |
 | `live-decisions` | `decision-review` | `decision-review-<season>-w<NN>` | `nfl live review --wandb` (LD03, §6.8): one run per finished week |
 | `live-decisions-smoke` | `decision-review` | `decision-review-<season>-w<NN>` | `nfl live review --wandb --smoke` (a logging check) |
+| `play-calling` | `playcall-build` | `playcall-build-<season>` (+ `-w<NN>` with `--through-week`, `+<n>` with `--history`) | `nfl playcalling build` (PC00, §6.9): one run per build |
+| `play-calling-smoke` | `playcall-build` | `playcall-build-<season>` | `nfl playcalling build --smoke` (a logging check) |
 
 Run names aren't unique: re-running a week makes a second `train-2026-w04`. The **run id** (8 characters, in the URL) is unique. When several runs share a name, the newest one is the one that counts, and PROGRESS.md lists which ids were final.
 
@@ -95,6 +97,7 @@ Run names aren't unique: re-running a week makes a second `train-2026-w04`. The 
 | `player`, `group:<qb, rb, wrte, edge or lbs>`, `target:<name>`, `scoreboard`, `smoke` | Player-model runs (P06) | Position group and target of a backtest or sweep; `scoreboard` on the live scoring run; `smoke` on a test backtest (`--smoke`, nothing saved) |
 | `digest`, `llm:<writer>`, `graph:<status>` | Digests | Writer (`openrouter` or `placeholder`) and whether the graph sections were in (`ok`, `unavailable`, `off`) |
 | `ld00`, `ld03`, `loso`, `train`, `in-sample` | Live-decision runs (§6.7, §6.8) | The phase; `in-sample` on a decision review of a season the promoted models were trained on (2025 and before) |
+| `pc00`, `history` | Play-calling builds (§6.9) | The phase; `history` when the build included past seasons (`--history`) |
 
 **Useful filters:** "everything for 2026 week 4" = tags `season:2026` + `week:04`. "Only what was published" = tag `prod` (digests only) or group `weekly-pipeline`. "Only Rishi's runs" = tag `launched-by:rishi`. "Only runs started from the control room" = tag `via:control-room`.
 
@@ -538,6 +541,21 @@ The 3rd- and 4th-down bot's six models ([guide](live-decisions.md), [model card]
 | scalars `season/*` | `season/decisions`, `season/go_rate_coach`, `season/go_rate_spots`, `season/agree_rate`, `season/wp_lost`, `season/wp_brier` vs `season/wp_brier_vegas`, `season/wp_ece` vs `season/wp_ece_vegas`, `season/wp_snaps`, `season/wp_games`, `season/conv3_actual` / `_pred` / `_n`, `season/conv4_actual` / `_pred` / `_n`, `season/fg_made` / `_pred` | in the project workspace, chart a `season/*` scalar across the `decision-review` runs with `week` on the x-axis: the bot's Brier should track `vegas_wp`'s as weeks are added |
 
 Real runs (2026-10-10, `--launched-by agent`): 2026 weeks 1–4, out of sample: [`qwhj0j99`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/qwhj0j99) (w1), [`8woo4l3v`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/8woo4l3v) (w2), [`c8w8jqmv`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/c8w8jqmv) (w3), [`z16kmkn1`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/z16kmkn1) (w4); the 2025 season as the in-sample example, one run per week 1–22, from [`t30v99vw`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/t30v99vw) (w1) to [`ytuhx9j4`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/ytuhx9j4) (the Super Bowl). From 2026 week 5 on, one run per Tuesday. Smoke: [`tcwerhfg`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/tcwerhfg) (2026 week 1, `live-decisions-smoke`; it caught two table names that `line_series` overwrote, fixed before the real runs). The files behind every panel: `live/<S>/week<NN>/decision_review.*` and `live/<S>/season_review.*` on D:.
+
+### 6.9 Play-calling tables (group `play-calling`, job type `playcall-build`, PC00)
+
+`nfl playcalling build --season S [--history ...]` builds the team tendency tables ([play-calling guide](play-calling.md)) and logs one run (`--no-wandb` skips it; `--smoke` sends it to `play-calling-smoke` with tag `smoke`). Run name `playcall-build-<season>` (`-w<NN>` for a `--through-week` simulation, `+<n>` when `n` history seasons were built too); tags `pc00`, `season:S`, `history`, `launched-by:<who>`. Config: `season`, `seasons`, `through_week`, `schema_version`, `definitions` (every rule: neutral, deep shot, explosive, box, blitz ...), `dataset_version`, `git_commit`. Nothing is trained; the run is the record of what was built and how the league's play calling moves.
+
+| Panel | What it shows | What to look for |
+|---|---|---|
+| `build/seasons` (table) | per season built: as-of weeks, rows per file, FTN and participation join rates, games without FTN | FTN ≥ 99% for 2022–2025 (FTN skips a few plays, PC00); the current season below 100% only by the games FTN hasn't charted yet (Monday night on a Tuesday) |
+| `ftn/coverage_by_week` (table) | per season and week: games, games with FTN, plays, FTN-charted plays, participation-charted plays | the newest week's `ftn_games` < `games` on Tuesday, equal after Wednesday's refresh |
+| `league/by_season` (table) + `league/trend` (chart, history builds) | the league's headline rates per season (the whole season): neutral PROE and dropback rate, shotgun, no-huddle, motion, play-action, screen, RPO, deep shots, aDOT, blitz, rushers, heavy box, explosive | motion climbing (37% → 59%, 2022 → 2026), shotgun falling since 2023, blitz rising; neutral PROE about −2 (nflverse's `xpass` isn't re-centred: guide §3) |
+| `league/by_week` (table) + `league/weekly_trend` (chart) | the current season's league rates game week by game week | a jump in one week is usually a charting change or a thin week (byes) |
+| scalars `league/*` | the current season's headline rates (`league/proe_neutral`, `league/play_action_rate`, `league/blitz_rate`, ...) | chart one across the `playcall-build` runs with the run time on the x-axis: the season's numbers settle as weeks are added |
+| scalars `s<season>/*` | `plays`, `team_tendency_rows`, `ftn_join_rate`, `part_join_rate` per season built | |
+
+Runs: smoke [`dira0syg`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/dira0syg) (2026, before the review fixes). The real run (2026-10-10, after the reviews, `--history all --launched-by agent`): **[`qpll840n`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/qpll840n)** (`playcall-build-2026+10`: 2016-2026 built, the league trend chart across the seasons). From 2026 week 5 on: one run each Tuesday and each Wednesday (runbook → Play calling). The files behind every panel: `playcalling/<S>/` on D: (`build.json` has the same coverage numbers).
 
 ## 7. Season-long views
 

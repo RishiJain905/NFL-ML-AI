@@ -101,6 +101,10 @@ uv run nfl live parity --season 2026 --weeks 1-5          # LD01: ESPN's states 
 uv run nfl live review --season 2026 --week 5 --wandb     # LD03: a finished week's decision review (Tuesday, after the weekly run)
 # guide: documentation/guides/live-decisions.md
 
+uv run nfl playcalling build --season 2026                # PC00: team tendency tables as of each week (Tuesday after the run; Wednesday after an FTN refresh)
+uv run nfl playcalling build --season 2026 --history all  # PC00: + 2016-2025 (participation history, research only)
+# guide: documentation/guides/play-calling.md
+
 uv run pytest                      # tests (integration tests excluded by default)
 uv run pytest -m integration       # Neo4j golden / load / performance tests (~10 min; rebuilds the graph)
 uv run ruff check .                # lint

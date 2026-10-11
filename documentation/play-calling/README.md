@@ -32,6 +32,12 @@ So **in season, the pages show** play-by-play and FTN tendencies. Personnel, for
 
 Big Data Bowl 2027: a university event listing suggests a launch on 2026-10-09, not confirmed by the NFL or Kaggle on 2026-10-08. PC03 checks again, and the season calendar already has the ✋ step.
 
+**Checked again in PC00 (2026-10-10, D122; details in the [guide](../guides/play-calling.md) §2):**
+- FTN joins 99.3-99.9% of 2022-2025 scrimmage plays: FTN keeps blank placeholder rows for a few plays it didn't chart (2024_07_BAL_TB: 97 of 131), now treated as not charted. 2026: weeks 1-3 complete and 15 of week 4's 16 games on Tuesday 2026-10-06.
+- **When FTN lands:** nflverse pulls FTN at least twice a day (~11:00 and ~17:00 UTC); FTN lands 35-51 hours after kickoff. Tuesday evening has every game but Monday night's; Wednesday should complete the week (to confirm 2026-10-14).
+- Participation joins 100% of 2016-2025 scrimmage plays; on dropbacks coverage fills 0% (2016-17), ~89% (2018-22), ~99.8% (2023-25), the target's route 85-90%. **Two vocabularies:** NGS to 2022 (formations SINGLEBACK / I_FORM / EMPTY / JUMBO / WILDCAT, routes FLAT / HITCH / CROSS ...), FTN from 2023 (UNDER CENTER, QUICK OUT / HITCH-CURL / IN-DIG ...).
+- League PROE sits below 0 (nflverse's `xpass` isn't re-centred): 2025 neutral -2.0 points; rbsdm's 2025 league mean is -1.7. Our 2025 neutral PROE ranks the teams with Spearman 0.975 against rbsdm.
+
 ## 3. Screens
 
 **Explore → Play calling** (sidebar, new group):
@@ -64,7 +70,7 @@ Big Data Bowl 2027: a university event listing suggests a launch on 2026-10-09, 
   - `nfl playcalling forecast --season S --week W`;
   - `nfl playcalling backtest`;
   - `nfl playcalling grade --season S --week W`.
-- **How it refreshes:** its own commands, **not a weekly-run step** (D107). PC00 decides (✋) between a runbook line after the Tuesday run and a "Refresh play calling" button (a fourth allowlisted command). A fail-soft extra step in the weekly run is the option not recommended.
+- **How it refreshes:** its own commands, **not a weekly-run step** (D107). **Decided in PC00 (Rishi, 2026-10-10, D122): a runbook line**, no button: `nfl playcalling build --season 2026` after Tuesday's weekly run, and on Wednesday after 13:00 ET an FTN refresh (`nfl ingest --sources nflverse --datasets ftn_charting`, `nfl curate`) and the build again, for Monday night's FTN. (The options were a runbook line, a "Refresh play calling" button as a fourth allowlisted command, or a fail-soft weekly-run step, not recommended.)
 - **App:** `GET /api/playcalling/teams`, `/api/playcalling/teams/{team}?season=&side=`, `/api/playcalling/teams/{team}/plays?season=&week=`, `/api/playcalling/plays/{game_id}/{play_id}/diagram`, `/api/weeks/{S}/{W}/play-calls`. All GET, all read-only.
 
 ## 5. The no-touch rule (D107)
@@ -105,3 +111,12 @@ Commit prefixes `[PC00]` … `[PC03]`. **Mockup first** for PC01 and PC03.
 ## 7. As built
 
 Each phase adds what it built and any differences from this spec here, with decision numbers.
+
+### PC00: tendency data (2026-10-10, D122)
+
+- **Built:** `src/nflengine/playcalling/` (`labels.py`: definitions, situation buckets, the metric registry; `participation.py`: research participation parsed into play labels; `build.py`), `nfl playcalling build --season S [--through-week W] [--history 2016-2025|all] [--no-wandb|--smoke]`, the `playcalling:` settings block, the `playcall-build` W&B run (group `play-calling`), the guide `guides/play-calling.md`, the skill `play-calling`.
+- **Files** under `playcalling/<S>/`, 2016-2026 built (~115 MB in all): `plays_enriched`, `team_tendencies`, and two **additions to §4's list**: `team_game_tendencies` (per team-game: the week-by-week sparklines and PC02's actuals) and `league_tendencies` (the league baselines), plus `build.json`. A `--through-week` build goes to `through_weekWW/`. The forecast and scoreboard files (`week<NN>/forecast.parquet`, `playcall_scoreboard.parquet`) come with PC02.
+- **The tables:** per team, side (offense / defense = what offenses do against it), as-of week (games strictly before it), window (`season`, `last4`, `last_season`), ~90 metrics (pbp 2016+, FTN 2022+, a PFR blitz cross-check 2018+, participation `history_only` 2016-2025) x situations (`all`, `neutral`; six key metrics also by down & distance, field zone, score and two-minute): n, games, value, league value, diff, percentile.
+- **Differences from the spec:** league PROE isn't "near 0 by construction" (the exit criterion): it's about -2 points since 2022 because `xpass` isn't re-centred, so pages read `diff`; the 2025 PROE check against rbsdm passes (Spearman 0.975, same top 5, 4 of the bottom 5). Participation metrics never reach a later season's `last_season` window (2026 rows carry no research data; the pages read 2023-2025 history from those seasons' folders).
+- **As of a week = what a Tuesday run could see (D123, Sol's review):** games before week W, FTN once 48 h have passed since kickoff (Monday night's game counts from the next week), the PFR cross-check a week behind; built on Tuesday or after Wednesday's refresh, the as-of tables are the same.
+- **For PC01:** read `team_tendencies` at the newest `as_of_week` (`build.json → as_of_weeks`), filter `~history_only` for the in-season identity, `family` for the heat table, `team_game_tendencies` for the week-by-week sparklines; percentiles rank every team with plays, so grey out small `n`. **For PC02:** targets and actuals from `team_game_tendencies`, features from `team_tendencies` (never `history_only`; the as-of rows already hold back what a Tuesday run couldn't see, so a forecast made any time before Thursday's game and its backtest see the same features).
