@@ -320,7 +320,7 @@ def test_reasons_name_the_qb_change_and_the_most_used_injured_players(world, mon
             injuries(newer).write_parquet(world.paths.curated / "injuries.parquet") or ["injuries"]
         ),
     )
-    monkeypatch.setattr(quality, "run_quality_checks", lambda: [])
+    monkeypatch.setattr(quality, "run_quality_checks", lambda **kw: [])
     world.state["games"] = [
         {
             **MAIN_GAMES[0],
@@ -355,6 +355,63 @@ def test_failed_nflverse_ingest_stops_the_update(world, monkeypatch) -> None:
         ),
     )
     with pytest.raises(IU.InjuryUpdateError, match="re-ingest failed"):
+        run(ingest=True)
+    assert world.state["calls"] == []
+
+
+@pytest.fixture
+def curate_with_completeness(world, monkeypatch):
+    """Ingest and curation faked; the quality checks are the real completeness check over a
+    schedule where this week's Thursday game has finished (the schedule re-pull says so) but
+    play-by-play hasn't been re-pulled: what broke 2026 week 5's update."""
+    import nflengine.curate.build as build
+    import nflengine.curate.quality as quality
+    import nflengine.ingest.runner as runner
+
+    sched = pl.DataFrame(
+        {
+            "game_id": ["g_w5", "g_thu", "g_chi", "g_buf"],
+            "season": [SEASON] * 4,
+            "week": [WEEK - 1, WEEK, WEEK, WEEK],
+            "game_type": ["REG"] * 4,
+            "completed": [True, True, False, False],
+        }
+    )
+    state = {"pbp": {"g_w5"}, "kw": []}
+
+    def checks(**kw):
+        state["kw"].append(kw)
+        return [quality.check_completeness(sched, state["pbp"], 2010, **kw)]
+
+    monkeypatch.setattr(
+        runner,
+        "run_ingest",
+        lambda **kw: ([SimpleNamespace(source="nflverse", dataset="schedules", status="ok")], ""),
+    )
+    monkeypatch.setattr(build, "build_all", lambda log=print: [])
+    monkeypatch.setattr(quality, "run_quality_checks", checks)
+    return state
+
+
+def test_this_weeks_finished_games_without_pbp_dont_stop_the_update(
+    world, curate_with_completeness
+) -> None:
+    res = run(ingest=True)
+    assert curate_with_completeness["kw"] == [{"pbp_pending_week": (SEASON, WEEK)}]
+    assert world.state["calls"] == ["games", "players"]
+    note = next(n for n in res.notes if n.startswith("completed games in play-by-play"))
+    assert f"1 of {SEASON} week {WEEK} not required yet" in note and "g_thu" in note
+    # the CLI marks an update "degraded" on these words: this note must not trip it
+    assert "failed" not in note and "incomplete" not in note
+    saved = json.loads(res.summary_path.read_text())
+    assert note in saved["notes"]
+
+
+def test_an_earlier_weeks_game_without_pbp_still_stops_the_update(
+    world, curate_with_completeness
+) -> None:
+    curate_with_completeness["pbp"] = set()  # last week's game lost its play-by-play
+    with pytest.raises(IU.InjuryUpdateError, match="completed games in play-by-play"):
         run(ingest=True)
     assert world.state["calls"] == []
 

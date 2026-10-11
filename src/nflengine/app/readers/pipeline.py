@@ -14,6 +14,8 @@ for each resume.
 
 From CR02 every run writes `events/<run-id>.jsonl` (`ops/events.py`): when each sitting has
 one, the log is the runs' own console lines (`log_source: "events"`) instead of the rebuilt one.
+The Saturday injury update writes its events file to the same folder, so its lines follow the
+Tuesday run's in this one log (the tab re-reads it every 2 s while an update runs).
 """
 
 from __future__ import annotations
@@ -31,7 +33,7 @@ from nflengine.app.readers.common import (
     wandb_urls,
     without_wandb,
 )
-from nflengine.app.readers.meta import lock_target, plan_dict
+from nflengine.app.readers.meta import is_injury_update, lock_target, plan_dict
 from nflengine.app.readers.weeks import NOT_READY_TEXT, checks_line
 from nflengine.ops.calendar import EASTERN, WeekPlan
 from nflengine.paths import DataPaths
@@ -223,9 +225,8 @@ def _rebuilt_log(
     return lines
 
 
-def events_log(paths: DataPaths, run_dir, sittings: int) -> list[dict[str, str]] | None:
-    """The week's runs as their console printed them (CR02 events files, oldest first), or
-    None when some sitting has no events file (it ran before CR02)."""
+def _week_events(run_dir) -> list[list[dict[str, Any]]]:
+    """The week's events files that ran a step (CR02), oldest first."""
     from nflengine.app.runner import read_events
 
     folder = run_dir / "events"
@@ -234,9 +235,30 @@ def events_log(paths: DataPaths, run_dir, sittings: int) -> list[dict[str, str]]
     except OSError:
         files = []
     runs = [evs for f in files if (evs := read_events(f))]
-    runs = [evs for evs in runs if any(e.get("type") == "step_start" for e in evs)]
-    if not runs or len(runs) < sittings:
+    return [evs for evs in runs if any(e.get("type") == "step_start" for e in evs)]
+
+
+def _is_injury_run(evs: list[dict[str, Any]]) -> bool:
+    return any(e.get("type") == "run_start" and e.get("kind") == "injury_update" for e in evs)
+
+
+def events_log(paths: DataPaths, run_dir, sittings: int) -> list[dict[str, str]] | None:
+    """The week's runs as their console printed them (CR02 events files, oldest first),
+    Saturday injury updates included, or None when some sitting of the weekly run has no
+    events file (it ran before CR02)."""
+    runs = _week_events(run_dir)
+    weekly = [evs for evs in runs if not _is_injury_run(evs)]
+    if not weekly or len(weekly) < sittings:
         return None
+    return _event_lines(paths, runs)
+
+
+def injury_update_log(paths: DataPaths, run_dir) -> list[dict[str, str]]:
+    """Only the injury updates' lines: they follow a rebuilt (pre-CR02) log."""
+    return _event_lines(paths, [evs for evs in _week_events(run_dir) if _is_injury_run(evs)])
+
+
+def _event_lines(paths: DataPaths, runs: list[list[dict[str, Any]]]) -> list[dict[str, str]]:
     lines: list[dict[str, str]] = []
     for evs in runs:
         for e in evs:
@@ -404,7 +426,9 @@ def get_pipeline(
         summary = None
     checks = read_json(run_dir / "checks.json")
     is_current = plan is not None and plan.season == season and plan.week == week
-    running = lock_target(lock, plan) == (season, week)
+    # the injury update holds the same lock, but no step of the week's run is going: its log
+    # lines reach this tab through the events files (`events_log`), not as a running pipeline
+    running = lock_target(lock, plan) == (season, week) and not is_injury_update(lock)
     expected, expected_from = expected_times(paths, season, week)
     published = already_published(run_dir / "weekly_run.json", paths.report_path(season, week))
 
@@ -579,7 +603,8 @@ def get_pipeline(
         "error": clean((summary or {}).get("error"), paths, 300),
         "log": from_events
         if from_events is not None
-        else _rebuilt_log(paths, season, week, steps, published, checks, failed_step),
+        else _rebuilt_log(paths, season, week, steps, published, checks, failed_step)
+        + injury_update_log(paths, run_dir),
         "log_source": "events" if from_events is not None else "rebuilt",
         "tiles": _tiles(run_dir, checks, secs),
         "no_run_records": summary is None and not stale_summary,

@@ -10,7 +10,9 @@ Final injury designations come out on Friday, after Tuesday's digest. The update
 3. **Re-ingest** what moves between Tuesday and Saturday (`INGEST_SOURCES`,
    `NFLVERSE_DATASETS`: injuries, rosters, depth charts, schedules, ESPN injuries / news /
    scoreboard odds, the Odds API), then re-curate with the blocking quality checks. Ratings
-   are not rebuilt: no games were played since Tuesday.
+   are not rebuilt: the week is still predicted as of Tuesday. Play-by-play isn't re-pulled,
+   so the week's own games finished since Tuesday (Thursday's, or Sunday's early slate on a
+   late run) are exempt from the completeness check; earlier weeks' games still block.
 4. **Re-predict** games and players with `run_train(..., output="update")`: writes
    `predictions_games_update.parquet` / `predictions_players_update.parquet` in the run folder
    and nothing else (no models, W&B artifacts, aliases, status file or scoreboard rows).
@@ -618,7 +620,7 @@ def run_injury_update(
         snaps_before = snapshot_info(paths)
         progress(None, 0, 4, "re-pulling injuries, news and lines")  # CR02 events (no-op)
         if ingest:
-            notes += _ingest_and_curate(season, log, timings)
+            notes += _ingest_and_curate(season, week, log, timings)
         else:
             notes.append("ingest skipped: before and after use the same curated data")
         after = injury_state(paths, season, week)
@@ -746,10 +748,10 @@ def run_injury_update(
 
 
 def _ingest_and_curate(
-    season: int, log: Callable[[str], None], timings: dict[str, float]
+    season: int, week: int, log: Callable[[str], None], timings: dict[str, float]
 ) -> list[str]:
     from nflengine.curate.build import build_all
-    from nflengine.curate.quality import BLOCK, run_quality_checks
+    from nflengine.curate.quality import BLOCK, COMPLETENESS, run_quality_checks
     from nflengine.ingest.runner import run_ingest
 
     t = time.perf_counter()
@@ -765,10 +767,19 @@ def _ingest_and_curate(
     ]
     t = time.perf_counter()
     build_all(log=log)
-    blocked = [c.name for c in run_quality_checks() if not c.passed and c.level == BLOCK]
+    # The schedule re-pull marks this week's finished games (Thursday's, Sunday's early ones)
+    # completed, but play-by-play isn't re-pulled (nflverse publishes it hours later, and the
+    # update never reads it): those games aren't required yet. Earlier weeks still are.
+    checks = run_quality_checks(pbp_pending_week=(season, week))
+    blocked = [c.name for c in checks if not c.passed and c.level == BLOCK]
     timings["curate"] = round(time.perf_counter() - t, 2)
     if blocked:
         raise InjuryUpdateError(f"blocking quality checks failed: {blocked}")
+    notes += [
+        f"{c.name}: {c.detail}"
+        for c in checks
+        if c.name == COMPLETENESS and "not required" in c.detail
+    ]
     return notes
 
 

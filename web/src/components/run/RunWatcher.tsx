@@ -32,8 +32,7 @@ export function RunWatcher() {
       if (handled.current.has(key) || !followed(ui, run)) return;
       handled.current.add(key);
       invalidateAfterRun(qc);
-      // an injury update followed on its week page is announced there (with `material`)
-      if (ui.announced.has(key) || ui.claimed.has(key)) return;
+      if (ui.announced.has(key)) return;
       ui.announced.add(key);
       const t = runEndToast(run);
       ui.toast(t);

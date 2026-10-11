@@ -3,8 +3,9 @@
 // and old runs are never announced on page load. RunUiProvider (in Shell) holds it.
 
 import { createContext, useContext } from 'react';
-import { ApiError } from '../../api/client';
-import type { RunEndEvent, RunInfo } from '../../api/types';
+import { ApiError, useRunCurrent } from '../../api/client';
+import { useNow } from '../../lib/useNow';
+import type { RunInfo } from '../../api/types';
 
 export type ToastTone = 'ok' | 'warn' | 'err';
 export interface ToastInput {
@@ -21,8 +22,8 @@ export interface RunUi {
   seenRunning: Set<string>;
   /** runs whose end was already toasted */
   announced: Set<string>;
-  /** injury updates whose end the week page's log card announces (it has `material`) */
-  claimed: Set<string>;
+  /** injury updates whose Pipeline-tab notice was hidden (it stays hidden across tab switches) */
+  hidden: Set<string>;
 }
 
 export function newRunUi(toast: RunUi['toast'] = () => {}): RunUi {
@@ -31,7 +32,7 @@ export function newRunUi(toast: RunUi['toast'] = () => {}): RunUi {
     launched: new Set(),
     seenRunning: new Set(),
     announced: new Set(),
-    claimed: new Set(),
+    hidden: new Set(),
   };
 }
 
@@ -58,6 +59,25 @@ export function followed(ui: RunUi, run: RunInfo): boolean {
   );
 }
 
+/** A finished injury update's notice stays on the Pipeline tab this long (unless hidden). */
+const INJURY_RECENT_MS = 3 * 3600_000;
+
+/** This week's injury update, if it's the current run: running, or finished and followed here or
+ * recent (the Pipeline tab's notice and its log's 2 s re-read). */
+export function useInjuryUpdateRun(season: number, week: number) {
+  const cur = useRunCurrent();
+  const ui = useRunUi();
+  const now = useNow();
+  const run = cur.data?.run ?? null;
+  const mine =
+    run != null && run.kind === 'injury_update' && run.season === season && run.week === week;
+  const running = mine && cur.data?.state === 'running';
+  const finishedAt = run?.finished ? Date.parse(run.finished) : NaN;
+  const recent = !Number.isNaN(finishedAt) && now - finishedAt < INJURY_RECENT_MS;
+  const show = mine && (running || followed(ui, run) || recent);
+  return { run: show ? run : null, running };
+}
+
 /** The toast for a refused or failed POST /api/run. */
 export function startErrorToast(err: unknown): ToastInput {
   const message = err instanceof Error ? err.message : String(err);
@@ -80,17 +100,17 @@ export function startErrorToast(err: unknown): ToastInput {
 }
 
 /** The toast (and browser notification) for an injury update that ended. */
-export function injuryEndToast(run: RunInfo | null, end?: RunEndEvent | null): ToastInput {
-  const status = end?.status ?? run?.status ?? '';
-  const message = end?.message ?? run?.message ?? undefined;
-  const code = end?.exit_code ?? run?.exit_code ?? null;
+export function injuryEndToast(run: RunInfo | null): ToastInput {
+  const status = run?.status ?? '';
+  const message = run?.message ?? undefined;
+  const code = run?.exit_code ?? null;
   if (status === 'failed' || status === 'interrupted' || code === 1) {
     return { title: 'The injury update failed', text: message, tone: 'err' };
   }
   if (code === 4 || status === 'locked')
     return { title: 'Another run holds the lock: nothing ran', text: message, tone: 'warn' };
   // run_end's `material`, copied onto the final RunInfo by the server
-  const material = end?.material ?? run?.material ?? null;
+  const material = run?.material ?? null;
   if (material === true) return { title: 'Addendum published', text: message, tone: 'ok' };
   if (material === false)
     return { title: 'Nothing material changed: no addendum', text: message, tone: 'ok' };

@@ -2,6 +2,7 @@
 // the run, the run (or the plan) in the chosen view, and the log. A run of this week that is
 // going (CR02) is drawn live from its event stream (LiveRun); the current week before its run
 // shows the pre-flight panel above the plan; a finished or failed week is read from its files.
+// The Saturday injury update shows here only: a notice on top, its lines in the one Log card.
 
 import { useCallback, useState, type ReactNode } from 'react';
 import { useMeta, usePipeline, usePreflight, useRunCurrent } from '../../api/client';
@@ -14,6 +15,8 @@ import { PipelineView } from '../../components/pipeline/PipelineView';
 import { useViewChoice, ViewPicker } from '../../components/pipeline/ViewPicker';
 import { VIEWS } from '../../components/pipeline/views';
 import { FailureBanner } from '../../components/run/FailureBanner';
+import { InjuryUpdateNotice } from '../../components/run/InjuryUpdate';
+import { useInjuryUpdateRun } from '../../components/run/runUi';
 import { PreflightPanel } from '../../components/run/PreflightPanel';
 import { Card, CardHeader, EmptyState, Notice, Tile } from '../../components/ui';
 import { duration, fmtET } from '../../lib/format';
@@ -115,12 +118,15 @@ function Archive({
   detail,
   choice,
   dryRun,
+  liveLog,
 }: {
   p: PipelineResponse;
   detail: WeekDetail | undefined;
   choice: ReturnType<typeof useViewChoice>;
   /** the calendar's dry run for the plan (pre-flight), when it has come back */
   dryRun: LogLine[] | null;
+  /** an injury update of this week is running: its lines are coming into the log */
+  liveLog: boolean;
 }) {
   const { season, week } = p;
   if (p.state === 'none') {
@@ -161,13 +167,20 @@ function Archive({
           <PipelineView model={model} view={choice.view} sittings={p.sittings} />
         </div>
       </Card>
-      {plan && dryRun ? <LogPanel lines={dryRun} source="dryrun" /> : <LogPanel lines={p.log} source={p.log_source} />}
+      {plan && dryRun ? (
+        <LogPanel lines={dryRun} source="dryrun" />
+      ) : (
+        <LogPanel lines={p.log} source={p.log_source} live={liveLog} />
+      )}
     </>
   );
 }
 
 export function PipelineTab({ season, week, detail }: { season: number; week: number; detail?: WeekDetail }) {
-  const q = usePipeline(season, week);
+  // a Saturday injury update of this week writes its events next to the run's: the one Log card
+  // re-reads them every 2 s while it runs (RunWatcher refetches once more when it ends)
+  const injury = useInjuryUpdateRun(season, week);
+  const q = usePipeline(season, week, injury.running ? 2_000 : undefined);
   const choice = useViewChoice(season, week);
   const cur = useRunCurrent();
   const meta = useMeta();
@@ -205,12 +218,13 @@ export function PipelineTab({ season, week, detail }: { season: number; week: nu
   if (!liveMode) {
     if (q.isLoading) archive = <TabLoading />;
     else if (q.isError) archive = <TabError error={q.error as Error} />;
-    else if (p) archive = <Archive p={p} detail={detail} choice={choice} dryRun={dryRun} />;
+    else if (p) archive = <Archive p={p} detail={detail} choice={choice} dryRun={dryRun} liveLog={injury.running} />;
     else archive = <TabLoading />;
   }
 
   return (
     <>
+      <InjuryUpdateNotice season={season} week={week} />
       {showPreflight ? <PreflightPanel season={season} week={week} /> : null}
       {run && (liveMode || replay) ? (
         <LiveRun

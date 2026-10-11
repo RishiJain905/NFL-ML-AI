@@ -661,6 +661,115 @@ def test_a_finished_week_shows_its_own_log_from_the_events(tmp_path) -> None:
     assert texts[-1] == "ok: 2026 week 04: ok (exit 0)"
 
 
+def injury_story(end: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    evs: list[dict[str, Any]] = [
+        {
+            "type": "run_start",
+            "kind": "injury_update",
+            "command": "nfl weekly injury-update --auto",
+            "season": 2026,
+            "week": 4,
+            "steps": ["injury_update"],
+            "from_step": None,
+            "earlier": {},
+            "launched_by": "rishi",
+            "via": "control-room",
+            "plan": [],
+        },
+        {"type": "step_start", "step": "injury_update"},
+        {"type": "log", "step": "injury_update", "text": "espn_injuries: 800 rows", "cls": ""},
+    ]
+    if end is not None:
+        evs.append({"type": "run_end", **end})
+    return evs
+
+
+INJURY_END = {
+    "status": "failed",
+    "exit_code": 1,
+    "message": "injury update failed: InjuryUpdateError: blocking quality checks failed",
+    "published": None,
+    "failed_step": None,
+    "material": None,
+}
+
+
+def test_the_injury_update_joins_the_weeks_one_log(tmp_path) -> None:
+    """One Log card on the Pipeline tab: the Tuesday run's lines, then the Saturday update's
+    (2026 week 5 showed the update in a second log card on every tab)."""
+    paths = DataPaths(tmp_path)
+    write_week(paths, 2026, 4, ALL_OK, report=True)
+    end = {
+        "status": "ok",
+        "exit_code": 0,
+        "message": "2026 week 04: ok",
+        "published": True,
+        "failed_step": None,
+        "material": None,
+    }
+    ev = paths.run_dir(2026, 4) / "events"
+    write_events(ev / "20261004T071800Z.jsonl", story(tmp_path, end), "20261004T071800Z")
+    write_events(ev / "20261011T203604Z-b1cf.jsonl", injury_story(INJURY_END), "x")
+    c, *_ = client_for(tmp_path)
+    p = c.get("/api/weeks/2026/4/pipeline").json()
+    assert p["log_source"] == "events" and p["state"] == "finished"
+    texts = [line["text"] for line in p["log"]]
+    i = texts.index("$ nfl weekly injury-update --auto")
+    assert texts[:i][-1] == "ok: 2026 week 04: ok (exit 0)"  # Tuesday's run first
+    assert texts[i + 1 :] == [
+        "espn_injuries: 800 rows",
+        "failed: injury update failed: InjuryUpdateError: blocking quality checks failed (exit 1)",
+    ]
+
+
+def test_an_injury_update_never_hides_a_rebuilt_log(tmp_path) -> None:
+    """A week whose run predates the events files (pre-CR02) keeps its rebuilt log; an injury
+    update's events file doesn't stand in for the run's sitting, its lines follow."""
+    paths = DataPaths(tmp_path)
+    write_week(paths, 2026, 4, ALL_OK, report=True)
+    write_events(
+        paths.run_dir(2026, 4) / "events" / "20261010T150000Z.jsonl", injury_story(INJURY_END), "x"
+    )
+    c, *_ = client_for(tmp_path)
+    p = c.get("/api/weeks/2026/4/pipeline").json()
+    assert p["log_source"] == "rebuilt"
+    texts = [line["text"] for line in p["log"]]
+    assert texts[0].startswith("$ nfl weekly run --season 2026 --week 4")
+    assert texts[-3:] == [
+        "$ nfl weekly injury-update --auto",
+        "espn_injuries: 800 rows",
+        "failed: injury update failed: InjuryUpdateError: blocking quality checks failed (exit 1)",
+    ]
+
+
+def test_a_running_injury_update_is_not_a_running_week(tmp_path) -> None:
+    """It holds the weekly lock, but none of the published week's steps runs: the Pipeline tab
+    stays "finished" (no "a run of this week is in progress") and its log grows as it goes."""
+    import threading
+
+    c, _, _, paths = client_for(tmp_path, now=SATURDAY)
+    write_week(paths, 2026, 5, ALL_OK, report=True)
+    ev = paths.run_dir(2026, 5) / "events" / "20261010T160000Z.jsonl"
+    write_events(ev, injury_story(), "x")
+    held, release = threading.Event(), threading.Event()
+
+    def update() -> None:
+        with L.run_lock(L.lock_path(paths.runs), "nfl weekly injury-update --season 2026 --week 5"):
+            held.set()
+            release.wait(5)
+
+    t = threading.Thread(target=update)
+    t.start()
+    try:
+        assert held.wait(5)
+        p = c.get("/api/weeks/2026/5/pipeline").json()
+        assert p["state"] == "finished"
+        assert [line["text"] for line in p["log"]][-1] == "espn_injuries: 800 rows"
+    finally:
+        release.set()
+        t.join()
+
+
 def test_stream_of_a_terminal_run_ends_with_its_own_run_end(tmp_path) -> None:
     import threading
 

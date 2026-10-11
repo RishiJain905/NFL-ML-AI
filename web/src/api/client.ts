@@ -106,21 +106,22 @@ export function useTeamInfo() {
 const weekPath = (season: number, week: number, tab?: string) =>
   `/api/weeks/${season}/${week}${tab ? `/${tab}` : ''}`;
 
-function useWeekQuery<T>(season: number, week: number, tab?: string, query = '') {
+function useWeekQuery<T>(season: number, week: number, tab?: string, query = '', refetchMs = 60_000) {
   const valid = Number.isInteger(season) && Number.isInteger(week);
   return useQuery({
     queryKey: ['week', season, week, tab ?? 'header', query],
     queryFn: () => apiGet<T>(weekPath(season, week, tab) + query),
     enabled: valid,
-    staleTime: 60_000,
-    refetchInterval: 60_000,
+    staleTime: Math.min(60_000, refetchMs),
+    refetchInterval: refetchMs,
   });
 }
 
 export const useWeekDetail = (season: number, week: number) =>
   useWeekQuery<WeekDetail>(season, week);
-export const usePipeline = (season: number, week: number) =>
-  useWeekQuery<PipelineResponse>(season, week, 'pipeline');
+/** `refetchMs`: the Pipeline tab re-reads its log every 2 s while an injury update runs. */
+export const usePipeline = (season: number, week: number, refetchMs?: number) =>
+  useWeekQuery<PipelineResponse>(season, week, 'pipeline', '', refetchMs);
 export const useDigest = (season: number, week: number) =>
   useWeekQuery<DigestResponse>(season, week, 'digest');
 export const useGames = (season: number, week: number) =>

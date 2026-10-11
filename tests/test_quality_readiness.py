@@ -61,6 +61,31 @@ def test_completeness() -> None:
     assert not check_completeness(games, set(), 2010).passed
 
 
+def test_completeness_pending_week_is_only_the_update_week() -> None:
+    """The injury update's week: its finished games may lack play-by-play (2026 week 5,
+    Sunday 4:36 PM: Thursday's and the early games); an earlier week's never may."""
+    games = pl.DataFrame(
+        {
+            "game_id": ["w4", "w5_thu", "w5_sun", "w5_late", "w6"],
+            "season": [2026] * 5,
+            "week": [4, 5, 5, 5, 6],
+            "game_type": ["REG"] * 5,
+            "completed": [True, True, True, False, False],
+        }
+    )
+    assert not check_completeness(games, {"w4"}, 2010).passed  # the weekly run: still blocks
+    r = check_completeness(games, {"w4"}, 2010, pbp_pending_week=(2026, 5))
+    assert r.passed
+    assert r.detail == (
+        "all 1 completed games have play-by-play; 2 of 2026 week 5 not required yet, "
+        "e.g. ['w5_sun', 'w5_thu']"
+    )
+    r = check_completeness(games, set(), 2010, pbp_pending_week=(2026, 5))
+    assert not r.passed and "['w4']" in r.detail  # week 4 isn't the pending week
+    r = check_completeness(games, {"w4", "w5_thu", "w5_sun"}, 2010, pbp_pending_week=(2026, 5))
+    assert r.passed and "not required" not in r.detail  # nothing pending: no extra note
+
+
 def test_lines_sign_convention() -> None:
     games = pl.DataFrame(
         {

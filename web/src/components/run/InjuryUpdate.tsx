@@ -1,23 +1,16 @@
 // The Saturday injury update (CR02): the header's button with its own confirm dialog, and the
-// live log card WeekPage shows while an update runs (or just ran) for that week. The server
-// decides when it's open (Saturday ET once the Tuesday run is published, until the week's last
-// kickoff); the browser only sends the kind and the server's week back.
+// notice the Pipeline tab shows while an update runs (or just ran) for that week; its lines go
+// into that tab's one Log card. The server decides when it's open (Saturday ET once the Tuesday
+// run is published, until the week's last kickoff); the browser only sends the kind and the
+// server's week back.
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { usePreflight, useRunCurrent, useStartRun } from '../../api/client';
-import type { LogLine, RunEndEvent } from '../../api/types';
-import { eventsToLog, useRunStream } from '../../api/stream';
 import { fmtET, kickoffLabel } from '../../lib/format';
-import { useNow } from '../../lib/useNow';
 import { ConfirmDialog } from '../ConfirmDialog';
-import { LogPanel } from '../pipeline/LogPanel';
 import { Chip, Notice } from '../ui';
-import { notify } from './notify';
-import { followed, injuryEndToast, runKey, startErrorToast, useRunUi } from './runUi';
+import { runKey, startErrorToast, useInjuryUpdateRun, useRunUi } from './runUi';
 import './run.css';
-
-/** A finished update's log stays on the week page this long (unless hidden). */
-const RECENT_MS = 3 * 3600_000;
 
 export function InjuryUpdateButton({
   season,
@@ -40,7 +33,7 @@ export function InjuryUpdateButton({
   let allowed = false;
   let reason = fallbackReason;
   if (pf?.mode === 'rehearsal') reason = gate?.reason ?? 'Not offered in rehearsal mode';
-  else if (running?.kind === 'injury_update') reason = 'Running now: its log is below';
+  else if (running?.kind === 'injury_update') reason = 'Running now: its log is on the Pipeline tab';
   else if (running) reason = 'Another run is in progress';
   else if (gate) {
     allowed = gate.allowed && !start.isPending;
@@ -124,87 +117,68 @@ export function InjuryUpdateButton({
   );
 }
 
-/** The injury update's live log on its week's page, and its end toast (with `material`). */
-export function InjuryUpdateLog({ season, week }: { season: number; week: number }) {
-  const cur = useRunCurrent();
+/** The injury update's status above the Pipeline tab: running, or how it ended. Its lines are
+ * in the tab's one Log card (the week's events files, re-read every 2 s while it runs); the end
+ * toast, with `material`, comes from the RunWatcher. */
+export function InjuryUpdateNotice({ season, week }: { season: number; week: number }) {
+  const { run, running } = useInjuryUpdateRun(season, week);
   const ui = useRunUi();
-  const now = useNow();
-  const [hidden, setHidden] = useState<string | null>(null);
-  const run = cur.data?.run ?? null;
-  const mine =
-    run != null && run.kind === 'injury_update' && run.season === season && run.week === week;
-  const key = mine ? runKey(run) : null;
-  const running = mine && cur.data?.state === 'running';
-  const finishedAt = run?.finished ? Date.parse(run.finished) : NaN;
-  const recent = !Number.isNaN(finishedAt) && now - finishedAt < RECENT_MS;
-  const following = mine && (running || followed(ui, run));
-  const show = mine && key !== hidden && (running || following || recent);
-  const stream = useRunStream(Boolean(show && (running || run?.has_events)), show ? key : null);
-  const endEvent = stream.events.find((e): e is RunEndEvent => e.type === 'run_end') ?? null;
-  const ended = endEvent != null || stream.end != null;
-
-  // while this card follows the run, it (not the watcher) announces the end: it knows `material`
-  useEffect(() => {
-    if (!following || !key) return undefined;
-    ui.claimed.add(key);
-    return () => {
-      ui.claimed.delete(key);
-    };
-  }, [following, key, ui]);
-
-  useEffect(() => {
-    if (!following || !key || !ended || ui.announced.has(key)) return;
-    ui.announced.add(key);
-    const t = injuryEndToast(stream.end ?? run, endEvent);
-    ui.toast(t);
-    notify(t.title, t.text);
-  }, [following, key, ended, endEvent, stream.end, run, ui]);
-
-  if (!show || !run) return null;
-  let lines: LogLine[] = eventsToLog(stream.events);
-  if (lines.length === 0 && !running)
-    lines = run.output_tail.map((text) => ({ ts: '', text, cls: '' }));
-  const material = endEvent?.material ?? null;
-  const live = running && !ended;
+  const [, rerender] = useState(0);
+  if (!run || ui.hidden.has(runKey(run))) return null;
+  const hide = () => {
+    ui.hidden.add(runKey(run));
+    rerender((n) => n + 1);
+  };
+  const failed = run.status === 'failed' || run.status === 'interrupted' || run.exit_code === 1;
 
   return (
-    <div className="injurylog">
-      <Notice tone="accent" icon={live ? '●' : 'i'}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <b>Saturday injury update</b>
-          {live ? (
-            <Chip tone="run" pulse>
-              Running
-            </Chip>
-          ) : (
-            <span className="muted">
-              {run.finished
-                ? `finished ${fmtET(run.finished, { weekday: 'short', hour: 'numeric', minute: '2-digit' })} ET`
-                : 'finished'}
-            </span>
-          )}
-          {!live ? (
-            <button
-              type="button"
-              className="btn sm"
-              style={{ marginLeft: 'auto' }}
-              onClick={() => setHidden(key)}
-            >
-              Hide
-            </button>
-          ) : null}
-        </div>
-        <div style={{ marginTop: 4 }}>
-          {live
-            ? "Re-pulling injuries, news and lines and re-predicting the games that haven't started. Closing this tab doesn't stop it."
-            : material === true
+    <Notice tone="accent" icon={running ? '●' : failed ? '!' : 'i'}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <b>Saturday injury update</b>
+        {running ? (
+          <Chip tone="run" pulse>
+            Running
+          </Chip>
+        ) : (
+          <span className="muted">
+            {run.finished
+              ? `finished ${fmtET(run.finished, { weekday: 'short', hour: 'numeric', minute: '2-digit' })} ET`
+              : 'finished'}
+          </span>
+        )}
+        {!running ? (
+          <button
+            type="button"
+            className="btn sm"
+            style={{ marginLeft: 'auto' }}
+            onClick={hide}
+          >
+            Hide
+          </button>
+        ) : null}
+      </div>
+      <div style={{ marginTop: 4 }}>
+        {running
+          ? "Re-pulling injuries, news and lines and re-predicting the games that haven't started: its lines follow the run's in the Log below. Closing this tab doesn't stop it."
+          : failed
+            ? (
+                <>
+                  {run.message ?? 'The update failed.'}
+                  <div className="muted">Its lines are at the end of the Log below.</div>
+                </>
+              )
+            : run.material === true
               ? 'Addendum published: it shows under the digest on the Digest tab.'
-              : material === false
+              : run.material === false
                 ? 'Nothing material changed: no addendum.'
                 : (run.message ?? 'The update has ended.')}
+      </div>
+      {/* a process that died without its run_end: its last output isn't in the events file */}
+      {!running && run.output_tail.length > 0 ? (
+        <div className="mono muted" style={{ marginTop: 6, fontSize: 11.5, whiteSpace: 'pre-wrap' }}>
+          {run.output_tail.join('\n')}
         </div>
-      </Notice>
-      <LogPanel lines={lines} source="none" live={live} />
-    </div>
+      ) : null}
+    </Notice>
   );
 }

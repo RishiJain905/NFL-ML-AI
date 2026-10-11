@@ -80,6 +80,19 @@ describe('WeekPage', () => {
     expect(screen.getByRole('group', { name: 'MLOps sections' })).toBeInTheDocument();
     expect(await screen.findByText('No run records')).toBeInTheDocument(); // week 4: before P07
   });
+
+  it("keeps a Saturday injury update off the week's other tabs (the Pipeline tab has it)", async () => {
+    const run = {
+      run_id: 'inj1', kind: 'injury_update', launched_from: 'app', command: 'nfl weekly injury-update --auto',
+      season: 2026, week: 5, started: '2026-10-10T14:00:12+00:00', finished: null, status: null, exit_code: null,
+      message: null, published: null, failed_step: null, material: null, has_events: true, output_tail: [],
+    };
+    mockApi({ '/api/meta': META, '/api/weeks': WEEKS, '/api/run/current': { state: 'running', run } });
+    renderApp(<WeekPage />, { route: '/week/2026/5/digest', path: '/week/:season/:week/:tab' });
+    expect(await screen.findByText('Running now: its log is on the Pipeline tab')).toBeInTheDocument();
+    expect(screen.queryByText(/Re-pulling injuries, news and lines/)).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Log' })).toBeNull();
+  });
 });
 
 describe('ConfirmDialog', () => {

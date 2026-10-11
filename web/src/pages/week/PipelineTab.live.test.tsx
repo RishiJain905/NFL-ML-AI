@@ -3,7 +3,7 @@
 // rehearsal mode. The finished and failed weeks as their files have them are in PipelineTab.test.tsx.
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PipelineResponse, PreflightResponse, RunCurrent, RunEvent } from '../../api/types';
+import type { LogLine, PipelineResponse, PreflightResponse, RunCurrent, RunEvent } from '../../api/types';
 import {
   ALL_STEPS,
   clockAt,
@@ -207,24 +207,63 @@ describe('PipelineTab: a run of this week is going', () => {
     expect(es.all()).toHaveLength(1);
   });
 
-  it('ignores a run of another week, and a Saturday injury update (WeekPage shows that one)', async () => {
+  it('ignores a run of another week', async () => {
     mockApi({
       [PIPELINE]: PLAN,
       '/api/run/current': { state: 'running', run: runInfo({ week: 6 }) } satisfies RunCurrent,
       '/api/meta': META,
     });
-    const first = renderApp(<PipelineTab season={2026} week={5} />);
-    expect(await screen.findByRole('heading', { name: 'The plan for this run' })).toBeInTheDocument();
-    expect(es.all()).toHaveLength(0);
-    first.unmount();
-    mockApi({
-      [PIPELINE]: PLAN,
-      '/api/run/current': { state: 'running', run: runInfo({ kind: 'injury_update' }) } satisfies RunCurrent,
-      '/api/meta': META,
-    });
     renderApp(<PipelineTab season={2026} week={5} />);
     expect(await screen.findByRole('heading', { name: 'The plan for this run' })).toBeInTheDocument();
     expect(es.all()).toHaveLength(0);
+  });
+});
+
+describe('PipelineTab: a Saturday injury update of this week', () => {
+  const injuryRun = runInfo({ kind: 'injury_update', run_id: 'inj1', command: 'nfl weekly injury-update --auto' });
+  const tuesday: LogLine = { ts: '20:27:39', text: '$ nfl weekly run --auto --expect-week 5', cls: 'acc' };
+
+  it('is a notice on top and its lines in the one Log card, which re-reads the week while it runs', async () => {
+    let reads = 0;
+    mockApi({
+      // each read of the week has one more line of the update (its events file grows)
+      [PIPELINE]: () => {
+        reads += 1;
+        const log: LogLine[] = [tuesday, { ts: '16:36:04', text: '$ nfl weekly injury-update --auto', cls: 'acc' }];
+        if (reads > 1) log.push({ ts: '16:36:18', text: 'espn_injuries: 800 rows', cls: '' });
+        return finishedWeek({ log });
+      },
+      '/api/run/current': { state: 'running', run: injuryRun } satisfies RunCurrent,
+      '/api/meta': META,
+    });
+    renderApp(<PipelineTab season={2026} week={5} />);
+    expect(await screen.findByText('Saturday injury update')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'The run' })).toBeInTheDocument();
+    const logs = screen.getAllByRole('region', { name: 'Log' });
+    expect(logs).toHaveLength(1);
+    expect(within(logs[0]).getByText('$ nfl weekly injury-update --auto')).toBeInTheDocument();
+    expect(within(logs[0]).getByText('streamed from the run · secrets scrubbed')).toBeInTheDocument();
+    // the next read (2 s later) brings the update's next line into the same card
+    expect(await within(logs[0]).findByText('espn_injuries: 800 rows', {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(within(logs[0]).getByText(tuesday.text)).toBeInTheDocument();
+    // the week's run isn't drawn live: no stream, no now-bar, no "in progress" notice
+    expect(es.all()).toHaveLength(0);
+    expect(screen.queryByRole('region', { name: 'Run progress' })).toBeNull();
+    expect(screen.queryByText(/A run of this week is in progress/)).toBeNull();
+  });
+
+  it('leaves another week alone', async () => {
+    mockApi({
+      [PIPELINE]: finishedWeek({ log: [tuesday] }),
+      '/api/run/current': { state: 'running', run: { ...injuryRun, week: 6 } } satisfies RunCurrent,
+      '/api/meta': META,
+    });
+    renderApp(<PipelineTab season={2026} week={5} />);
+    expect(await screen.findByRole('heading', { name: 'The run' })).toBeInTheDocument();
+    expect(screen.queryByText('Saturday injury update')).toBeNull();
+    const log = screen.getByRole('region', { name: 'Log' });
+    expect(within(log).queryByText('streamed from the run · secrets scrubbed')).not.toBeNull(); // log_source events
+    expect(log.querySelector('.cursor')).toBeNull(); // not live
   });
 });
 

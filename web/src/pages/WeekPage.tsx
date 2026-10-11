@@ -3,7 +3,6 @@
 
 import { NavLink, Navigate, useParams } from 'react-router-dom';
 import { useMeta, useWeekDetail, useWeeks } from '../api/client';
-import { InjuryUpdateLog } from '../components/run/InjuryUpdate';
 import { WeekHeader } from '../components/WeekHeader';
 import { comma } from '../lib/format';
 import { DigestTab } from './week/DigestTab';
@@ -73,8 +72,7 @@ export function WeekPage() {
         ))}
       </nav>
       <section className="view" aria-label={TABS.find(([k]) => k === tab)?.[1]}>
-        {/* the Saturday injury update's live log, on every tab of its week (CR02) */}
-        <InjuryUpdateLog season={season} week={week} />
+        {/* the Saturday injury update shows on the Pipeline tab only: its notice and its lines in the one Log */}
         {tab === 'pipeline' ? <PipelineTab season={season} week={week} detail={d} /> : null}
         {tab === 'digest' ? <DigestTab {...props} /> : null}
         {tab === 'games' ? <GamesTab {...props} /> : null}

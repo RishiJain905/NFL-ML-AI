@@ -74,6 +74,12 @@ def lock_target(lock: dict[str, Any], plan: WeekPlan | None) -> tuple[int, int] 
     return None
 
 
+def is_injury_update(lock: dict[str, Any]) -> bool:
+    """A held lock taken by the Saturday injury update: it re-predicts a published week, but
+    none of the week's pipeline steps is running."""
+    return bool(lock.get("held")) and "injury-update" in str(lock.get("command") or "")
+
+
 def to_local_iso(text: str | None) -> str | None:
     """Step times before P07 are naive local time; later ones carry an offset. Return ISO
     with an offset either way (naive = this machine's local zone, where the run happened)."""

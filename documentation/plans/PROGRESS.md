@@ -126,6 +126,13 @@ One line per live week (`uv run nfl season weeks --season 2026`), plus any drift
 - week 05: published ✓ on time (47.5 h before kickoff), checks passed first time, 0 drift alerts (the first run from the control room; drift signals mostly "insufficient data" this early)
 
 ## Session log (newest first)
+### 2026-10-11 (Sunday afternoon): the Saturday injury update fixed (D126); its log moved to the Pipeline tab (D127)
+- **Reported (Rishi, 16:36 ET):** the injury update failed from the control room ("blocking quality checks failed: ['completed games in play-by-play']"), and Services showed Neo4j unreachable.
+- **Neo4j:** the container had just started (Up 2 min at 16:38); the 16:36 check caught Neo4j's start-up; `nfl doctor` OK minutes later. Nothing to fix.
+- **The update (D126):** it re-pulls the schedule but not play-by-play, so its curate check failed on week 5's 9 finished games (Thursday's TB @ DAL, the London game, seven 1 PM games). It would have failed on Saturday too (Thursday's game), and no update had ever completed this season (no `injury_update.json` in weeks 1–5). Fix: `run_quality_checks(pbp_pending_week=(season, week))` from the update only; on the real data 4,427 earlier completed games pass and the 9 of week 5 are exempt. The two failed attempts (20:34 and 20:36 UTC) left the curated tables re-built with today's schedule; the MLOps tab shows that quality file's failure until the next curate (Tuesday's run).
+- **The log (D127, Rishi: one log, not on every week-5 tab):** the update's notice is on the Pipeline tab only, its lines in that tab's one Log card (re-read every 2 s while it runs); the Pipeline tab no longer calls the published week "running" during an update; a pre-CR02 week keeps its rebuilt log. The mockup never drew the card: unchanged.
+- **Checks:** `pytest` (see the commit), `ruff`, web typecheck / lint / 428 Vitest tests, `npm run build` (the app serves the new `web/dist` after a restart). No live run by the agent: Rishi re-runs the update from the app.
+
 ### 2026-10-10 (late night, after PC00): PC01 (Play calling: the pages) built, reviewed and closed
 - **Kickoff (Rishi):** start PC01 from its phase file; opus-high / sonnet-xhigh allowed; `/sol-qa` (Sol, `gpt-6.1-sol`) review of the uncommitted changes before the commit; done = every PC01 task + docs + skill updates; mark the phase complete (the ✋ close waived). **Asked once at the start:** the ✋ mockup approval → **"Waive it"** (scope: PC01's mockup).
 - **Session start:** `nfl doctor` OK except Neo4j (down; not needed); 3,262 passed.

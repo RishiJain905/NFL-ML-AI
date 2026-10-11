@@ -18,6 +18,7 @@ from nflengine.paths import ensure_data_root
 from nflengine.settings import get_config
 
 BLOCK, WARN = "block", "warn"
+COMPLETENESS = "completed games in play-by-play"
 
 
 @dataclass
@@ -50,18 +51,32 @@ def check_team_codes(tables: dict[str, tuple[pl.DataFrame, list[str]]]) -> Quali
 
 
 def check_completeness(
-    games: pl.DataFrame, plays_game_ids: set[str], min_season: int
+    games: pl.DataFrame,
+    plays_game_ids: set[str],
+    min_season: int,
+    pbp_pending_week: tuple[int, int] | None = None,
 ) -> QualityResult:
+    """Every completed game has play-by-play. `pbp_pending_week` (season, week) is the
+    Saturday injury update's week: it re-pulls the schedule but not play-by-play (it never
+    uses it), so that week's games finished since Tuesday aren't required yet."""
     done = games.filter(
         pl.col("completed") & (pl.col("season") >= min_season) & (pl.col("game_type") != "SBBYE")
     )
+    pending_note = ""
+    if pbp_pending_week is not None:
+        s, w = pbp_pending_week
+        this_week = (pl.col("season") == s) & (pl.col("week") == w)
+        pending = sorted(set(done.filter(this_week)["game_id"].to_list()) - plays_game_ids)
+        done = done.filter(~this_week)
+        if pending:
+            pending_note = f"; {len(pending)} of {s} week {w} not required yet, e.g. {pending[:3]}"
     missing = sorted(set(done["game_id"].to_list()) - plays_game_ids)
     detail = (
         f"all {done.height:,} completed games have play-by-play"
         if not missing
         else f"{len(missing)} completed games missing from plays, e.g. {missing[:5]}"
     )
-    return QualityResult("completed games in play-by-play", BLOCK, not missing, detail)
+    return QualityResult(COMPLETENESS, BLOCK, not missing, detail + pending_note)
 
 
 def check_plays_per_game(per_game: pl.DataFrame, lo: int = 100, hi: int = 260) -> QualityResult:
@@ -145,7 +160,11 @@ def check_players_per_team_week(pg: pl.DataFrame, lo: int = 15, hi: int = 80) ->
 # ---- runner -----------------------------------------------------------------------------
 
 
-def run_quality_checks(curated: Path | None = None) -> list[QualityResult]:
+def run_quality_checks(
+    curated: Path | None = None, *, pbp_pending_week: tuple[int, int] | None = None
+) -> list[QualityResult]:
+    """All checks; writes `_quality/latest.json`. `pbp_pending_week`: the injury update's
+    week, whose finished games may lack play-by-play (see `check_completeness`)."""
     curated = curated or ensure_data_root().curated
     cfg = get_config()
     current = cfg.seasons.current
@@ -179,7 +198,7 @@ def run_quality_checks(curated: Path | None = None) -> list[QualityResult]:
     results.append(check_team_codes(team_tables))
 
     play_ids = set(plays.select("game_id").unique().collect()["game_id"].to_list())
-    results.append(check_completeness(games, play_ids, cfg.seasons.history_start))
+    results.append(check_completeness(games, play_ids, cfg.seasons.history_start, pbp_pending_week))
     per_game = (
         plays.filter(pl.col("play_type").is_not_null())
         .group_by("game_id")

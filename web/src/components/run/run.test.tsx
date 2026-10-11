@@ -2,13 +2,13 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PreflightResponse, RunCurrent, RunEvent, RunInfo } from '../../api/types';
+import type { PreflightResponse, RunCurrent, RunInfo } from '../../api/types';
 import { installFakeEventSource } from '../../test/fakeEventSource';
 import { META, WEEKS, mockApi, renderApp, withStatus } from '../../test/utils';
 import { Shell } from '../Shell';
 import { WeekHeader } from '../WeekHeader';
 import { FailureBanner } from './FailureBanner';
-import { InjuryUpdateLog } from './InjuryUpdate';
+import { InjuryUpdateNotice } from './InjuryUpdate';
 import { resetNotifyForTests } from './notify';
 import { PreflightPanel } from './PreflightPanel';
 import { RunUiProvider } from './RunUiProvider';
@@ -510,7 +510,7 @@ describe('Saturday injury update', () => {
     await waitFor(() => expect(posts(f)).toEqual([{ kind: 'injury_update', expect_week: 5 }]));
   });
 
-  it('streams the live log and toasts whether the update was material', async () => {
+  it('is a notice without a log of its own, and toasts once whether the update was material', async () => {
     const es = installFakeEventSource();
     let current: RunCurrent = {
       state: 'running',
@@ -526,62 +526,61 @@ describe('Saturday injury update', () => {
         <>
           <GrabClient />
           <RunWatcher />
-          <InjuryUpdateLog season={2026} week={5} />
+          <InjuryUpdateNotice season={2026} week={5} />
         </>,
       ),
     );
     expect(await screen.findByText('Saturday injury update')).toBeInTheDocument();
-    const t = '2026-10-10T14:00:00+00:00';
-    const events: RunEvent[] = [
-      {
-        seq: 1,
-        t,
-        run_id: 'inj1',
-        type: 'log',
-        step: null,
-        text: 'pulling injuries and news',
-        cls: '',
-      },
-      {
-        seq: 2,
-        t,
-        run_id: 'inj1',
-        type: 'log',
-        step: null,
-        text: 'Ravens QB downgraded to out',
-        cls: 'warn',
-      },
-    ];
-    await waitFor(() => expect(es.all().length).toBe(1));
-    act(() => es.last().emitRuns(events));
-    expect(await screen.findByText('Ravens QB downgraded to out')).toBeInTheDocument();
+    expect(screen.getByText('Running')).toBeInTheDocument();
+    expect(screen.getByText(/its lines follow the run's in the Log below/)).toBeInTheDocument();
+    // its lines are in the Pipeline tab's one Log card: no second log, no stream of its own
+    expect(screen.queryByRole('region', { name: 'Log' })).toBeNull();
+    expect(es.all()).toHaveLength(0);
 
-    act(() =>
-      es.last().emitRun({
-        seq: 3,
-        t,
-        run_id: 'inj1',
-        type: 'run_end',
-        status: 'ok',
-        exit_code: 0,
-        message: 'Addendum written for 2 games',
-        published: true,
-        failed_step: null,
-        material: true,
-      }),
-    );
-    expect(await within(toasts()).findByText('Addendum published')).toBeInTheDocument();
-    expect(screen.getByText(/it shows under the digest/)).toBeInTheDocument();
-
-    // the watcher sees it finish too, but the card already announced it: one toast only
     current = {
       state: 'finished',
-      run: { ...current.run!, finished: t, status: 'ok', exit_code: 0 },
+      run: {
+        ...current.run!,
+        finished: '2026-10-10T14:00:30+00:00',
+        status: 'ok',
+        exit_code: 0,
+        message: 'material change: addendum published',
+        material: true,
+      },
     };
     await act(async () => {
       await client?.invalidateQueries({ queryKey: ['run-current'] });
     });
+    expect(await within(toasts()).findByText('Addendum published')).toBeInTheDocument();
+    expect(screen.getByText(/it shows under the digest/)).toBeInTheDocument();
+    expect(screen.queryByText('Running')).toBeNull();
+    await act(async () => {
+      await client?.invalidateQueries({ queryKey: ['run-current'] });
+    });
     expect(within(toasts()).getAllByText('Addendum published')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
+    expect(screen.queryByText('Saturday injury update')).toBeNull();
+  });
+
+  it('says a failed update failed and points at the Log', async () => {
+    mockApi({
+      ...base,
+      '/api/preflight': preflight(),
+      '/api/run/current': {
+        state: 'finished',
+        run: runInfo({
+          run_id: 'inj2',
+          kind: 'injury_update',
+          finished: new Date(Date.now() - 60_000).toISOString(),
+          status: 'failed',
+          exit_code: 1,
+          message: 'injury update failed: InjuryUpdateError: blocking quality checks failed',
+        }),
+      } satisfies RunCurrent,
+    });
+    renderApp(withUi(<InjuryUpdateNotice season={2026} week={5} />));
+    expect(await screen.findByText(/blocking quality checks failed$/)).toBeInTheDocument();
+    expect(screen.getByText('Its lines are at the end of the Log below.')).toBeInTheDocument();
   });
 });
 
