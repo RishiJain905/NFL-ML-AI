@@ -14,6 +14,7 @@ export function TipTarget({
   className,
   style,
   children,
+  focusable = true,
 }: {
   as?: 'span' | 'div';
   lines: string[]; // the first line is the tooltip's heading
@@ -21,6 +22,9 @@ export function TipTarget({
   className?: string;
   style?: CSSProperties;
   children?: ReactNode;
+  /** false: a hover-only mark (no tab stop, hidden from assistive tech), for when the same
+   *  tooltip already sits on a focusable target that's visible at every width (PC01). */
+  focusable?: boolean;
 }) {
   const [at, setAt] = useState<{ x: number; y: number } | null>(null);
   const pos: CSSProperties = {};
@@ -36,9 +40,10 @@ export function TipTarget({
     <Tag
       className={className}
       style={style}
-      role="img"
-      tabIndex={0}
-      aria-label={label ?? lines.join(', ')}
+      role={focusable ? 'img' : undefined}
+      tabIndex={focusable ? 0 : undefined}
+      aria-label={focusable ? (label ?? lines.join(', ')) : undefined}
+      aria-hidden={focusable ? undefined : true}
       onPointerMove={(e) => setAt({ x: e.clientX, y: e.clientY })}
       onPointerLeave={() => setAt(null)}
       onFocus={(e) => {

@@ -290,7 +290,7 @@ describe('WeekPage: the Game day tab', () => {
     renderApp(<WeekPage />, { route: '/week/2026/4/graph', path: '/week/:season/:week/:tab' });
     const tabs = screen.getByRole('navigation', { name: 'Week sections' });
     const links = within(tabs).getAllByRole('link');
-    expect(links.map((t) => t.textContent)).toEqual(['Pipeline', 'Digest', 'Games', 'Players', 'Results', 'MLOps', 'Graph', 'Game day']);
+    expect(links.map((t) => t.textContent)).toEqual(['Pipeline', 'Digest', 'Games', 'Players', 'Results', 'MLOps', 'Graph', 'Game day', 'Play calls']);
     expect(links[7]).toHaveAttribute('href', '/week/2026/4/game-day');
     await waitFor(() => expect(calledPaths(f)).toContain('/api/weeks'));
     expect(calledPaths(f).some((p) => p.startsWith('/api/live/'))).toBe(false); // another tab never asks

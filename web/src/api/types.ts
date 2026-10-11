@@ -1398,3 +1398,222 @@ export interface LiveSeasonReviewResponse {
   calibration: ReviewCalibration | null;
   computed_at: string | null;
 }
+
+// ---- PC01: Play calling (documentation/play-calling/PC01-play-calling-pages.md) ------------
+// GET /api/playcalling/teams?season=, /api/playcalling/teams/{team}?season=&side=,
+// /api/playcalling/teams/{team}/history?side= and /api/weeks/{season}/{week}/play-calls.
+// All read-only, from the tables `nfl playcalling build` writes (PC00, `playcalling/<S>/`).
+// Units: `share` is 0-1; `over_expected` (pass rate over expected, PROE) is 0-1 too and is shown
+// x100 as points with a sign (0.037 -> "+3.7"); `mean` is in its own unit (air yards, defenders,
+// rushers, EPA, seconds; `digits` says how many decimals). The league's PROE isn't 0 (nflverse's
+// xpass isn't re-centred), so a page compares a team with `league` / `diff`, never with 0.
+// A defense's rows are what offenses do against it (plus its own calls: blitz, rushers, box).
+
+export type PlaycallSide = 'offense' | 'defense';
+export type PlaycallWindow = 'season' | 'last4' | 'last_season';
+export type PlaycallUnit = 'share' | 'over_expected' | 'mean';
+export type PlaycallSource = 'pbp' | 'ftn' | 'pfr' | 'participation';
+/** not_built: no tables for the season; not_yet: built, but not as of this week yet. */
+export type PlaycallStatus = 'ok' | 'not_built' | 'not_yet';
+
+/** One number: a team's rate in one window and situation, next to the league's. */
+export interface PlaycallCell {
+  n: number; // plays counted (the denominator: dropbacks for play-action, attempts for deep shots)
+  games: number | null; // games in the window behind the rate
+  value: number | null;
+  league: number | null; // the league's rate over the same window and situation
+  diff: number | null; // value - league
+  pct: number | null; // 0-100 among the teams with plays: high = more of it, not "better"
+  small: boolean; // n < min_n: grey it out (a 1-for-2 isn't a tendency)
+}
+export type PlaycallWindows = Record<PlaycallWindow, PlaycallCell | null>;
+
+/** How to name and format a metric (labels.METRICS, plus the pages' short names). */
+export interface PlaycallMetric {
+  metric: string; // "play_action_rate"
+  label: string; // "Play-action per dropback"
+  short: string; // "Play-action"
+  unit: PlaycallUnit;
+  digits: number; // decimals: shares and PROE in points 1, aDOT 1, rushers / box 2, EPA 2
+  source: PlaycallSource;
+  situation: string; // the situation it's read in: "neutral" for PROE and dropback rate, else "all"
+  per: string; // what one counted play is: "dropback", "attempt", "play", "snap", "designed run"
+  caller: PlaycallSide; // who chooses it: the offense (play-action) or the defense (blitz, box)
+  help: string | null; // one plain sentence for a tooltip
+}
+
+/** What every play-calling answer says about the tables behind it. */
+export interface PlaycallMeta {
+  status: PlaycallStatus;
+  message: string | null; // the empty state's text, naming the command to run
+  season: number;
+  seasons: number[]; // seasons with built tables, newest first
+  as_of_week: number | null; // rows count the games before this week (what a Tuesday run could see)
+  through_week: number | null; // the last week counted (as_of_week - 1; null before week 1's games)
+  built_at: string | null;
+  min_n: number; // 20: rates on fewer plays are greyed out
+  ftn_waiting: string[]; // games FTN hasn't charted yet ("ATL at NO, week 4"): FTN rates wait for them
+}
+
+// ---- Explore -> Play calling: the teams grid ----
+
+export interface PlaycallGridColumn extends PlaycallMetric {
+  id: string; // "offense.proe": side + metric
+  side: PlaycallSide;
+  signature: boolean; // on the tile (offense PROE, defense blitz); the others sort the grid
+}
+export interface PlaycallGridTeam {
+  team: string;
+  games: number; // games behind the numbers shown (the window's: last season's before week 1)
+  cells: Record<string, PlaycallCell | null>; // by column id
+}
+export interface PlaycallTeamsResponse extends PlaycallMeta {
+  window: PlaycallWindow; // 'season', or 'last_season' before week 1's games
+  columns: PlaycallGridColumn[];
+  teams: PlaycallGridTeam[]; // the 32 teams (empty when not built)
+}
+
+// ---- Explore -> Play calling -> a team ----
+
+export interface PlaycallIdentityRow extends PlaycallMetric {
+  windows: PlaycallWindows;
+}
+export interface PlaycallIdentityGroup {
+  id: string; // "pass_run" | "formation" | "pass_game" | "results" | "pressure" | "box" | "faced"
+  title: string;
+  note: string | null; // e.g. a defense's "allowed" rates depend on the offenses it faced
+  rows: PlaycallIdentityRow[];
+}
+export interface PlaycallSituationRow {
+  situation: string; // "3rd_long"
+  label: string; // "3rd & 7+"
+  cells: Record<string, PlaycallWindows>; // by metric (the table's columns)
+}
+export interface PlaycallSituationFamily {
+  family: 'down_distance' | 'field_zone' | 'score';
+  title: string; // "Down & distance" | "Field zone" | "Score & clock"
+  rows: PlaycallSituationRow[];
+}
+export interface PlaycallSituations {
+  metrics: PlaycallMetric[]; // the columns: dropback rate, PROE, shotgun, deep shots, play-action, blitz (those the season has)
+  baseline: PlaycallSituationRow; // all plays, the row to compare with
+  families: PlaycallSituationFamily[];
+}
+export type PlaycallDirection = 'left' | 'middle' | 'right';
+export interface PlaycallZone {
+  metric: string; // "pass_deep_left"
+  depth: 'short' | 'deep' | null; // null: a direction over every depth ("pass_left")
+  direction: PlaycallDirection;
+  windows: PlaycallWindows; // a share of the attempts with a depth and direction (the 6 add to 1)
+}
+export interface PlaycallField {
+  zones: PlaycallZone[]; // 6: short / deep x left / middle / right
+  directions: PlaycallZone[]; // 3: left / middle / right over every depth
+  depth: PlaycallIdentityRow[]; // deep shots per attempt, aDOT
+}
+export type PlaycallLaneId =
+  | 'left_end'
+  | 'left_tackle'
+  | 'left_guard'
+  | 'middle'
+  | 'right_guard'
+  | 'right_tackle'
+  | 'right_end';
+export interface PlaycallLane {
+  lane: PlaycallLaneId;
+  metric: string; // "run_left_end"
+  label: string; // "Left end"
+  windows: PlaycallWindows; // a share of the designed runs with a direction (the 7 add to 1)
+}
+export interface PlaycallWeeklySeries extends PlaycallMetric {
+  league: number | null; // the season's league rate: a reference line
+  points: { week: number; value: number | null; n: number }[]; // one per game played
+}
+export interface PlaycallWeekly {
+  games: { week: number; game_id: string; opponent: string; home: boolean }[];
+  series: PlaycallWeeklySeries[];
+}
+export interface PlaycallNextGame {
+  season: number;
+  week: number;
+  game_id: string;
+  opponent: string;
+  home: boolean;
+  kickoff: string | null;
+}
+export interface PlaycallTeamResponse extends PlaycallMeta {
+  team: string;
+  side: PlaycallSide;
+  games: number; // games in the season window (0 before week 1's games)
+  summary: string[]; // two or three plain sentences: the identity in five seconds
+  identity: PlaycallIdentityGroup[];
+  situations: PlaycallSituations | null;
+  field: PlaycallField | null;
+  runs: PlaycallLane[];
+  weekly: PlaycallWeekly | null;
+  next_game: PlaycallNextGame | null; // links the week's Play calls tab
+  notes: string[];
+}
+
+// ---- History, 2023-2025 (nflverse participation: research data, published after each season) ----
+
+export interface PlaycallHistoryRow extends PlaycallMetric {
+  seasons: Record<string, PlaycallCell | null>; // by season ("2025"): the whole season, playoffs in
+}
+export interface PlaycallHistoryGroup {
+  id: string; // "personnel" | "formation" | "routes" | "coverage" | "man_zone" | "packages" | "pressure"
+  title: string;
+  kind: 'stack' | 'bars'; // stack: shares that add to 100% (one bar per season); bars: separate rates
+  note: string | null;
+  rows: PlaycallHistoryRow[];
+}
+export interface PlaycallHistoryResponse {
+  status: 'ok' | 'not_built';
+  message: string | null;
+  team: string;
+  side: PlaycallSide;
+  seasons: number[]; // oldest first
+  research: true;
+  source_note: string; // what the data is and when the next season's arrives
+  min_n: number;
+  groups: PlaycallHistoryGroup[];
+}
+
+// ---- The Play calls week tab (descriptive in PC01; PC02 adds the forecast) ----
+
+export interface PlayCallsRow {
+  metric: string;
+  offense: PlaycallCell | null; // the offense's own rate (for a defense's call: how often it has faced it)
+  defense: PlaycallCell | null; // what offenses do against this defense (its own call: how often it calls it)
+  league: number | null;
+  shift: number | null; // (defense - league) in standard deviations of the 32 defenses: how unusual
+  same_way: boolean | null; // the offense and the defense sit on the same side of the league
+}
+export interface PlayCallsMatchup {
+  offense: string;
+  defense: string;
+  rows: PlayCallsRow[];
+}
+export interface PlayCallsGame {
+  game_id: string;
+  kickoff: string | null;
+  away: string;
+  home: string;
+  matchups: PlayCallsMatchup[]; // [away offense vs home defense, home offense vs away defense]
+}
+export interface PlayCallsShift {
+  game_id: string;
+  offense: string;
+  defense: string;
+  metric: string;
+  shift: number; // standard deviations, signed
+  text: string; // one plain sentence, numbers included
+}
+export interface PlayCallsResponse extends PlaycallMeta {
+  week: number;
+  window: PlaycallWindow; // 'season' (games before this week); 'last_season' for week 1
+  note: string; // what the tab is (descriptive) and isn't (a forecast: PC02)
+  metrics: PlaycallMetric[]; // the rows of every matchup, in order (only metrics the season has)
+  games: PlayCallsGame[];
+  shifts: PlayCallsShift[]; // the week's biggest, largest |shift| first (up to 8)
+}

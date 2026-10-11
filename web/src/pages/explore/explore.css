@@ -1,0 +1,125 @@
+/* Explore → Play calling and the Play calls week tab (PC01; mockup:
+   documentation/play-calling/mockup/playcalling.css). The charts' own styles are in
+   src/charts/playcall.css. Tokens only. */
+
+.tname { display: flex; align-items: center; gap: 12px; }
+.tname i { width: 8px; height: 30px; border-radius: 3px; display: inline-block; box-shadow: inset 0 0 0 1px rgba(127,127,127,.3); }
+.seg.big button { padding: 7px 16px; font-size: 14px; }
+.top .chips a.chip { text-decoration: none; }
+.top .chips a.chip:hover { filter: brightness(1.08); }
+
+/* loading skeleton */
+.sk { display: flex; flex-direction: column; gap: 10px; }
+.sk > div { display: flex; flex-direction: column; gap: 10px; }
+.skl { display: block; height: 12px; border-radius: 6px; background: var(--raised); animation: pulse 1.4s ease-in-out infinite; }
+.skl.w40 { width: 40%; height: 18px; } .skl.w70 { width: 70%; } .skl.w55 { width: 55%; }
+.skgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-top: 8px; }
+.skb { height: 92px; border-radius: var(--r); background: var(--raised); animation: pulse 1.4s ease-in-out infinite; }
+
+/* ---------- the teams grid ---------- */
+.sortsel { display: inline-flex; align-items: center; gap: 8px; }
+.sortsel select { font: inherit; font-size: 13px; padding: 5px 8px; border-radius: 7px; border: 1px solid var(--line-2); background: var(--panel); color: var(--ink); }
+.ptiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 12px; }
+.ptile { display: flex; flex-direction: column; gap: 10px; text-align: left; cursor: pointer; padding: 12px 14px 12px 16px; border-radius: var(--r); border: 1px solid var(--line); background: var(--panel); position: relative; overflow: hidden; color: var(--ink); }
+.ptile::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--tc); }
+.ptile:hover { border-color: var(--line-2); background: var(--raised); }
+.pt-h { display: flex; align-items: baseline; gap: 8px; }
+.pt-h a { font-family: var(--font-display); font-size: 22px; font-weight: 700; line-height: 1; color: var(--ink); text-decoration: none; }
+.pt-h a:hover { text-decoration: underline; }
+.pt-h .nick { color: var(--ink-2); font-size: 13px; }
+.pt-h small { margin-left: auto; color: var(--ink-3); font-size: 11.5px; }
+.pt-sigs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.psig { display: flex; flex-direction: column; gap: 3px; min-width: 0; border-radius: 4px; }
+.psig:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.psig .k { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.psig .kk { font-size: 12px; color: var(--ink-2); line-height: 1.2; min-height: 2.4em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.psig .v { font-family: var(--font-display); font-size: 26px; font-weight: 700; line-height: 1; }
+.psig .lg { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+.psig.small .v { color: var(--ink-3); }
+.psort { display: flex; gap: 8px; align-items: baseline; font-size: 12.5px; padding-top: 8px; border-top: 1px dashed var(--line); color: var(--ink-2); }
+.psort b { margin-left: auto; font-weight: 700; color: var(--ink); }
+.psort.small b { color: var(--ink-3); }
+.thsort { border: 0; background: none; padding: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; white-space: nowrap; }
+.thsort:hover { color: var(--ink); }
+.gridtbl th.grph { text-align: center; border-bottom: 1px solid var(--line); color: var(--ink-2); }
+.gridtbl td.hc small { display: block; font-size: 10.5px; color: var(--ink-3); font-weight: 500; }
+.gridtbl tr.lgrow td { background: var(--raised); font-weight: 600; color: var(--ink-2); }
+.gridtbl .tlink { color: inherit; text-decoration: none; border-radius: 4px; }
+.gridtbl .tlink:hover { text-decoration: underline; }
+.gridtbl .hct { display: block; border-radius: 4px; }
+.gridtbl .hct:focus-visible, .gridtbl .tlink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gridtbl td.small { color: var(--ink-3); background-image: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--ink-3) 14%, transparent) 5px 6px); }
+
+/* ---------- a team page ---------- */
+.summary { padding: 16px 20px; border-left: 5px solid var(--accent); }
+.sumlist { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.sumlist li { font-size: 17px; line-height: 1.4; color: var(--ink); max-width: 90ch; }
+.sumlist li::before { content: "▸"; color: var(--accent); margin-right: 8px; }
+.sumnote { margin: 10px 0 0; font-size: 12.5px; color: var(--ink-3); }
+.wintool { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 8px 0; margin: -8px 0; }
+.wintool .muted { font-size: 12.5px; }
+/* two groups side by side only when a rate row fits (~440 px); one column otherwise */
+.idgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 18px 28px; }
+.idgrp h3, .dh { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); font-weight: 700; margin-bottom: 6px; }
+.gnote { margin: 0 0 6px; font-size: 12px; color: var(--ink-3); }
+.heatfoot { display: flex; gap: 10px 18px; flex-wrap: wrap; align-items: center; margin-top: 12px; font-size: 12px; }
+.fieldgrid { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 20px 28px; align-items: start; }
+.wkgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.wkcard { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px 8px; display: flex; flex-direction: column; gap: 4px; }
+.wkh { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.wkh b { font-size: 13.5px; }
+.wkh span { font-family: var(--font-display); font-size: 20px; font-weight: 700; }
+.wkh small { font-family: var(--font-body); font-size: 11px; color: var(--ink-3); font-weight: 500; }
+.wkf { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; }
+.wkf span:first-child { white-space: nowrap; }
+.wkf span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lk.lg { display: inline-block; width: 14px; border-top: 2px dashed var(--ink-2); vertical-align: middle; margin-right: 4px; }
+.hist .card-h .chip { vertical-align: middle; }
+.histnote { font-size: 13px; margin: 0; }
+.hgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; margin-top: 14px; }
+.htbl th[scope="row"], .mtbl th[scope="row"] { font-weight: 600; text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--ink); position: static; }
+.htbl td.hcell { min-width: 108px; }
+.htbl .hct { border-radius: 4px; }
+.htbl .hct:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.htbl .hv { display: flex; justify-content: space-between; gap: 6px; font-weight: 600; margin-bottom: 3px; }
+.htbl .hv small { color: var(--ink-3); font-weight: 400; font-size: 11px; }
+.htbl td.small .hv { color: var(--ink-3); font-weight: 500; }
+
+/* ---------- the Play calls week tab ---------- */
+.shifts { list-style: none; margin: 0; padding: 6px 18px 10px; }
+.shifts li { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.shifts li:last-child { border-bottom: 0; }
+.shm { position: relative; height: 10px; border-radius: 999px; background: var(--raised); overflow: hidden; }
+.shb { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ink-2); border-radius: 0 4px 4px 0; }
+.shv { white-space: nowrap; font-size: 12px; }
+.pcgames { display: flex; flex-direction: column; gap: 14px; }
+.pcgame .card-h h2 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pcgame .card-h h2 .team b { font-family: var(--font-display); font-size: 20px; }
+.pcgame .card-h h2 .at { font-family: var(--font-body); font-size: 13px; font-weight: 500; color: var(--ink-3); }
+.pcmatch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pcmatch > section { padding: 12px 16px 14px; min-width: 0; }
+.pcmatch > section + section { border-left: 1px solid var(--line); }
+.mh { font-size: 14px; font-weight: 600; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.mtbl .mname { border-radius: 4px; cursor: default; }
+.mtbl .mname:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mtbl th[scope="row"] small { display: block; font-size: 10.5px; color: var(--ink-3); font-weight: 400; }
+.mtbl td small { display: block; font-size: 10.5px; color: var(--ink-3); }
+.mtbl td.smallv { color: var(--ink-3); }
+.mtbl tr.bigshift th[scope="row"] { box-shadow: inset 3px 0 0 var(--accent); }
+.mtbl td.mviz { width: 30%; min-width: 110px; }
+
+@media (max-width: 1100px) {
+  .idgrid, .hgrid, .fieldgrid { grid-template-columns: minmax(0, 1fr); }
+  .pcmatch { grid-template-columns: minmax(0, 1fr); }
+  .pcmatch > section + section { border-left: 0; border-top: 1px solid var(--line); }
+}
+@media (max-width: 640px) {
+  .sumlist li { font-size: 15.5px; }
+  .ptiles { grid-template-columns: minmax(0, 1fr); }
+  .shifts li { grid-template-columns: minmax(0, 1fr) auto; }
+  .shifts .shm { display: none; }
+  .mtbl td.mviz, .mtbl th.mviz { display: none; }
+  .mtbl th, .mtbl td { padding-left: 5px; padding-right: 5px; }
+  .mtbl th[scope="row"] { white-space: normal; }
+  .wintool { position: static; }
+}

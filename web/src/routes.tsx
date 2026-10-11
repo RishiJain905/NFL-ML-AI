@@ -3,6 +3,8 @@ import { Shell } from './components/Shell';
 import { HomeRedirect, WeekRedirect } from './pages/Redirects';
 import { WeekPage } from './pages/WeekPage';
 import { NotFound } from './pages/Pages';
+import { PlayCallTeamPage } from './pages/explore/PlayCallTeamPage';
+import { PlayCallingPage } from './pages/explore/PlayCallingPage';
 import { AlertsPage } from './pages/season/AlertsPage';
 import { HealthPage } from './pages/season/HealthPage';
 import { ModelsPage } from './pages/season/ModelsPage';
@@ -21,6 +23,8 @@ export const routes: RouteObject[] = [
       { path: 'models', element: <ModelsPage /> },
       { path: 'alerts', element: <AlertsPage /> },
       { path: 'health', element: <HealthPage /> },
+      { path: 'explore/play-calling', element: <PlayCallingPage /> },
+      { path: 'explore/play-calling/:team', element: <PlayCallTeamPage /> },
       { path: '*', element: <NotFound /> },
     ],
   },

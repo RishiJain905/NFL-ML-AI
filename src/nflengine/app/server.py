@@ -32,6 +32,7 @@ from nflengine.app.health import SystemChecks, get_health
 from nflengine.app.jsonsafe import SafeJSONResponse
 from nflengine.app.preflight import get_preflight, rehearsal_target
 from nflengine.app.readers import mlops
+from nflengine.app.readers import playcalling as playcall
 from nflengine.app.readers.alerts import get_alerts
 from nflengine.app.readers.common import strip_root, use_data_root
 from nflengine.app.readers.digest import get_digest
@@ -260,6 +261,13 @@ def create_app(settings: AppSettings) -> FastAPI:
                 "bad_request",
                 "Season, week and the ESPN event id must be whole numbers in range; the team a "
                 "2-3 letter code.",
+            )
+        if req.url.path.startswith("/api/playcalling/"):
+            return _error(
+                422,
+                "bad_request",
+                "The season must be a year, the side offense or defense, and the team a 2-3 "
+                "letter code.",
             )
         return _error(422, "bad_request", "A parameter is malformed or out of range.")
 
@@ -646,6 +654,51 @@ def create_app(settings: AppSettings) -> FastAPI:
     ) -> SafeJSONResponse:
         paths = ctx.paths()
         return live_json(request, paths, lambda: ctx.live.season_review(paths, season, through))
+
+    # ---- PC01: Explore -> Play calling and the Play calls week tab (documentation/play-calling/).
+    # Read-only answers from `nfl playcalling build`'s tables; the team is one of the 32
+    # canonical codes (an unknown code is a 404 with fixed text, never echoed).
+    Team = PathParam(pattern="^[A-Z]{2,3}$")
+    Side = Query("offense", pattern="^(offense|defense)$")
+
+    def playcall_season(paths: DataPaths, season: int | None) -> int:
+        return season or playcall.default_season(paths, settings.current_season())
+
+    def unknown_team() -> SafeJSONResponse:
+        return _error(404, "not_found", "No such team: use one of the 32 team codes.")
+
+    @app.get("/api/playcalling/teams")
+    def playcall_teams_route(
+        season: int | None = Query(None, ge=1999, le=2100),
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        return week_json(paths, playcall.get_teams(paths, playcall_season(paths, season)))
+
+    @app.get("/api/playcalling/teams/{team}")
+    def playcall_team_route(
+        team: str = Team,
+        season: int | None = Query(None, ge=1999, le=2100),
+        side: str = Side,
+    ) -> SafeJSONResponse:
+        if team not in playcall.CANONICAL_TEAMS:
+            return unknown_team()
+        paths = ctx.paths()
+        body = playcall.get_team(
+            paths, playcall_season(paths, season), team, side, now=settings.now()
+        )
+        return week_json(paths, body)
+
+    @app.get("/api/playcalling/teams/{team}/history")
+    def playcall_history_route(team: str = Team, side: str = Side) -> SafeJSONResponse:
+        if team not in playcall.CANONICAL_TEAMS:
+            return unknown_team()
+        paths = ctx.paths()
+        return week_json(paths, playcall.get_history(paths, team, side))
+
+    @app.get("/api/weeks/{season}/{week}/play-calls")
+    def play_calls_route(season: int = Season, week: int = Week) -> SafeJSONResponse:
+        paths = ctx.paths()
+        return week_json(paths, playcall.get_play_calls(paths, season, week))
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def api_not_found(rest: str) -> SafeJSONResponse:

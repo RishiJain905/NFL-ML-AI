@@ -69,12 +69,12 @@ describe('WeekHeader', () => {
 });
 
 describe('WeekPage', () => {
-  it('has the eight tabs and the MLOps switcher', async () => {
+  it('has the nine tabs and the MLOps switcher', async () => {
     mockApi();
     renderApp(<WeekPage />, { route: '/week/2026/4/mlops', path: '/week/:season/:week/:tab' });
     const tabs = screen.getByRole('navigation', { name: 'Week sections' });
     expect(within(tabs).getAllByRole('link').map((t) => t.textContent)).toEqual([
-      'Pipeline', 'Digest', 'Games', 'Players', 'Results', 'MLOps', 'Graph', 'Game day',
+      'Pipeline', 'Digest', 'Games', 'Players', 'Results', 'MLOps', 'Graph', 'Game day', 'Play calls',
     ]);
     expect(within(tabs).getByRole('link', { name: 'MLOps' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('group', { name: 'MLOps sections' })).toBeInTheDocument();

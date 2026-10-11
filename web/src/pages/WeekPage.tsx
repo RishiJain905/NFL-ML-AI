@@ -13,6 +13,7 @@ import { GamesTab } from './week/GamesTab';
 import { GraphTab } from './week/GraphTab';
 import { MlopsTab } from './week/MlopsTab';
 import { PipelineTab } from './week/PipelineTab';
+import { PlayCallsTab } from './week/PlayCallsTab';
 import { PlayersTab } from './week/PlayersTab';
 import { ResultsTab } from './week/ResultsTab';
 import { TABS, type TabKey } from './tabs';
@@ -82,6 +83,7 @@ export function WeekPage() {
         {tab === 'graph' ? <GraphTab {...props} /> : null}
         {tab === 'mlops' ? <MlopsTab {...props} /> : null}
         {tab === 'game-day' ? <GameDayTab {...props} /> : null}
+        {tab === 'play-calls' ? <PlayCallsTab {...props} /> : null}
       </section>
     </>
   );

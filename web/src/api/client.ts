@@ -18,6 +18,11 @@ import type {
   ModelCardResponse,
   ModelsResponse,
   PipelineResponse,
+  PlayCallsResponse,
+  PlaycallHistoryResponse,
+  PlaycallSide,
+  PlaycallTeamResponse,
+  PlaycallTeamsResponse,
   PlayersResponse,
   PreflightResponse,
   ResultsResponse,
@@ -126,6 +131,9 @@ export const useResults = (season: number, week: number) =>
   useWeekQuery<ResultsResponse>(season, week, 'results');
 export const useGraph = (season: number, week: number) =>
   useWeekQuery<GraphResponse>(season, week, 'graph');
+/** PC01: the week's matchups of tendencies (descriptive; PC02 adds the forecast). */
+export const usePlayCalls = (season: number, week: number) =>
+  useWeekQuery<PlayCallsResponse>(season, week, 'play-calls');
 
 // ---- CR02: run control. The server builds the command; the browser sends a kind and its
 // expected week (a cross-check). POSTs carry the launch token (security.py).
@@ -394,5 +402,48 @@ export function useLiveSeasonReview(season: number, through: number, enabled = t
     staleTime: 10 * 60_000,
     refetchOnWindowFocus: false,
     retry: false,
+  });
+}
+
+// ---- PC01: Explore -> Play calling. The tables change at most twice a week (Tuesday's build
+// and Wednesday's FTN refresh), so answers are kept for ten minutes.
+
+const PLAYCALL_STALE_MS = 10 * 60_000;
+
+/** The teams grid; no season = the newest built season. */
+export function usePlaycallTeams(season?: number) {
+  const q = season ? `?season=${season}` : '';
+  return useQuery({
+    queryKey: ['playcalling', 'teams', season ?? 'newest'],
+    queryFn: () => apiGet<PlaycallTeamsResponse>(`/api/playcalling/teams${q}`),
+    staleTime: PLAYCALL_STALE_MS,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** One team's page for a side; no season = the newest built season. */
+export function usePlaycallTeam(team: string, side: PlaycallSide, season?: number) {
+  const q = `?side=${side}${season ? `&season=${season}` : ''}`;
+  return useQuery({
+    queryKey: ['playcalling', 'team', team, side, season ?? 'newest'],
+    queryFn: () =>
+      apiGet<PlaycallTeamResponse>(`/api/playcalling/teams/${encodeURIComponent(team)}${q}`),
+    enabled: /^[A-Z]{2,3}$/.test(team),
+    staleTime: PLAYCALL_STALE_MS,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** History, 2023-2025 (research data): fetched only when its section is opened. */
+export function usePlaycallHistory(team: string, side: PlaycallSide, enabled = true) {
+  return useQuery({
+    queryKey: ['playcalling', 'history', team, side],
+    queryFn: () =>
+      apiGet<PlaycallHistoryResponse>(
+        `/api/playcalling/teams/${encodeURIComponent(team)}/history?side=${side}`,
+      ),
+    enabled: enabled && /^[A-Z]{2,3}$/.test(team),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   });
 }

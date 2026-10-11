@@ -36,6 +36,13 @@ SCANNED_GETS = [
     # string and the root's path in test_app_decision_review.py)
     "/api/live/2026/5/review",
     "/api/live/2026/season-review",
+    # PC01: Explore -> Play calling and the Play calls tab (the empty states here; scanned with
+    # planted text, a key-shaped string and the root's path in test_app_playcalling.py)
+    "/api/playcalling/teams",
+    "/api/playcalling/teams/KC",
+    "/api/playcalling/teams/KC?season=2026&side=defense",
+    "/api/playcalling/teams/KC/history",
+    "/api/weeks/2026/5/play-calls",
 ]
 
 

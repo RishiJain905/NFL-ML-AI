@@ -1,0 +1,116 @@
+/* Play calling's charts (PC01; mockup: documentation/play-calling/mockup/playcalling.css). Tokens
+   only. The team (or the offense) is --s1, the defense --s2; the diverging tint is --s2 → the
+   panel → --s1; the field and the line use --field / --chalk. Small samples (n < min_n) are
+   hatched and greyed, never tinted. */
+
+/* ---------- the rate bar ---------- */
+.rbar { position: relative; display: block; height: 18px; min-width: 64px; }
+.rbar .rt { position: absolute; left: 0; right: 0; top: 8px; height: 2px; background: var(--line); border-radius: 1px; }
+.rbar .rb { position: absolute; left: 0; top: 4px; height: 10px; border-radius: 0 4px 4px 0; background: var(--s1); }
+.rbar .rb.dn { border-radius: 4px 0 0 4px; }
+.rbar .lgm { position: absolute; top: 0; width: 2px; height: 18px; margin-left: -1px; background: var(--ink); border-radius: 1px; box-shadow: 0 0 0 2px var(--panel); }
+.rbar.sm { height: 12px; min-width: 60px; }
+.rbar.sm .rt { top: 5px; }
+.rbar.sm .rb { top: 2px; height: 8px; }
+.rbar.sm .lgm { height: 12px; }
+.rbar.empty .rt { background: repeating-linear-gradient(90deg, var(--line) 0 4px, transparent 4px 8px); }
+.rbar.small .rb { background: repeating-linear-gradient(135deg, var(--ink-3) 0 3px, transparent 3px 6px); border: 1px solid var(--ink-3); }
+.rbar.small .lgm { background: var(--ink-3); }
+
+.pctm { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
+.pctm b { font-weight: 600; min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+.pctm .pm { position: relative; width: 40px; height: 6px; border-radius: 999px; background: var(--raised); border: 1px solid var(--line); }
+.pctm .pd { position: absolute; top: -3px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--ink-2); box-shadow: 0 0 0 2px var(--panel); }
+
+.rrows { display: flex; flex-direction: column; }
+.rrow { display: grid; grid-template-columns: minmax(104px, 1.15fr) 70px minmax(64px, 1.4fr) 50px 84px; gap: 6px 12px; align-items: center; padding: 7px 4px; border-bottom: 1px solid var(--line); font-size: 13px; border-radius: 0; }
+.rrow:last-child { border-bottom: 0; }
+.rrow:not(.rhead):hover { background: var(--raised); }
+.rrow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--raised); }
+.rrow .rl { font-weight: 600; min-width: 0; }
+.rrow .rl small { display: block; font-weight: 400; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rrow .rl small.ph { display: none; }
+.rrow .rv { font-family: var(--font-display); font-size: 21px; font-weight: 700; line-height: 1; text-align: right; }
+.rrow .rv small { display: block; font-family: var(--font-body); font-size: 11px; font-weight: 500; color: var(--ink-3); margin-top: 2px; }
+.rrow .rlg { text-align: right; color: var(--ink-2); }
+.rrow.rhead { padding: 0 4px 6px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; border-bottom: 1px solid var(--line-2); }
+.rrow.rhead .rv { font-family: var(--font-body); font-size: 11px; font-weight: 600; line-height: inherit; }
+.rrow.rhead .pctm { font-size: 11px; color: var(--ink-3); justify-content: flex-end; }
+.rbar-h { display: flex; gap: 12px; text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 11.5px; }
+.lgkey { display: inline-flex; align-items: center; gap: 5px; }
+.lgkey i { display: inline-block; }
+.lgkey i.b { width: 14px; height: 8px; border-radius: 0 3px 3px 0; background: var(--s1); }
+.lgkey i.l { width: 2px; height: 12px; background: var(--ink); border-radius: 1px; }
+.rrow.small .rl, .rrow.small .rv, .rrow.small .rlg, .rrow.small .pctm { color: var(--ink-3); }
+.rrow.small .rv small { color: var(--warn); }
+.rrow.none { opacity: .6; }
+
+/* ---------- the heat table ---------- */
+.heat { table-layout: fixed; min-width: 620px; }
+.heat th[scope="row"] { font-weight: 600; white-space: nowrap; width: 150px; text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--ink); position: static; }
+.heat th[scope="row"] small { display: block; font-size: 10.5px; font-weight: 400; color: var(--ink-3); }
+.heat thead th { text-align: center; white-space: normal; vertical-align: bottom; line-height: 1.25; }
+.heat td.hc { text-align: center; padding: 0; border: 2px solid var(--panel); border-radius: 6px; }
+.heat .hct { display: block; padding: 6px 4px; border-radius: 6px; }
+.heat .hct:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.heat td.hc b { font-family: var(--font-display); font-size: 18px; font-weight: 700; line-height: 1.05; display: block; }
+.heat td.hc small { display: block; font-size: 10.5px; color: var(--ink-3); font-weight: 500; }
+.heat td.hc[style] small, .gridtbl td.hc[style] small { color: var(--ink-2); } /* n stays readable on a strong tint */
+.heat td.hc.small, .heat td.hc.none { color: var(--ink-3); background-image: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--ink-3) 14%, transparent) 5px 6px); }
+.heat td.hc.small b, .heat td.hc.none b { font-weight: 600; color: var(--ink-3); }
+.heat tbody tr:hover td { background-color: var(--raised); }
+.heat tbody tr:hover td.hc[style] { filter: brightness(1.04); }
+.heat tr.baserow th, .heat tr.baserow td { border-bottom: 2px solid var(--line-2); }
+.divlegend { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); flex-wrap: wrap; }
+.divlegend .ramp { width: 84px; height: 10px; border-radius: 999px; border: 1px solid var(--line); background: linear-gradient(90deg, color-mix(in srgb, var(--s2) 62%, var(--panel)), var(--panel) 50%, color-mix(in srgb, var(--s1) 62%, var(--panel))); }
+
+/* ---------- the half-field and the line: a coach's whiteboard ---------- */
+.fieldfig { margin: 0; }
+.fieldbox { position: relative; max-width: 520px; }
+.fieldbox svg { display: block; width: 100%; height: auto; }
+.fieldbox .hit { position: absolute; border-radius: 6px; cursor: default; }
+.fieldbox .hit:hover, .fieldbox .hit:focus-visible { outline: 2px solid var(--ink); outline-offset: 0; }
+.fieldfig figcaption { font-size: 12px; margin-top: 6px; max-width: 520px; }
+.fieldfig .ch { stroke: var(--chalk); fill: none; }
+.fieldfig .los { stroke: var(--chalk); }
+.fieldfig .ydl, .fieldfig .zl { fill: var(--chalk); font-family: var(--font-display); font-weight: 700; font-size: 11px; letter-spacing: .06em; }
+.fieldfig .zl { paint-order: stroke; stroke: var(--field); stroke-width: 4px; stroke-linejoin: round; }
+.fieldfig .pl { fill: var(--field); stroke: var(--chalk); stroke-width: 2; }
+.fieldfig .pl.qb { fill: var(--field-2); }
+.fieldfig .pl.end { stroke-dasharray: 3 3; }
+.fieldfig .plt { fill: var(--chalk); font-family: var(--font-display); font-size: 10px; font-weight: 700; }
+.fieldfig .route { stroke: var(--chalk); stroke-linecap: round; opacity: .9; }
+.fieldfig .route.small { stroke-dasharray: 4 5; opacity: .55; }
+.fieldfig .zbox rect { stroke: var(--line-2); stroke-width: 1; }
+.fieldfig .zv { fill: var(--ink); font-family: var(--font-display); font-weight: 700; font-size: 17px; }
+.fieldfig .zs { fill: var(--ink-2); font-size: 10px; }
+.fieldfig .zn { fill: var(--ink-3); font-size: 8.5px; font-weight: 700; letter-spacing: .05em; }
+.fieldfig .zbox.small rect { fill: var(--raised); stroke-dasharray: 3 3; }
+.fieldfig .zbox.small .zv { fill: var(--ink-3); }
+.dirstrip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 10px; max-width: 520px; }
+.dcell { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); }
+.dcell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dcell b { font-family: var(--font-display); font-size: 18px; font-weight: 700; line-height: 1.1; }
+.dcell small { font-size: 11px; color: var(--ink-2); }
+.dcell.small b { color: var(--ink-3); }
+
+/* ---------- the week sparkline's hit areas ---------- */
+.spark-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+
+/* ---------- the matchup strip ---------- */
+.mv { position: relative; display: block; height: 18px; min-width: 100px; }
+.mv:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.mv .mt { position: absolute; left: 0; right: 0; top: 8px; height: 2px; background: var(--line); }
+.mv .ml { position: absolute; top: 1px; width: 2px; height: 16px; margin-left: -1px; background: var(--ink-2); }
+.mv .md { position: absolute; top: 3px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; box-shadow: 0 0 0 2px var(--panel); }
+.mv .md.o { background: var(--s1); }
+.mv .md.d { background: var(--s2); }
+.mv .md.small { background: var(--panel); border: 2px dashed var(--ink-3); }
+
+@media (max-width: 640px) {
+  .rrow { grid-template-columns: minmax(0, 1fr) 64px minmax(70px, 1fr); }
+  .rrow .rlg, .rrow .pctm { display: none; }
+  .rrow .rl small { display: none; }
+  .rrow .rl small.ph { display: block; }
+  .rrow.rhead .rbar-h { display: none; }
+}

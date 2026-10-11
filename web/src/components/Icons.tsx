@@ -27,6 +27,13 @@ export const HealthIcon = () => (
     <path d="M1.5 8.5h3l1.5-4 3 8 1.5-4h4" />
   </svg>
 );
+/** An O, an X and a route: the playbook mark (Explore → Play calling). */
+export const PlayCallingIcon = () => (
+  <svg {...common}>
+    <circle cx="4" cy="12" r="2.2" />
+    <path d="M10.5 10l3.5 3.5M14 10l-3.5 3.5M4 9.3C4 5.5 7 3.2 12 3.2M10 1.6l2 1.6-2 1.6" />
+  </svg>
+);
 export const GearIcon = () => (
   <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
     <circle cx="8" cy="8" r="2.2" />

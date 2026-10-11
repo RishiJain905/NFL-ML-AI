@@ -1,5 +1,6 @@
 // The sidebar (mockup: renderSide): brand + gear, the season's weeks with their status, the
-// season and system pages, and a status footer (lock, Neo4j, data drive, clock).
+// season pages, Explore (PC01: Play calling, D108), the system pages, and a status footer (lock,
+// Neo4j, data drive, clock).
 
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { useMeta, useWeeks } from '../api/client';
@@ -7,7 +8,7 @@ import type { WeekEntry } from '../api/types';
 import { clockLabel, dayLabel } from '../lib/format';
 import { useNow } from '../lib/useNow';
 import { AppearancePopover } from './AppearancePopover';
-import { AlertsIcon, HealthIcon, ModelsIcon, SeasonIcon, TeamsIcon } from './Icons';
+import { AlertsIcon, HealthIcon, ModelsIcon, PlayCallingIcon, SeasonIcon, TeamsIcon } from './Icons';
 import { Chip, WeekStatusChip } from './ui';
 
 function weekSubline(w: WeekEntry, firstKickoff: string | null | undefined): string {
@@ -90,6 +91,14 @@ export function Sidebar() {
         <NavLink className="navi" to="/alerts">
           <AlertsIcon />
           <span className="grow">Alerts</span>
+        </NavLink>
+      </nav>
+
+      <nav className="navgrp" aria-label="Explore">
+        <div className="eyebrow">Explore</div>
+        <NavLink className="navi" to="/explore/play-calling">
+          <PlayCallingIcon />
+          <span className="grow">Play calling</span>
         </NavLink>
       </nav>
 
