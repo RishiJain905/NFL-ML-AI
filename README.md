@@ -104,6 +104,9 @@ uv run nfl live review --season 2026 --week 5 --wandb     # LD03: a finished wee
 uv run nfl playcalling build --season 2026                # PC00: team tendency tables as of each week (Tuesday after the run; Wednesday after an FTN refresh)
 uv run nfl playcalling build --season 2026 --history all  # PC00: + 2016-2025 (participation history, research only)
 # PC01: the pages: uv run nfl app -> Explore -> Play calling (teams grid, team pages), and each week's Play calls tab
+uv run nfl playcalling grade --season 2026 --week 5       # PC02: grade last week's forecast (Tuesday; again Wednesday for Monday night's FTN)
+uv run nfl playcalling forecast --season 2026 --week 6    # PC02: each team's next-game rates vs its opponent (Tuesday, after the build)
+uv run nfl playcalling backtest --seasons 2019-2025       # PC02: walk-forward backtest vs four baselines (--promote: production)
 # guide: documentation/guides/play-calling.md
 
 uv run pytest                      # tests (integration tests excluded by default)

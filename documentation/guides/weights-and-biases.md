@@ -76,6 +76,9 @@ W&B also records the exact command line, the full git commit and the machine on 
 | `live-decisions-smoke` | `decision-review` | `decision-review-<season>-w<NN>` | `nfl live review --wandb --smoke` (a logging check) |
 | `play-calling` | `playcall-build` | `playcall-build-<season>` (+ `-w<NN>` with `--through-week`, `+<n>` with `--history`) | `nfl playcalling build` (PC00, §6.9): one run per build |
 | `play-calling-smoke` | `playcall-build` | `playcall-build-<season>` | `nfl playcalling build --smoke` (a logging check) |
+| `play-calling` | `playcall-backtest` | `playcall-backtest-<first>-<last>` (`-smoke` with `--smoke`, in `play-calling-smoke`) | `nfl playcalling backtest` (PC02, §6.10): the walk-forward backtest; with `--promote` it logs the `playcall-model` artifact |
+| `play-calling` | `playcall-forecast` | `playcall-forecast-<season>-w<NN>` | `nfl playcalling forecast` (PC02, §6.10): one run per week forecast |
+| `play-calling` | `playcall-grade` | `playcall-grade-<season>-w<NN>` | `nfl playcalling grade` (PC02, §6.10): one run per grading |
 
 Run names aren't unique: re-running a week makes a second `train-2026-w04`. The **run id** (8 characters, in the URL) is unique. When several runs share a name, the newest one is the one that counts, and PROGRESS.md lists which ids were final.
 
@@ -98,6 +101,7 @@ Run names aren't unique: re-running a week makes a second `train-2026-w04`. The 
 | `digest`, `llm:<writer>`, `graph:<status>` | Digests | Writer (`openrouter` or `placeholder`) and whether the graph sections were in (`ok`, `unavailable`, `off`) |
 | `ld00`, `ld03`, `loso`, `train`, `in-sample` | Live-decision runs (§6.7, §6.8) | The phase; `in-sample` on a decision review of a season the promoted models were trained on (2025 and before) |
 | `pc00`, `history` | Play-calling builds (§6.9) | The phase; `history` when the build included past seasons (`--history`) |
+| `pc02`, `seasons:<first>-<last>`, `season:S`, `week:NN`, `backfill` | Play-calling forecast runs (§6.10) | The phase; the backtest's seasons; a forecast / grade's week; `backfill` on a forecast made after some of its games kicked off |
 
 **Useful filters:** "everything for 2026 week 4" = tags `season:2026` + `week:04`. "Only what was published" = tag `prod` (digests only) or group `weekly-pipeline`. "Only Rishi's runs" = tag `launched-by:rishi`. "Only runs started from the control room" = tag `via:control-room`.
 
@@ -557,6 +561,34 @@ Real runs (2026-10-10, `--launched-by agent`): 2026 weeks 1–4, out of sample: 
 
 Runs: smoke [`dira0syg`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/dira0syg) (2026, before the review fixes). The real run (2026-10-10, after the reviews, `--history all --launched-by agent`): **[`qpll840n`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/qpll840n)** (`playcall-build-2026+10`: 2016-2026 built, the league trend chart across the seasons). From 2026 week 5 on: one run each Tuesday and each Wednesday (runbook → Play calling). The files behind every panel: `playcalling/<S>/` on D: (`build.json` has the same coverage numbers).
 
+### 6.10 The play-calling forecast (group `play-calling`, PC02)
+
+The forecast of each team's next-game rates ([play-calling guide §9](play-calling.md#9-the-forecast-pc02), [model card](../model_cards/playcall-forecast.md)) logs three kinds of run. `--no-wandb` skips any of them; `--smoke` sends one to `play-calling-smoke` with tag `smoke`.
+
+**`playcall-backtest`** (`nfl playcalling backtest --seasons 2019-2025 [--promote]`; run `playcall-backtest-2019-2025`; tags `pc02`, `seasons:2019-2025`). Config: `seasons`, `tune_seasons`, `targets`, `settings` (the `playcalling.forecast` block), `curves` (per season: which LD00 fit scored the game-script curve), `dataset_version`, `git_commit`.
+
+| Panel | What it shows | What to look for |
+|---|---|---|
+| `bt/<target>/mae_model`, `mae_b1` ... `mae_b4` (x-axis `bt/step`, one step per week of 2019-2025 in order; `bt/season`, `bt/week` beside it) | the cumulative game-level MAE of the forecast and each baseline (league, season to date, shrunk, + opponent) | the `model` line settles below `mae_b2` (season to date) and at or below `mae_b3`; the gap is widest in each season's first weeks |
+| `bt/<target>/week_mae_model`, `week_mae_b2` | one week's MAE | noisy; early weeks show the biggest gaps |
+| `mae_vs_baseline/<target>` (chart, by season) | MAE of every predictor per season | the forecast under season-to-date in every season (the ship rule needs 5 of 7, FTN 3 of 4) |
+| `calibration/<target>` (chart) | forecast vs the actual rate in 10 equal-count bins, with the diagonal | close to the diagonal (within about a point) |
+| `calibration/proe_per_play` | each neutral play's `xpass` + the PROE forecast vs whether it was a dropback | on the diagonal (error 0.007) |
+| `backtest/by_season_rows`, `backtest/by_part_rows` (tables) | every metric (MAE, play-weighted MAE, RMSE, bias, Brier, log loss) by target, season or part (weeks 1-4 / 5-10 / 11+) and predictor | where the gains are: weeks 1-4 |
+| `backtest/ship_rows` | the verdict per target: seasons won vs season-to-date, rule (a) and (b), ships | every row `ships` in [`5zttxdnw`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/5zttxdnw) |
+| `backtest/params_rows` | the fitted parameters per target and predictor (kappa, rho_same / rho_new, kappa_opp, rho_opp, lam, b_spread, b_total), the loss, any at a bound | rho_new below rho_same (a new coordinator breaks the habit) |
+| `backtest/coverage_rows` | the 80% range's coverage by target and season | 0.75-0.85 |
+| `backtest/script_curve_rows` | per season: the LD00 fit behind the game-script curve, its reference seasons, the expected dropback rate at a spread of -7 / 0 / +7 | underdogs pass more (2025: 62.7% at -7, 58.8% at +7) |
+| summary `<target>/mae_model`, `mae_b1`-`mae_b4`, `improvement_vs_b2_pct`, `wins_vs_b2`, `seasons`, `ships`, `coverage_80`, `ece`, `games`, `test_mae_model`, `test_mae_b2` (2024-2025 only), `brier_model`, `brier_b2`; `proe/per_play_brier_<kind>`, `proe/per_play_logloss_<kind>`; `shipped` | the pooled numbers the model card quotes | |
+
+With `--promote` the run also logs the **`playcall-model`** artifact (§8). Runs: smoke [`z594wk90`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/z594wk90) (3 targets, 2023-2025); the first reported run [`mx6acp91`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/mx6acp91) (run direction with the opponent, superseded); [`610301ws`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/610301ws) (run direction with the venue, D130; before the review fixes); **the final [`5zttxdnw`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/5zttxdnw)** (after the Sol review, D131, identical metrics; version `2019-2025_20261011T230330Z`).
+
+**`playcall-forecast`** (`nfl playcalling forecast --season S --week W`; run `playcall-forecast-<S>-w<NN>`; tags `season:S`, `week:NN`, `backfill` when made after some kickoffs). Config: `season`, `week`, `version`, `made_at`, `cutoff_utc`, `backfill`. Table `forecast/rows` (the shipped forecasts: game, team, opponent, target, forecast, range, season to date, shrunk, the opponent / venue and script pieces, `after_kickoff`); summary `games`, `rows`, `shipped_rows`, `games_after_kickoff`. What to look for: one row per team, game and shipped target (22 per game); no `after_kickoff` on a Tuesday forecast.
+
+**`playcall-grade`** (`nfl playcalling grade --season S --week W`; run `playcall-grade-<S>-w<NN>`). Tables `grade/targets_rows` (per target: graded rows, MAE of the forecast and every baseline, how often the forecast was closer than season-to-date, the 80% range's hit rate) and `grade/rows` (every row); summary `graded`, `rows`, `shipped/graded`, `shipped/mae_model`, `shipped/mae_b2` (over the targets in points: shares and PROE), `shipped/beat_b2`, `shipped/in_range`. What to look for: across the season's grade runs (x-axis `week`), `shipped/mae_model` below `shipped/mae_b2` most weeks and `shipped/in_range` near 0.8. A Tuesday grade leaves Monday night's FTN rows `waiting_ftn`; Wednesday's re-grade replaces the week's rows.
+
+Smoke runs (group `play-calling-smoke`, 2026 week 4): forecast [`j2076lzq`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/j2076lzq), grade [`hmxt4ipc`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/hmxt4ipc). The backfill (2026-10-11, after the reviews, tag `backfill`): forecasts week 1 [`5b4ocbbk`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/5b4ocbbk), 2 [`ybeoimkr`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/ybeoimkr), 3 [`vqa0g284`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/vqa0g284), 4 [`bilz65uc`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/bilz65uc), 5 [`x8vk76zl`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/x8vk76zl); grades week 1 [`3nrga1rw`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/3nrga1rw), 2 [`v6gaes11`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/v6gaes11), 3 [`gn7r82sk`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/gn7r82sk), 4 [`ccjx4n5x`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/ccjx4n5x) (week 5's grade comes with Tuesday's build). From 2026-10-13: one forecast run each Tuesday, one grade run each Tuesday and Wednesday (runbook → Play-calling forecast).
+
 ## 7. Season-long views
 
 ### The season scorecard
@@ -698,6 +730,7 @@ P10 (season operations) then reviews any alert each week, and the agent investig
 | `team-model` (P08) | `model` | `<season>-w<NN>`; `production` (with `--promote` / `--auto`); `latest` | One booster set per shipped team target (`<key>-q10/q50/q90.txt` for yards, `<key>-mean.txt` for sacks), `meta.json` (with `fitted`) | `nfl train team`, the weekly `player` step (fail-soft) | Nobody (the team rows go to the scoreboard; the pipeline run links it) |
 
 | `live-decision-models` (LD00) | `model` | `<first>-<last>_<UTC stamp>` (e.g. `2010-2025_20261010T054343Z`); its **own** `production` (with `nfl live train --promote`); `latest` | the whole bundle: `wp.txt` + `wp_base.json`, `gain.txt`, `pass.txt`, `gain_boot/00–19.txt`, `fg.json`, `punt.json`, `kickoff.json`, `pat.json`, `meta.json`, `checks.json`; description = the model card | `nfl live train` | Nobody through W&B: the live code reads `models/live-decisions/production.json` on D: (LD01+) |
+| `playcall-model` (PC02) | `model` | `<first>-<last>_<UTC stamp>` (e.g. `2019-2025_20261011T230330Z`); its **own** `production` (with `nfl playcalling backtest --promote`); `latest` | the version folder: `params.json` (per target: every predictor's parameters, the range, `shipped`, the tuning-window fit, the backtest summary), `MODEL_CARD.md`; description = the model card | `nfl playcalling backtest --promote` | Nobody through W&B: `nfl playcalling forecast` reads `models/playcall/production.json` on D: |
 | `injury-update` | `digest` | `<season>-w<NN>`; `latest` | `injury_update.json`, `injury_update.md` (when material) | `nfl weekly injury-update` (P07) | Nobody (the record of the Saturday comparison) |
 
 Since P07 the `pipeline` run **uses** the week's `game-model`, `graph-results`, `player-model` and `digest` artifacts (lineage; since P08 also `team-model`), and `--auto` gives `game-model`, `player-model` (and since P08 `team-model`) the `production` alias each week (D72). Since P08 `graph-results` (`graph_results.json`) also holds the `gds` block (per-job status, timings, each team's passing-network hub) and `converter_errors`; the game model v1 was never promoted, so `game-model` versions are all v0 fits.

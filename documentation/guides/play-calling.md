@@ -1,8 +1,8 @@
 # Play calling guide: team tendencies
 
-**What this is:** a plain-language guide to the Play calling track's data: what play-calling tendencies are (pass rate over expected, play-action, screens, blitzes, coverage shells: a primer), which data covers what and when, the exact definitions, the tables `nfl playcalling build` writes and how to read them, how they refresh each week, and real numbers from 2025 and 2026 (PC00); then the control room's pages that draw them, Explore → Play calling and the Play calls week tab, how to read each chart and how they're wired (PC01, §8). PC02 adds the forecast, PC03 the play diagrams.
+**What this is:** a plain-language guide to the Play calling track's data: what play-calling tendencies are (pass rate over expected, play-action, screens, blitzes, coverage shells: a primer), which data covers what and when, the exact definitions, the tables `nfl playcalling build` writes and how to read them, how they refresh each week, and real numbers from 2025 and 2026 (PC00); then the control room's pages that draw them, Explore → Play calling and the Play calls week tab, how to read each chart and how they're wired (PC01, §8); then the forecast of each team's next-game rates against its opponent, how to read a forecast and its range, why the gains are small, and the stadium crews that chart run direction (PC02, §9). PC03 adds the play diagrams.
 
-**Related docs:** the spec is the [Play calling README](../play-calling/README.md) and the phase files ([PC00](../play-calling/PC00-tendency-data.md), [PC01](../play-calling/PC01-play-calling-pages.md), [PC02](../play-calling/PC02-tendency-forecast.md), [PC03](../play-calling/PC03-play-diagrams.md)). Decisions: D107 (the no-touch rule), D108 (where the pages go), D110 (diagrams), D122 (PC00 as built: the definitions, the tables, the refresh), D124 (PC01: the pages) in the [decisions log](../10-decisions-log.md). The W&B side is in the [W&B guide §6.9](weights-and-biases.md). The weekly commands are in the [runbook → Play calling](../runbook.md). Agents use the `play-calling` skill.
+**Related docs:** the spec is the [Play calling README](../play-calling/README.md) and the phase files ([PC00](../play-calling/PC00-tendency-data.md), [PC01](../play-calling/PC01-play-calling-pages.md), [PC02](../play-calling/PC02-tendency-forecast.md), [PC03](../play-calling/PC03-play-diagrams.md)). Decisions: D107 (the no-touch rule), D108 (where the pages go), D110 (diagrams), D122 (PC00 as built: the definitions, the tables, the refresh), D124 (PC01: the pages), D129 and D130 (PC02: the forecast and its ship decision) in the [decisions log](../10-decisions-log.md). The forecast's model card: [model_cards/playcall-forecast.md](../model_cards/playcall-forecast.md). The W&B side is in the [W&B guide §6.9 and §6.10](weights-and-biases.md). The weekly commands are in the [runbook → Play calling](../runbook.md). Agents use the `play-calling` skill.
 
 ---
 
@@ -293,7 +293,7 @@ Both read the files above as they are: there's nothing to press, and they never 
 
 ![Week 5's Play calls](img/playcalling-week.png)
 
-For week W it reads the tables **as of week W**: each team's season before that week (week 1: last season), so a past week shows what was known before its games. **Descriptive for now:** each offense's rates next to what the other defense has allowed and the league's. It isn't a forecast: PC02 adds one, adjusted for the opponents each defense faced.
+For week W it reads the tables **as of week W**: each team's season before that week (week 1: last season), so a past week shows what was known before its games. Each offense's rates next to what the other defense has allowed and the league's (descriptive, as below); **since PC02 a week with a forecast shows the forecasts first** (§9.4), and its "biggest" list becomes the biggest expected moves.
 
 - **Biggest matchup shifts:** up to eight rows, one per matchup at most, where a defense is furthest from the league: its `diff` divided by the spread (standard deviation) of the 32 defenses, at least 1 SD, neither side on a small sample. The spread and the ranks use only defenses with 20+ plays. Week 5 2026 starts with "MIN's blitz: 72.5% of dropbacks (the league's highest; league 31.1%). NO has faced 31.5%." (+3.9 SD), then GB's screens allowed (16.5%, against CHI's 9.3%) and MIA's play-action allowed (35.5%, against CIN's 17.0%).
 - **Every game**, in kickoff order: two tables, each offense against the other defense. Rows: PROE, play-action, motion, screens, deep shots, explosive plays, EPA per play (the offense's calls and results), then blitz, pass rushers, heavy box (**the defense's calls**: there the offense's column is how often it has faced them). Columns: the offense's rate, the defense's, the league's, and a strip with all three on one scale. A row 2+ SD from the league is marked; tooltips say whether both sides sit on the same side of the league.
@@ -338,20 +338,80 @@ League-wide, 32 teams: air yards per attempt, no-huddle and shotgun agree with S
 
 - Early in a season most situational cells are greyed (2026 as of week 5: 4th-down cells rest on 2–7 plays) and there's no Last 4 yet. The pages show the samples rather than hide them.
 - A defense's "allowed" rates mix the defense with its opponents: a defense that faced three run-heavy offenses "allows" a low PROE. PC02's forecast adjusts for the opponents; PC01 only says so.
-- Descriptive only: no forecast, no grading (PC02); no play diagrams or play browser (PC03).
+- The forecast and its grading came with PC02 (§9); no play diagrams or play browser yet (PC03).
+- **Run direction is charted by each stadium's crew** (§9.5): a team's run lanes include its own crew in its home games.
 
-## 9. How to change it safely
+## 9. The forecast (PC02)
+
+PC02 adds a number the tables can't give: **what each team is likely to call in its next game, against that opponent**, with a range, graded after the game. The model card has the full results: [model_cards/playcall-forecast.md](../model_cards/playcall-forecast.md).
+
+### 9.1 In plain words
+
+For every game of the coming week, each team gets a forecast for 11 rates: on offense PROE (neutral), dropback rate, deep shots, runs up the middle, runs outside the tackles, play-action, screens and motion; on defense blitz rate, pass rushers and heavy boxes. Each forecast adds up three pieces:
+
+1. **The team's own rate, shrunk.** A team's rate after three games is a poor guide: about 60 plays a game, so even a team whose true pass rate is 60% shows 54–66% in a third of its games by chance alone. The forecast starts from last season's gap to the league (less of it when the coordinator or head coach changed: a new defensive coordinator keeps only 13% of last season's blitz habit, the same one keeps all of it), and lets this season's plays take over as they pile up (for blitz, after about 125 dropbacks: 3–4 games). This is an **empirical-Bayes** estimate: a beta-binomial posterior's mean, in statistics language.
+2. **The opponent.** What offenses did against this defense beyond their own habits (or, for a defense's calls, how much defenses blitzed this offense beyond theirs), shrunk the same way. "Beyond their own habits" matters: a defense that met three pass-happy offenses isn't charged for their passing.
+3. **The game script** (PROE and dropback rate only): favourites run more, and higher totals mean more passing. The spread's effect comes from LD00's pass model run over the last three seasons' plays from games with a similar spread; the total's from a fitted slope (about +3.4 points of dropback rate per 10 points of total).
+
+**Run direction is different:** its second piece is the **stadium**, not the opponent (§9.5).
+
+Then a **range** that holds 80% of games: the game's sampling noise (about 60 plays), the forecast's own uncertainty, and real week-to-week movement. For dropback rate it's about ±13 points, for PROE ±11, for blitz ±15: one game is noisy.
+
+### 9.2 Why the gains are small, and why that's fine
+
+The forecast beats "the team's season-to-date rate" in every season of the 2019–2025 backtest for every target, but by 3–7% on most (28% on middle runs, 11% on outside runs). That's the ceiling the noise allows: on PROE, 8.8 of a game's 10 points of spread is sampling noise, so no forecast can get a game's PROE within a couple of points. What the forecast fixes is the early season: in weeks 1–4 its error on dropback rate is 7.97 points against season-to-date's 9.35; by week 11 the two are 7.92 vs 8.27. **Read a forecast with its range:** "PIT's PROE −1.4 (range −12.7 to +9.3), +5.1 so far" says PIT will probably throw a bit less than its first three games suggested, not that it will throw exactly −1.4.
+
+### 9.3 Running it
+
+```bash
+uv run nfl playcalling forecast --season 2026 --week 6     # Tuesday, after `nfl playcalling build`
+uv run nfl playcalling grade --season 2026 --week 5        # Tuesday (pbp) and again Wednesday (Monday night's FTN)
+uv run nfl playcalling forecast --season 2026 --weeks 1-5 --no-wandb   # a backfill (made after kickoff: flagged)
+uv run nfl playcalling backtest --seasons 2019-2025 [--promote]        # the walk-forward backtest; --promote refits
+```
+
+- **`forecast`** reads the production parameters (`models/playcall/production.json`), the play-calling tables as of the week (it refuses a week the build hasn't reached: run `nfl playcalling build` first), the schedule and the current lines; it writes `playcalling/<S>/week<NN>/forecast.parquet` (one row per game, team and target: the forecast, its range, the four baselines, the pieces, plays so far, the line used) and `forecast.json` (when it was made, the model version, games that had already kicked off, the script curve), and logs a `playcall-forecast` W&B run. About 10 seconds (most of it the script curve). A forecast made after a game's kickoff is marked `after_kickoff` (the pages call it a backfill); it still uses only what the Tuesday before could see.
+- **`grade`** joins the forecast with the week's team-game rows from the tables and upserts the season's `playcall_scoreboard.parquet` (one row per game, team and target: status, actual, plays, errors of the forecast and every baseline, inside the range). A game not played yet is `not_played`; a played game the build hasn't reached is `waiting_build`; an FTN target of a game FTN hasn't charted is `waiting_ftn` (Monday night's, until Wednesday); re-grading a week replaces its rows. Logs a `playcall-grade` run.
+- **`backtest`** forecasts every team-game of 2019–2025 (FTN targets 2022–2025) as of its week, the parameters fit on 2019–2023, and applies the ship rule (D130). `--promote` refits on every reported season and moves the `playcall-model` artifact's `production` alias. About 40 seconds plus W&B (the script curves refit LD00's models once per season, ~4 s each).
+
+### 9.4 On the pages
+
+![Week 4's Play calls tab after grading: the grade card, then ATL at NO with each forecast, its range, the season so far and the actual](img/playcalling-forecast-week.png)
+
+![Week 5 before grading: the forecast note, the made-after-kickoff badge, the biggest expected moves, MIN at NO's forecasts](img/playcalling-forecast-upcoming.png)
+
+![MIN's offense page: the Next game card at NO (MIN's 8 calls and NO's 3 defense calls with their pieces) and how the forecast has done for MIN](img/playcalling-forecast-team.png)
+
+- **The Play calls tab** (a week): once the week's forecast exists, each matchup shows the forecasts: the offense's calls, then the defense's, each a strip with the forecast, its 80% range as a band, the season-to-date rate (last season's in week 1) and the league's. Hover a row for the pieces (team, opponent or stadium crew, game script). **Biggest expected moves** lists up to eight forecasts furthest from the team's own rate, measured against the range's half-width (at least 1.5 points), each with the main reason in words ("The forecast pulls KC's rate so far toward last season and the league (−7.6 points): 3 games move a rate less than they seem to", "Against MIN's defense, offenses have done more of it than they usually do", "In JAX's home games the stats crew, who chart run direction, has logged more of them than the teams' own rates"). After grading, each strip gets the actual as a dot, whether it was inside the range and whether the forecast beat season-to-date, and the tab a **grade card** for the week (MAE vs season-to-date in points for shares and PROE, closer in N of M, the range's hit rate, per target). Weeks 1–5 of 2026 are a **backfill** (made on 2026-10-11, after the games, from the Tuesday tables), and the tab says so.
+- **A team page** has a **Next game** card (this team's forecasts on the page's side, and the opponent's calls in the same matchup) and a **season card**, "How the forecast has done for {team}" (per target: graded games, MAE vs season-to-date, closer in N, in the range).
+- A week with no forecast names the command (`nfl playcalling forecast ...`); a week with a forecast but no grade names `nfl playcalling grade ...`.
+- Only **shipped** targets reach the pages (all 11 shipped; one that failed the rule would stay descriptive). The control-room guide §2f has the wiring.
+
+### 9.5 Found on the way: the stadium charts the run direction
+
+Run location (left end ... right end) in play-by-play is charted by the **home team's stats crew**, and crews differ a lot. In 2019–2025, the visiting teams' middle-run rate at a stadium, compared with their own rates elsewhere, correlates 0.80 between the first and second half of a season; a defense's "allowed" middle runs measured only in its away games doesn't correlate at all (r −0.02). The stadium effect's spread is 9.3 points on middle runs and 5.1 on outside runs; deep shots, blitz and heavy boxes show no stadium effect (r −0.09 to 0.07). So the forecast's second piece for run direction is the **venue**: what the crew at this game's stadium has logged beyond the teams' own rates. That cut the middle-run error from 11.71 to 9.53 points (season-to-date 13.26). It also means **a team's run lanes on its page (§8.3) include its own crew in its home games**: compare run direction across teams with care.
+
+### 9.6 Limits
+
+- Gains are modest by nature (§9.2); a single game's grade says little, a season's says more.
+- The backtest's game script uses closing lines (optimistic, about 0.04 points); a live forecast uses Tuesday's.
+- Coordinators come from the coaching seed's final staff per season (a mid-season coordinator firing marks the whole season "new"); head-coach changes are dated and halve the weight of earlier games. The dates come from nflverse's schedule (it lists interim coaches through 2023) and `config/head_coach_fixes.csv` (2025 on); 2024's two firings (NYJ after week 5, NO after week 9) are in neither, so the backtest doesn't down-weight those teams' early games. The fixes file also feeds the weekly graph, so PC02 doesn't edit it (D107).
+- League trends (motion, play-action) make early forecasts run a little low (motion −0.75 points pooled).
+- No personnel, formation or coverage forecasts (no 2026 participation until February 2027), no single plays.
+
+## 10. How to change it safely
 
 - **A new metric:** add a `Metric` to `labels.py` (a `den` expression saying which plays count, a `num` saying what each counts as, a `unit`, a `source`, `situational=True` if it should come by situation, `first_season` / `last_season` if its data has an era). If it needs a new play label, add the column in `build.enrich_plays`. Rebuild; the tables pick it up. Add a test with a hand-counted value.
 - **A new situation:** add a `Situation` to `labels.SITUATIONS` (a family and an expression over the enriched columns).
 - **A new number on the pages (PC01):** add it to the reader's lists in `src/nflengine/app/readers/playcalling.py` (`_SHOW` for its short name, what it's per and its tooltip; `_IDENTITY`, `_GRID`, `_WEEKLY` or `_MATCHUP` for where it shows), then a test in `tests/app/test_app_playcalling.py`. The web pages draw whatever the answer lists. Design changes go mockup first (`documentation/play-calling/mockup/`, republish to the same URL), then the spec, then the code.
 - **Changing a definition** (neutral, deep shot, explosive, the box edges): change the constant in `labels.py`, bump `build.SCHEMA_VERSION`, update §3 here, log a decision, and rebuild every season (`--history all`): old and new numbers must never mix.
+- **A forecast target or a model change (PC02):** add a `Target` to `forecast.TARGETS` (its metrics, situation, unit, source, `script`, `context` opponent / venue), run `uv run nfl playcalling backtest` (W&B `playcall-backtest`), write the ship rule down first, update the model card, then `--promote` and re-forecast the open week. A target the rule rejects stays off the pages (`shipped` false). The pages need nothing else: the reader sends whatever is shipped.
 - **The no-touch rule (D107):** nothing here may change the production models, their features, settings, artifacts, the digest, the weekly graph or the weekly run. `tests/test_production_untouched.py` checks it.
 
-## 10. Limits and what's next
+## 11. Limits and what's next
 
 - **Small samples early in a season:** a team has ~140 neutral plays after four games; the `n` and `games` columns are there to show it, and PC02's forecast blends in last season.
 - **FTN lags 2 days** and revises; **PFR** about a week; **participation** a whole season. The as-of tables model the first two (§4: FTN 48 hours, PFR a week); FTN's real lag in 2022–2025 isn't recorded, so the 48-hour rule is FTN's own target, checked on 2026's snapshots (35–51 hours).
 - **Charting is human:** FTN's and PFR's blitz counts disagree (r 0.69 per game); coverage labels changed in 2023.
 - **The league's PROE drifts** below 0 (§3): compare teams with `diff`, not with 0.
-- **Next:** PC02 forecasts the next game's rates against the opponent and grades them with `team_game_tendencies` (it fills the Play calls tab's forecast and a team page's Next game card); PC03 draws the plays (the play browser hangs off the team page). The pages' own limits are in §8.7.
+- **Next:** PC03 draws the plays (the play browser hangs off the team page). The pages' own limits are in §8.7, the forecast's in §9.6.

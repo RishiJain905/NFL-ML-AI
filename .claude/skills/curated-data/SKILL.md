@@ -220,6 +220,14 @@ Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/particip
 - **Participation (research):** joins 100% of 2016-2025 runs and passes on (`nflverse_game_id`, `play_id`); `possession_team` keeps old codes (OAK, SD) and '' (never use it). Two eras: 2016-2022 NGS-sourced (formations SHOTGUN / SINGLEBACK / I_FORM / EMPTY / PISTOL / JUMBO / WILDCAT, personnel "1 RB, 1 TE, 3 WR", defense "4 DL, 2 LB, 5 DB", routes GO / FLAT / HITCH / CROSS ...), 2023-2025 FTN-sourced (SHOTGUN / UNDER CENTER / PISTOL, every position counted "1 C, 2 G, 1 QB, 1 RB, 2 T, 1 TE, 3 WR", routes QUICK OUT / HITCH/CURL ..., coverage adds COVER_9 / COMBO / BLOWN, blanks are '' not null). On dropbacks coverage fills 0% (2016-17), ~89% (2018-22), ~99.8% (2023-25); routes (the target's only) 85-90%; FTN-era `was_pressure` is False on runs too and `number_of_pass_rushers` 0 on runs. `playcalling.participation.parse_participation` handles all of it.
 - **Play-calling tables:** `playcalling/<S>/` (`plays_enriched`, `team_tendencies` as of each week, `team_game_tendencies`, `league_tendencies`; the `play-calling` skill). Prefer them to recomputing play-action / blitz / PROE rates by hand.
 
+## Quirks found in PC02 (checked live 2026-10-11)
+
+- **`run_location` / `run_gap` are charted by the home team's stats crew**, and crews differ a lot: in 2019-2025 the visiting teams' middle-run share at a stadium (vs their own rates elsewhere) correlates 0.80 between the halves of a season, while a defense's "allowed" middle runs from its away games alone don't correlate at all (r -0.02); the stadium effect's SD is 9.3 points on middle runs, 5.1 on end runs. Deep shots (air yards), FTN's blitz and box show no stadium effect. Compare run direction across teams with care (a team's home games carry its own crew); PC02 forecasts it with a venue term (D130).
+- **Within a team's season the total line moves pass rate more than the spread:** a team-game's dropback rate vs the team's season mean: r +0.15 with the total line's gap, -0.11 with the spread's; neutral PROE +0.15 with the total (nflverse's `xpass` uses the spread through `vegas_wp`, not the total). The actual margin moves it far more (r -0.55): the game script you can't know before kickoff.
+- **A coordinator change breaks play-calling carry-over:** team-season blitz rate r 0.81 with the same DC vs 0.25 with a new one; play-action 0.51 vs -0.07; motion 0.84 vs 0.59 (`config/coaching_seed.csv` OC / DC per season; NE 2022 has no OC: Belichick's staff).
+- **Sampling noise share of a team-game's rate** (2019-2025; FTN 2022-2025): PROE 78%, deep shots 78%, screens 71%, play-action 46%, dropback rate (all plays) 35%, blitz 34%, heavy box 17%, motion 15%. The model card `playcall-forecast.md` has the full table.
+- **`spread_line` from the team's side:** + = favoured (home `spread_line`, away `-spread_line`); corr with the actual margin 0.45 per team-game.
+
 ## Recipes
 
 **Open the data:**

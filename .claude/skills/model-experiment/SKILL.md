@@ -82,6 +82,11 @@ Applies to P02 (ratings/Elo/trend), P03 and P08 (game model), P06 and P08 (playe
 - `live/models.fit_all(frames, seasons, ...)` filters every frame to `seasons` itself, so a caller can't leak a held-out season; `FitReport.rows` lets the harness prove it.
 - `live/train.run_checks` = hand-made decisions + a timing budget + the bootstrap gate, re-run at every train; `--promote` refuses if any fails.
 
+**Building blocks that exist (PC02, the play-calling forecast; `play-calling` skill §4b):**
+- `nflengine.playcalling.forecast` is a **rate forecaster without trees**: an empirical-Bayes team term (prior from last season shrunk toward the league, `rho_new` after a coordinator change, a beta-binomial posterior mean in plays), a context term (opponent or venue) adjusted for the teams faced, an optional game script; every piece vectorized over a `Design` of numpy arrays (`build_design`) so `fit_kind` (scipy L-BFGS-B on a handful of transformed parameters) runs in under a second per target. The pattern to reuse for any "rate next game" target: one as-of contribution table (week < W and available by W's cutoff), a grid of (season, team, W), residual rows indexed into it, `np.bincount` to aggregate.
+- `forecast_runs.load_curves`: refits LD00's `wp` + `pass` walk-forward per season (~4 s each) to score expected situations: reuse it for anything that needs "the league's expected pass rate at this spread".
+- `forecast.ship_verdict` and `fit_range` (NNLS variance + quantile-calibrated ends) are generic.
+
 ## 1. Define before you code
 Write these down (in the phase file or model card) before any training code:
 - **Target:** exact column and grain (for example `receiving_yards` per player-game, regular season, only players who played).
@@ -232,6 +237,13 @@ Write one card per model family at `documentation/model_cards/<family>.md` (also
 - **Selection bias can read the "wrong" way.** The plan expected the bot's conversion chances to look optimistic on attempted 4th downs; real attempts converted *more* than predicted (2025: 56.4% vs 55.3%; 2026 so far 57.0% vs 54.4%), because coaches pick their spots. Compare against a population with no choice in it (3rd downs: 41.8% vs 42.8%) before calling a model biased, and count only real attempts (no penalty first downs before the snap).
 - **W&B `line_series` makes its own table.** `wandb.plot.line_series` logged under `X` writes a table `X_table`; an explicit `wandb.Table` logged under `X_table` in the same `log` call is overwritten (seen in LD03's smoke run: both came back as the chart's 3-column data). Name explicit tables differently (`X_rows`, `X_bins`).
 - **Grade decisions against a reference you can name.** "Cost" is the bot's best minus the coach's choice, in the bot's own win probabilities: an upper bound when the bot is aggressive. Rank coaches by a rate in clearly defined spots (the bot says go, not a toss-up) rather than by total cost.
+
+## 9i. Lessons from PC02 (the play-calling forecast)
+- **Probe noise before modelling a rate:** split a team-game rate's variance into sampling noise, real week-to-week movement and between-team differences (and season-to-season r by coordinator change). It predicted the gains (largest early in the season, small late) and which targets to drop before any fitting.
+- **A fair "season-to-date" baseline is weak early, so shrinkage wins there:** most of PC02's gain over season-to-date is weeks 1-4 (dropback rate 7.97 vs 9.35 points), little by week 11+ (7.92 vs 8.27). Report by part of season, or a pooled number oversells the late season and undersells the early one.
+- **Ask why a component helps too much.** The opponent term cut run-direction error far more than any other target's; the probe behind it found the home stats crew charting the play (venue r 0.80 between halves, the "defense" from away games r -0.02). Write the new variant's selection rule down before scoring it, pick on the tuning window only, re-run the reported backtest and keep both run ids.
+- **A range "from the posterior" alone covers a fraction of games:** a team's rate is known to ±2-3 points by mid-season, while one game's rate moves ±6-10. Put the game's sampling noise and the real game-to-game movement into the predictive range, calibrate its ends on the tuning window's error quantiles, and report coverage on later seasons.
+- **Don't average across units:** an overall MAE over shares and a mean (rushers) is meaningless; summarize per target, and overall only over one unit (the UI worker caught it, then a regression where the fix also dropped the per-target rushers MAE: test both levels).
 
 ## 10. Honesty rules
 - Report results that lose to the baseline as well. A model that doesn't beat its baseline doesn't ship (`documentation/11`).

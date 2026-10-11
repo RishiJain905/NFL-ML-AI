@@ -232,13 +232,14 @@ The live 3rd- and 4th-down bot, as the last week tab (after Graph; D108's rule f
 - **Endpoints:** `GET /api/live/{season}/{week}/review`, `GET /api/live/{season}/season-review?through=N` (status `ok`, `no_plays`: the week isn't curated yet, or `no_models`).
 - **Writes:** a week or season it had to build itself goes to `cache/control-room/live/review/` (in the background), never to `live/`. There's no button to run `nfl live review` (Rishi, D120): the tab builds what it needs; the W&B run comes from the command (runbook → Tuesday).
 
-## 2f. Explore → Play calling and the Play calls tab (PC01)
+## 2f. Explore → Play calling and the Play calls tab (PC01, PC02)
 
 How each team calls plays, drawn like a playbook (the Play calling track, D108's placement: general pages in the sidebar's **Explore** group, weekly views in a week tab after Game day). The whole walkthrough, with what every chart means and real numbers: [play-calling guide §8](play-calling.md#8-the-play-calling-pages-pc01). The mockup: [Play Calling Mockup](https://claude.ai/artifact/KFwYaMJnxjpPdXEz7MsxPQ) (source `documentation/play-calling/mockup/`).
 
 - **Explore → Play calling** (`/explore/play-calling`): a grid of the 32 teams (offense PROE and defense blitz on each tile; sort by twelve numbers; tiles or a table; a season switch), then a page per team (`/explore/play-calling/KC`): an Offense / Defense switch, a five-second summary, Identity, By situation, Where the ball goes (a half-field and the offensive line), Week by week, and History 2023–2025 (research data, loaded when opened).
-- **The Play calls week tab** (after Game day): the week's games, each offense's rates next to what the other defense allowed and the league's, and the week's biggest matchup shifts. Descriptive until PC02's forecast.
-- **Reads:** `playcalling/<season>/build.json`, `team_tendencies.parquet`, `team_game_tendencies.parquet` (written by `nfl playcalling build`, runbook → Play calling tables), curated `games`.
+- **The Play calls week tab** (after Game day): the week's games, each offense's rates next to what the other defense allowed and the league's, and the week's biggest matchup shifts.
+- **The forecast (PC02, [play-calling guide §9](play-calling.md#9-the-forecast-pc02)):** once `nfl playcalling forecast` has made the week's forecast, each matchup leads with it: per shipped target the forecast, its 80% range, the season-to-date rate and the league's, the pieces (the team, the opponent or for run direction the home stadium's stats crew, the game script) on hover; the biggest list becomes the biggest expected moves; a backfill (a forecast made after kickoff) says so. After `nfl playcalling grade`, the actual joins each strip and a grade card tops the tab. A team page gains a **Next game** card (its calls and the opponent's in that matchup) and a season card (how the forecast has done for the team). A week without a forecast or a grade names the command to run.
+- **Reads:** `playcalling/<season>/build.json`, `team_tendencies.parquet`, `team_game_tendencies.parquet` (written by `nfl playcalling build`, runbook → Play calling tables), curated `games`; since PC02 also `playcalling/<season>/week<NN>/forecast.parquet` + `forecast.json` (`nfl playcalling forecast`), `playcalling/<season>/playcall_scoreboard.parquet` (`nfl playcalling grade`) and `models/playcall/production.json` + the version's `params.json` (each target's backtest record; the version string is checked before it names a folder). Only shipped targets are shown.
 - **Endpoints:** `GET /api/playcalling/teams?season=`, `/api/playcalling/teams/{team}?season=&side=`, `/api/playcalling/teams/{team}/history?side=`, `/api/weeks/{season}/{week}/play-calls` (`src/nflengine/app/readers/playcalling.py`).
 - **Writes:** nothing. **Calls out:** nothing. A page whose tables aren't built says so and names the command.
 
@@ -296,7 +297,7 @@ flowchart LR
 | `readers/season.py` (CR03) | Scorecard (live through the dashboard's builder; the 2025 backtest example) and Teams & rankings |
 | `readers/models.py` (CR03) | The Models page and the model cards (a fixed id → file list) |
 | `readers/alerts.py` (CR03) | The Alerts page, with the Season log's notes and when each signal can first fire |
-| `readers/playcalling.py` (PC01) | Explore → Play calling (the grid, a team page, History) and the Play calls week tab, from `playcalling/<season>/` (§2f) |
+| `readers/playcalling.py` (PC01, PC02) | Explore → Play calling (the grid, a team page with its Next game forecast and season record, History) and the Play calls week tab (with the week's forecasts and grades), from `playcalling/<season>/` and `models/playcall/` (§2f) |
 
 | Endpoint | Gives |
 |---|---|
