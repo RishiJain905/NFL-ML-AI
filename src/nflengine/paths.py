@@ -97,6 +97,11 @@ class DataPaths:
         `live`: rehearsal paths use that name for the real data root.)"""
         return self.root / "live"
 
+    @property
+    def playcalling(self) -> Path:
+        """Play-calling tables (PC00+): `playcalling/<season>/` (enriched plays, tendencies)."""
+        return self.root / "playcalling"
+
     def run_dir(self, season: int, week: int) -> Path:
         return self.runs / str(season) / f"week{week:02d}"
 

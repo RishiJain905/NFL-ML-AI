@@ -1905,6 +1905,72 @@ def live_review(
     console.print(t)
 
 
+# --- play calling (PC00+, documentation/play-calling/): team tendencies -----------------------
+playcalling_app = typer.Typer(
+    help="Play calling: enriched plays and team tendency tables, as of each week (PC00).",
+    no_args_is_help=True,
+)
+app.add_typer(playcalling_app, name="playcalling")
+
+
+@playcalling_app.command("build")
+def playcalling_build(
+    season: int = typer.Option(..., help="Season (e.g. 2026)."),
+    through_week: int | None = typer.Option(
+        None, help="Use games through this week only (as-of weeks up to W + 1)."
+    ),
+    history: str | None = typer.Option(
+        None,
+        help="Also build these seasons, e.g. 2016-2025, or `all` (playcalling.history_seasons).",
+    ),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
+    smoke: bool = typer.Option(
+        False, "--smoke", help="W&B: a logging check (group play-calling-smoke, tag smoke)."
+    ),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Build playcalling/<S>/ on D: (enriched plays, team / league tendencies, build.json).
+
+    Not a weekly-run step (D107): run it after Tuesday's weekly run, and again on Wednesday
+    after an FTN refresh for Monday night's game (runbook -> Play calling)."""
+    from rich.markup import escape
+
+    from nflengine.playcalling.build import run_build
+    from nflengine.settings import get_config
+
+    if history == "all":
+        history = str(get_config().playcalling.get("history_seasons", "2016-2025"))
+    try:
+        out = run_build(
+            season,
+            through_week,
+            _parse_seasons(history) or [],
+            use_wandb=not no_wandb,
+            launched_by=launched_by,
+            log=console.print,
+            smoke=smoke,
+        )
+    except (FileNotFoundError, ValueError) as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(1) from e
+    t = Table(title="play-calling build")
+    for col in ("season", "as-of weeks", "plays", "tendency rows", "FTN", "participation"):
+        t.add_column(col)
+    for r in out["seasons"]:
+        w = r["as_of_weeks"]
+        t.add_row(
+            str(r["season"]), f"{w[0]}-{w[1]}" if w else "-",
+            f"{r['rows']['plays_enriched']:,}", f"{r['rows']['team_tendencies']:,}",
+            f"{r['coverage']['ftn_join_rate']:.1%}", f"{r['coverage']['part_join_rate']:.1%}",
+        )  # fmt: skip
+    console.print(t)
+    missing = [g for r in out["seasons"] for g in r["coverage"]["games_without_ftn"]]
+    if missing:
+        console.print(f"[yellow]games without FTN yet: {escape(', '.join(missing[:12]))}[/]")
+    if out["url"]:
+        console.print(f"W&B: {out['url']}")
+
+
 PLACEHOLDERS: dict[str, tuple[str, str]] = {}
 
 

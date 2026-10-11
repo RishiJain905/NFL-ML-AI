@@ -109,6 +109,7 @@ class AppConfig(BaseModel):
     drift: dict[str, Any] = Field(default_factory=dict)  # drift thresholds (P07, doc 08)
     injury_update: dict[str, Any] = Field(default_factory=dict)  # Saturday update (P07)
     live: dict[str, Any] = Field(default_factory=dict)  # live decisions (LD00+, D107)
+    playcalling: dict[str, Any] = Field(default_factory=dict)  # play calling (PC00+, D107)
 
 
 def load_app_config(path: Path | None = None) -> AppConfig:

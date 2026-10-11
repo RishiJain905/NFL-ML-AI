@@ -186,3 +186,9 @@ live:                     # live decisions (LD00+; documentation/live-decisions/
     lean: 0.60            # 60-90%: lean; under 60%: toss-up
     boot_gap: 0.05        # the bootstraps score calls closer than 5 points; no wider
                           # call flipped in 1,498 real 2025 4th downs (D113)
+
+playcalling:              # play calling (PC00+; documentation/play-calling/, D107, D122)
+  history_seasons: 2016-2025    # `nfl playcalling build --history all`: the seasons with
+                                # participation (research only; 2026's arrives ~Feb 2027)
+                          # the definitions (neutral, deep shot, blitz ...) live in code:
+                          # playcalling/labels.py, explained in guides/play-calling.md §3
