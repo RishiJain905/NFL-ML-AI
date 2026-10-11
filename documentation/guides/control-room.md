@@ -57,7 +57,7 @@ npm --prefix web run dev       # the page on http://localhost:5173/ (Vite forwar
 - The brand and the **gear** (appearance, §3).
 - The **season's weeks**, newest first. The calendar's current week is always listed, even before it has a run folder.
 - **"Before go-live"**: the weeks before the first live run (2026: weeks 1–3, which only have walk-forward rows), shown greyed out.
-- Links to the season pages (Scorecard, Teams & rankings, Models, Alerts) and Health.
+- Links to the season pages (Scorecard, Teams & rankings, Models, Alerts), the **Explore** group (**Play calling**, PC01, §2f; Ask the Engine will join it) and Health.
 - A status footer:
   - **Run lock:** free / held; hover to see the command holding it;
   - **Neo4j:** up / down / checking;
@@ -89,7 +89,7 @@ npm --prefix web run dev       # the page on http://localhost:5173/ (Vite forwar
 - **for the current week:** the first game (team chips), the countdown to its kickoff (updated every 30 s), the kickoff time in ET, the end of the "not ready" retry window, and the Saturday injury-update button, greyed out with its reason (it works from CR02);
 - **for a past week:** when it was published, an **On time** or **Late run** chip (published before or after the week's first kickoff: the run summary's `on_time`, or worked out from the slate for weeks before run summaries), and **Open week N in W&B ↗**, the week's digest run. 2026 week 4 shows "Late run · first live week" (published on Sunday, after Thursday's game) and "No run records".
 
-**Tabs:** Pipeline, Digest, Games, Players, Results, MLOps, Graph and **Game day** (LD02, §2e), with counts on Games (games predicted), Players (projections) and Graph (insights used). Each tab is a link, so a tab can be bookmarked (`/week/2026/4/games`).
+**Tabs:** Pipeline, Digest, Games, Players, Results, MLOps, Graph, **Game day** (LD02, §2e) and **Play calls** (PC01, §2f), with counts on Games (games predicted), Players (projections) and Graph (insights used). Each tab is a link, so a tab can be bookmarked (`/week/2026/4/games`).
 
 ## 2a. The week tabs (CR01)
 
@@ -232,6 +232,16 @@ The live 3rd- and 4th-down bot, as the last week tab (after Graph; D108's rule f
 - **Endpoints:** `GET /api/live/{season}/{week}/review`, `GET /api/live/{season}/season-review?through=N` (status `ok`, `no_plays`: the week isn't curated yet, or `no_models`).
 - **Writes:** a week or season it had to build itself goes to `cache/control-room/live/review/` (in the background), never to `live/`. There's no button to run `nfl live review` (Rishi, D120): the tab builds what it needs; the W&B run comes from the command (runbook → Tuesday).
 
+## 2f. Explore → Play calling and the Play calls tab (PC01)
+
+How each team calls plays, drawn like a playbook (the Play calling track, D108's placement: general pages in the sidebar's **Explore** group, weekly views in a week tab after Game day). The whole walkthrough, with what every chart means and real numbers: [play-calling guide §8](play-calling.md#8-the-play-calling-pages-pc01). The mockup: [Play Calling Mockup](https://claude.ai/artifact/KFwYaMJnxjpPdXEz7MsxPQ) (source `documentation/play-calling/mockup/`).
+
+- **Explore → Play calling** (`/explore/play-calling`): a grid of the 32 teams (offense PROE and defense blitz on each tile; sort by twelve numbers; tiles or a table; a season switch), then a page per team (`/explore/play-calling/KC`): an Offense / Defense switch, a five-second summary, Identity, By situation, Where the ball goes (a half-field and the offensive line), Week by week, and History 2023–2025 (research data, loaded when opened).
+- **The Play calls week tab** (after Game day): the week's games, each offense's rates next to what the other defense allowed and the league's, and the week's biggest matchup shifts. Descriptive until PC02's forecast.
+- **Reads:** `playcalling/<season>/build.json`, `team_tendencies.parquet`, `team_game_tendencies.parquet` (written by `nfl playcalling build`, runbook → Play calling tables), curated `games`.
+- **Endpoints:** `GET /api/playcalling/teams?season=`, `/api/playcalling/teams/{team}?season=&side=`, `/api/playcalling/teams/{team}/history?side=`, `/api/weeks/{season}/{week}/play-calls` (`src/nflengine/app/readers/playcalling.py`).
+- **Writes:** nothing. **Calls out:** nothing. A page whose tables aren't built says so and names the command.
+
 ## 3. Themes and modes
 
 The gear next to "Control Room" opens **Appearance**:
@@ -286,6 +296,7 @@ flowchart LR
 | `readers/season.py` (CR03) | Scorecard (live through the dashboard's builder; the 2025 backtest example) and Teams & rankings |
 | `readers/models.py` (CR03) | The Models page and the model cards (a fixed id → file list) |
 | `readers/alerts.py` (CR03) | The Alerts page, with the Season log's notes and when each signal can first fire |
+| `readers/playcalling.py` (PC01) | Explore → Play calling (the grid, a team page, History) and the Play calls week tab, from `playcalling/<season>/` (§2f) |
 
 | Endpoint | Gives |
 |---|---|
@@ -307,6 +318,7 @@ flowchart LR
 | `GET /api/models[?refresh=1]`, `GET /api/models/card/<id>` (CR03) | §2d Models; a card by its id (`game-model-v0`, `player-qb`, …; an unknown id is a 404, never a path) |
 | `GET /api/alerts[?season=]` (CR03) | §2d Alerts |
 | `GET /api/health[?refresh=1]` (CR03) | §2d Health (`checking: true` while the slow checks run) |
+| `GET /api/playcalling/teams[?season=]`, `/api/playcalling/teams/<TEAM>[?season=&side=]`, `/api/playcalling/teams/<TEAM>/history[?side=]`, `GET /api/weeks/<S>/<N>/play-calls` (PC01) | §2f: the teams grid, a team page, its History, the week's Play calls tab. The team must be one of the 32 codes (404 otherwise, nothing echoed) |
 
 The readers only read:
 - `runs/<season>/week<NN>/` (every file of the week; §2a and §2c say which tab reads which);
@@ -314,6 +326,7 @@ The readers only read:
 - `runs/backtests/` (the canonical backtests' summaries and predictions), `runs/digest-backtests/2025/week10/run_summary.json` (the example alert);
 - `reports/<season>/`;
 - `curated/games.parquet`, `curated/teams.parquet`, `curated/_quality/latest.json`, `raw/_runs/ingest-*.json`, `features/team_elo.parquet`, `features/team_ratings.parquet`, `models/<model>/<season>-w<NN>/meta.json`;
+- `playcalling/<season>/build.json`, `team_tendencies.parquet`, `team_game_tendencies.parquet` (PC01);
 - in the repo: `config/settings.yaml`, the model cards, PROGRESS.md's Season log;
 - the newest schedule snapshot (cached for 60 s);
 - the lock file.

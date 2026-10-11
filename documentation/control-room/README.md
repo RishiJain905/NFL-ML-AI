@@ -325,3 +325,7 @@ Each phase adds what it built and any differences from this spec here, with deci
   - the line chart now has keyboard-focus tooltips (arrows, Home / End, Escape).
 - **Sol review:** 10 findings (8 medium, 2 low, 0 high): 9 fixed with tests, 1 kept with a reason (D106). The ones that change this spec's rules: W&B strings lose the data root's path before they're cached; one banner state covers every W&B read behind an answer; a failed refresh stays marked stale until W&B answers again; the "first can fire" weeks follow the drift evaluator's own rules; the W&B library's own scratch in the OS temp folder (outside the data root) is documented, not moved.
 - **The track is complete.** Later ideas (not planned): a Track 2 tab once T00 starts, scheduled runs if scheduling is ever added (D71), team pages beyond the rankings' detail row.
+
+**Added later by the feature tracks (D107, D108).** The control-room track stays closed; each track documents its own screens in its spec and guide, with its own mockup:
+- **Game day** week tab after Graph (LD02, D118) and its finished-week decision review (LD03, D120): [`../live-decisions/`](../live-decisions/README.md), guide `live-decisions.md` §9-§10;
+- the sidebar's **Explore** group (between Season and System) with **Play calling** (the teams grid, team pages) and the **Play calls** week tab after Game day (PC01, D124): [`../play-calling/`](../play-calling/README.md), guide `play-calling.md` §8, the [Play Calling Mockup](https://claude.ai/artifact/KFwYaMJnxjpPdXEz7MsxPQ).

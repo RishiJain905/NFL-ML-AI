@@ -1,8 +1,8 @@
 # Play calling guide: team tendencies
 
-**What this is:** a plain-language guide to the Play calling track's data: what play-calling tendencies are (pass rate over expected, play-action, screens, blitzes, coverage shells: a primer), which data covers what and when, the exact definitions, the tables `nfl playcalling build` writes and how to read them, how they refresh each week, and real numbers from 2025 and 2026 (PC00). PC01 adds the control room's pages, PC02 the forecast, PC03 the play diagrams.
+**What this is:** a plain-language guide to the Play calling track's data: what play-calling tendencies are (pass rate over expected, play-action, screens, blitzes, coverage shells: a primer), which data covers what and when, the exact definitions, the tables `nfl playcalling build` writes and how to read them, how they refresh each week, and real numbers from 2025 and 2026 (PC00); then the control room's pages that draw them, Explore → Play calling and the Play calls week tab, how to read each chart and how they're wired (PC01, §8). PC02 adds the forecast, PC03 the play diagrams.
 
-**Related docs:** the spec is the [Play calling README](../play-calling/README.md) and the phase files ([PC00](../play-calling/PC00-tendency-data.md), [PC01](../play-calling/PC01-play-calling-pages.md), [PC02](../play-calling/PC02-tendency-forecast.md), [PC03](../play-calling/PC03-play-diagrams.md)). Decisions: D107 (the no-touch rule), D108 (where the pages go), D110 (diagrams), D122 (PC00 as built: the definitions, the tables, the refresh) in the [decisions log](../10-decisions-log.md). The W&B side is in the [W&B guide §6.9](weights-and-biases.md). The weekly commands are in the [runbook → Play calling](../runbook.md). Agents use the `play-calling` skill.
+**Related docs:** the spec is the [Play calling README](../play-calling/README.md) and the phase files ([PC00](../play-calling/PC00-tendency-data.md), [PC01](../play-calling/PC01-play-calling-pages.md), [PC02](../play-calling/PC02-tendency-forecast.md), [PC03](../play-calling/PC03-play-diagrams.md)). Decisions: D107 (the no-touch rule), D108 (where the pages go), D110 (diagrams), D122 (PC00 as built: the definitions, the tables, the refresh), D124 (PC01: the pages) in the [decisions log](../10-decisions-log.md). The W&B side is in the [W&B guide §6.9](weights-and-biases.md). The weekly commands are in the [runbook → Play calling](../runbook.md). Agents use the `play-calling` skill.
 
 ---
 
@@ -231,17 +231,127 @@ The story in it: motion went from 37% of plays (2022) to 59% (2026); shotgun pea
 - **rbsdm.com** (Ben Baldwin and Sebastian Carl, queried directly): our neutral PROE ranks the 32 teams with Spearman **0.975** against rbsdm's PROE (Pearson 0.988; mean gap 0.7 points, from the wider filter); the **top 5 are the same** (ARI, KC, LA, CIN, NE) and **4 of the bottom 5** (NYJ, BAL, SEA, DET; rbsdm has ATL, we have GB). With rbsdm's own filter on our plays: Spearman 0.988.
 - **FTN** (computed from the public FTN file, the same source): play-action 23.1% of dropbacks, blitz 29.4%, matching ours. PFF, with its own charting, has play-action 25.7% and "around 33%" blitz, motion 64% (a broader "shifts and motion"), RPO 8.0%; Sportradar has under center at 34.7% (ours 33.7%). The leader and laggard teams agree across sources even where the levels don't.
 
-## 8. How to change it safely
+## 8. The Play calling pages (PC01)
+
+PC01 draws these tables in the control room. They live in two places:
+- **Explore → Play calling** in the sidebar: a grid of the 32 teams, then a page per team;
+- the **Play calls** tab of every week, after Game day: each game's matchup of tendencies.
+
+Both read the files above as they are: there's nothing to press, and they never write anything. The visual spec is the [Play Calling Mockup](https://claude.ai/artifact/KFwYaMJnxjpPdXEz7MsxPQ) (Rishi waived its approval step; source `documentation/play-calling/mockup/`). Decisions: D124.
+
+### 8.1 Open it
+
+`uv run nfl app` (the control room, [control-room guide](control-room.md)), then **Explore → Play calling** in the sidebar (`/explore/play-calling`). A team's page is `/explore/play-calling/KC`; `?season=2025` shows another season (every built season, 2016–2026, is in the switch). The newest season shows the tables **as of its newest week**: on Saturday 2026-10-10 that's "as of week 5 · weeks 1–4 played", the same rows a Tuesday run before week 5 could see (§4).
+
+### 8.2 The teams grid
+
+![The teams grid, 2026 as of week 5](img/playcalling-grid.png)
+
+- **One tile per team** with two signature numbers: the offense's **PROE** (neutral situations) and the defense's **blitz** rate. Each has a bar on one scale shared by all 32 tiles, the league's tick, the percentile and `n` (the plays it rests on). For 2018–2021, before FTN, the defense's number is PFR's blitz count; 2016–2017, with neither, show the PROE offenses had against it.
+- **Sort by** any of twelve numbers: offense PROE, play-action, motion, under center, deep shots, no-huddle, EPA per play; defense blitz, pass rushers, heavy box, PROE against it, EPA per play allowed. A non-signature sort column appears at the foot of each tile.
+- **Tiles / Table:** the table shows every number at once, tinted by the difference from the league (blue more, orange less), with a league row; sortable headers.
+- A **FTN waiting** chip names the games FTN hasn't charted yet (Monday night's on a Tuesday: §5); their play-action, motion, blitz and box rates wait for them.
+- Before week 1's games the grid shows last season, and says so.
+
+### 8.3 A team page
+
+![KC's offense: the summary and Identity](img/playcalling-team-top.png)
+
+**The header:** the team, "4 games · as of week 5 · weeks 1–4 played", the FTN chip, **Next: vs LAC · week 6 → Play calls** (the team's first game not yet kicked off, a link to that week's tab; KC's week 5 is a bye, and TB's Thursday game is already played), the **Offense / Defense** switch (remembered in this browser) and the season switch.
+
+**In five seconds:** two or three sentences the server writes from the numbers. The first is always PROE (offense) or blitz (defense); the others are the two numbers furthest from the league (85th percentile or above, 15th or below), never a small sample. KC 2026:
+- "Pass rate over expected: +2.0 points in neutral situations (league −1.9), 71st percentile."
+- "No-huddle: 0.4% of snaps (league 6.2%), the league's lowest."
+- "Play-action: 36.6% of dropbacks (league 24.1%), the league's highest." (15.3% in 2025, the league's lowest: a new identity, with under center up from 18.8% to 39.3% of snaps.)
+
+**The window switch** (sticky; it applies to Identity, By situation and Where the ball goes, while the five-second summary always reads the season so far (last season before week 1) and Week by week shows each game of the season): **Season** (every game before the as-of week), **Last 4** (the last four games; hidden while a team has played 4 or fewer, when it would equal Season) and **Last season**.
+
+**Identity**, in groups. Offense: *Run or pass* (PROE, dropback rate, no-huddle), *Before the snap* (under center, shotgun, pistol, motion; pbp's shotgun flag before 2022), *The pass game* (play-action, screens, RPO, deep shots, aDOT), *Results* (explosive plays, EPA per play, success rate). Defense: *Pressure* (blitz, PFR's blitz, pass rushers), *The box* (box count, light, heavy), *What offenses do against it* and *Results allowed* (both carry a note: they depend on the offenses it faced). How to read a row:
+- the value, with `n` and the unit's denominator (play-action is **per dropback**, deep shots **per attempt**, motion **per snap**);
+- a bar from 0 to the value with a **tick at the league's rate**. PROE and EPA per play are drawn from the league tick instead (their league isn't 0, and EPA can be negative);
+- the league's rate and the **percentile**: "more of it than N% of teams", not "better";
+- **greyed** when `n` is under 20: early in the season that's most situational cells. Hover or focus any number for its tooltip (the definition, n, league, percentile, and for a defense the "depends on the offenses faced" line).
+
+**By situation:** a heat table with the six situational metrics as columns (dropback rate, PROE, shotgun or pistol, deep shots, play-action, blitz; before 2022, without FTN, only the first four) and the situations as rows, with three switches: **Down & distance** (1st down, 2nd & 1–3 / 4–6 / 7+, the same for 3rd, 4th down), **Field zone** (own 1–20, own 21–50, opponent's 49–21, red zone) and **Score & clock** (down 9+, down 1–8, tied, up 1–8, up 9+, the last two minutes of a half). The first row is **All plays**, the one to compare with. A cell is tinted by its difference from the **league in the same situation** (blue more, orange less); small cells are hatched and never tinted. KC 2026: play-action on 64.2% of its 1st-down dropbacks (league 41.1%). For a defense the situations are the offense's: "Down 9+" means the offense trailed. All plays' PROE (+2.3 for KC) differs from Identity's neutral PROE (+2.0): different plays, both right.
+
+![KC's offense by situation](img/playcalling-situations.png)
+
+**Where the ball goes:**
+- **A half-field**, offense moving up the page: the six pass zones (short / deep × left / middle / right; deep is the gamebook's 16+ air yards, §2), each with its share of the attempts and the league's, tinted the same way, and a throw drawn from the quarterback to each zone as thick as its share. Under it the three directions over every depth, then the deep-shot rate (20+ air yards) and aDOT.
+- **The offensive line**: seven lanes named for the lineman a designed run goes at (left end, left tackle, left guard, middle, right guard, right tackle, right end), each with its share of the designed runs and the league's. KC 2026 runs up the middle on 39.6% (league 28.0%).
+- On a defense's page: where offenses throw and run against it.
+
+![Where KC's ball goes](img/playcalling-field.png)
+
+**Week by week:** one sparkline per key metric (offense: PROE, play-action, motion, under center, deep shots, EPA per play; defense: blitz, rushers, heavy box, PROE against it, EPA allowed), a point per game with the opponent in its tooltip, the league's season rate as a dashed line, hollow points under 20 plays. These come from `team_game_tendencies`, the games before the as-of week (the same games as the header's "weeks 1–4 played"), so a game shows up after Tuesday's build and its FTN numbers after Wednesday's.
+
+**History, 2023–2025** (behind **Show history**, loaded only when opened): research data from nflverse participation (charted by FTN since 2023, published after each season: 2026's arrives about February 2027), whole seasons with the playoffs, never used by a forecast. Offense: personnel (11, 12, 13, 21, 22, 10, other), formation (shotgun / under center / pistol), the **routes of targeted receivers** (only the target's route is charted), the coverage it faced, pressure and time to throw. Defense: coverage shells (Cover 0 … Cover 9, 2-man, combo, blown), man vs zone, packages (base / nickel / dime), pressure and time to throw, the personnel it faced. Examples: KC's 11 personnel 63.1% / 51.4% / 57.8% (2023 / 2024 / 2025); MIN's 2025 defense in Cover 2 on 37.1% of dropbacks (the league's most) and in base on 56.7% of snaps (93rd percentile). Only the seasons from 2023 show, because 2016–2022 use NGS's labels (§2).
+
+![MIN's defense](img/playcalling-defense.png)
+
+### 8.4 The Play calls week tab
+
+![Week 5's Play calls](img/playcalling-week.png)
+
+For week W it reads the tables **as of week W**: each team's season before that week (week 1: last season), so a past week shows what was known before its games. **Descriptive for now:** each offense's rates next to what the other defense has allowed and the league's. It isn't a forecast: PC02 adds one, adjusted for the opponents each defense faced.
+
+- **Biggest matchup shifts:** up to eight rows, one per matchup at most, where a defense is furthest from the league: its `diff` divided by the spread (standard deviation) of the 32 defenses, at least 1 SD, neither side on a small sample. The spread and the ranks use only defenses with 20+ plays. Week 5 2026 starts with "MIN's blitz: 72.5% of dropbacks (the league's highest; league 31.1%). NO has faced 31.5%." (+3.9 SD), then GB's screens allowed (16.5%, against CHI's 9.3%) and MIA's play-action allowed (35.5%, against CIN's 17.0%).
+- **Every game**, in kickoff order: two tables, each offense against the other defense. Rows: PROE, play-action, motion, screens, deep shots, explosive plays, EPA per play (the offense's calls and results), then blitz, pass rushers, heavy box (**the defense's calls**: there the offense's column is how often it has faced them). Columns: the offense's rate, the defense's, the league's, and a strip with all three on one scale. A row 2+ SD from the league is marked; tooltips say whether both sides sit on the same side of the league.
+- The **FTN waiting** note lists only games before the tab's week (the ones its rates count). A season without FTN (before 2022) has no play-action, motion, screens or blitz rows.
+- **States:** a week past the newest as-of week says "not yet" and names `nfl playcalling build` (week 6 until Tuesday 2026-10-13's build); a season without tables says "not built".
+
+### 8.5 How it's wired
+
+| Endpoint | Answers with | Reads |
+|---|---|---|
+| `GET /api/playcalling/teams?season=` | the grid: 12 columns × 32 teams, the as-of week, the window, FTN waiting | `team_tendencies` at the newest as-of week, `window` season (last_season at week 1), `situation` all / neutral |
+| `GET /api/playcalling/teams/{team}?season=&side=` | a team page: summary, identity (3 windows), situations, field, runs, week by week, next game, notes | `team_tendencies` (one team, side, as-of week), `team_game_tendencies`, curated `games` |
+| `GET /api/playcalling/teams/{team}/history?side=` | History: the newest three participation seasons from 2023 | each season's `team_tendencies`, `history_only` rows only |
+| `GET /api/weeks/{season}/{week}/play-calls` | the week tab: games, matchups, shifts | `team_tendencies` as of that week, curated `games` |
+
+- The reader is `src/nflengine/app/readers/playcalling.py`. Each request makes one short, filtered read per file (`pyarrow`, no memory map: a Tuesday build can replace a file while the app is open), a few milliseconds even on 2025's 9 MB table; nothing is cached or written.
+- No season = the newest folder with a `build.json`. The team must be one of the 32 codes (anything else is a 404 that doesn't repeat what was sent); the side is `offense` or `defense`.
+- **What never reaches the in-season pages:** `history_only` rows (participation) appear only in the History answer.
+- The server writes the sentences (the summary, the shifts) and the metric names, units and tooltips (`metric_info`), so the React pages and the mockup say the same thing. A new number on a page goes into the reader's lists, not into the web code.
+- Checked by brute force: every one of 86,168 cells the reader returns (2026, 2025 and 2019, all 32 teams, both sides, the grid, three week tabs, History) equals its row in the tables.
+
+### 8.6 Checked against public pages (2025 regular season)
+
+The phase's spot checks (sonnet-xhigh, 2026-10-10): three teams' identity numbers against rbsdm.com (its own API), Sharp Football Analysis's 2025 tendency tables (Wayback snapshots: the live pages show 2026), and articles (SI, the Boston Globe, Sumer Sports via FanSided, Draft Sharks, Rotowire). **Nothing disagrees beyond a definition difference.**
+
+| Team | Ours | Theirs | Why they differ |
+|---|---|---|---|
+| KC PROE | +3.7 (neutral) | rbsdm +4.5 | the filter: rbsdm uses every down and the whole clock, penalty plays in. **With rbsdm's filter on our plays, our PROE equals rbsdm's to two decimals, same n, for all 32 teams** |
+| KC play-action | 15.3% of dropbacks | SI: 10% of snaps, the league's fewest | the denominator: 15.3% of dropbacks is 10.0% of snaps. The tooltip says so |
+| KC no-huddle / motion / RPO / aDOT | 2.5% / 49.7% / 14.4% / 7.80 | 2.5–2.7 / 49.5–49.8 / 14.3 / 7.8 | match |
+| KC, LA shotgun | 81.0%, 41.0% | Sharp 80.0, 39.9 | Sharp counts kneels, spikes and penalty plays as snaps (ours with them: 79.9, 40.3) |
+| LA play-action | 34.6% of dropbacks | the Globe 35.4% (mid-season) | match |
+| LA deep shots | 15.2% of attempts, the most | Draft Sharks 14.8% (4th), Rotowire 12.2% (6th) | thresholds and air-yard measures differ, and the two public sources disagree with each other |
+| LA motion | 64.9% | Sharp 62.8 (both 4th) | unexplained; ours runs ~1.5 points above Sharp's league-wide, ranks agree (0.90) |
+| MIN blitz | 51.2% (FTN: 1+ blitzer), the most | Sharp 48.0, Sumer 47.7, all #1 | the definition: Sharp tracks 5+ rushers (ours with that rule: 46.0; rank agreement 0.96 over 32 teams). The tooltip says so; pass rushers sit next to it |
+| MIN sub package (history) | 43.3% | Sharp 43.0 | match |
+| MIN man rate, box rates | 18.3%; 62.5% light / 5.8% heavy | Sharp 15.8%; 26.6 / 36.9 | different charters and measures: don't put them side by side |
+
+League-wide, 32 teams: air yards per attempt, no-huddle and shotgun agree with Sharp at rank correlation 0.996–0.999, personnel at 0.99, EPA per play and success rate with rbsdm at 0.98–0.99. No free per-team run-direction table exists (PFR blocks it), so run direction was re-derived from the raw plays (identical: it checks the build, not a source).
+
+### 8.7 Limits
+
+- Early in a season most situational cells are greyed (2026 as of week 5: 4th-down cells rest on 2–7 plays) and there's no Last 4 yet. The pages show the samples rather than hide them.
+- A defense's "allowed" rates mix the defense with its opponents: a defense that faced three run-heavy offenses "allows" a low PROE. PC02's forecast adjusts for the opponents; PC01 only says so.
+- Descriptive only: no forecast, no grading (PC02); no play diagrams or play browser (PC03).
+
+## 9. How to change it safely
 
 - **A new metric:** add a `Metric` to `labels.py` (a `den` expression saying which plays count, a `num` saying what each counts as, a `unit`, a `source`, `situational=True` if it should come by situation, `first_season` / `last_season` if its data has an era). If it needs a new play label, add the column in `build.enrich_plays`. Rebuild; the tables pick it up. Add a test with a hand-counted value.
 - **A new situation:** add a `Situation` to `labels.SITUATIONS` (a family and an expression over the enriched columns).
+- **A new number on the pages (PC01):** add it to the reader's lists in `src/nflengine/app/readers/playcalling.py` (`_SHOW` for its short name, what it's per and its tooltip; `_IDENTITY`, `_GRID`, `_WEEKLY` or `_MATCHUP` for where it shows), then a test in `tests/app/test_app_playcalling.py`. The web pages draw whatever the answer lists. Design changes go mockup first (`documentation/play-calling/mockup/`, republish to the same URL), then the spec, then the code.
 - **Changing a definition** (neutral, deep shot, explosive, the box edges): change the constant in `labels.py`, bump `build.SCHEMA_VERSION`, update §3 here, log a decision, and rebuild every season (`--history all`): old and new numbers must never mix.
 - **The no-touch rule (D107):** nothing here may change the production models, their features, settings, artifacts, the digest, the weekly graph or the weekly run. `tests/test_production_untouched.py` checks it.
 
-## 9. Limits and what's next
+## 10. Limits and what's next
 
 - **Small samples early in a season:** a team has ~140 neutral plays after four games; the `n` and `games` columns are there to show it, and PC02's forecast blends in last season.
 - **FTN lags 2 days** and revises; **PFR** about a week; **participation** a whole season. The as-of tables model the first two (§4: FTN 48 hours, PFR a week); FTN's real lag in 2022–2025 isn't recorded, so the 48-hour rule is FTN's own target, checked on 2026's snapshots (35–51 hours).
 - **Charting is human:** FTN's and PFR's blitz counts disagree (r 0.69 per game); coverage labels changed in 2023.
 - **The league's PROE drifts** below 0 (§3): compare teams with `diff`, not with 0.
-- **Next:** PC01 draws these tables (the Play calling pages, the Play calls week tab); PC02 forecasts the next game's rates against the opponent and grades them with `team_game_tendencies`; PC03 draws the plays.
+- **Next:** PC02 forecasts the next game's rates against the opponent and grades them with `team_game_tendencies` (it fills the Play calls tab's forecast and a team page's Next game card); PC03 draws the plays (the play browser hangs off the team page). The pages' own limits are in §8.7.

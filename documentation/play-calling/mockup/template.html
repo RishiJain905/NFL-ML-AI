@@ -1,0 +1,36 @@
+<meta charset="utf-8">
+<title>Play Calling Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+{{CSS}}
+</style>
+<style>
+{{PCCSS}}
+</style>
+
+<div class="mockbar" id="mockbar" aria-label="Mockup controls">
+  <span class="tag">MOCKUP CONTROLS · not part of the app</span>
+  <div class="grp"><span class="lbl">Screen</span><span class="seg" id="screenPick"><button type="button" data-v="grid">Teams grid</button><button type="button" data-v="team">Team page</button><button type="button" data-v="week">Play calls tab</button></span></div>
+  <div class="grp" id="teamGrp"><span class="lbl">Team</span><span class="seg" id="teamPick"></span></div>
+  <div class="grp" id="weekGrp"><span class="lbl">Week</span><span class="seg" id="weekPick"></span></div>
+  <div class="grp"><span class="lbl">State</span><span class="seg" id="statePick"><button type="button" data-v="ok">Ready</button><button type="button" data-v="not_built">Not built</button><button type="button" data-v="not_yet">Not yet</button><button type="button" data-v="loading">Loading</button></span></div>
+  <span class="hint">In the app: theme and mode under the gear by "Control Room". Only the Play calling pages and the Play calls tab are drawn here; the rest is in the control room mockup.</span>
+</div>
+
+<div class="app">
+  <aside class="side" id="side"></aside>
+  <main>
+    <header class="top" id="top"></header>
+    <nav class="tabs" id="tabs" aria-label="Week sections"></nav>
+    <section class="view" id="view"></section>
+  </main>
+</div>
+
+<div id="tip" role="tooltip" hidden></div>
+
+<script id="data" type="application/json">{{DATA}}</script>
+<script>
+{{JS}}
+</script>
