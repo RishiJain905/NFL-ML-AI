@@ -130,6 +130,7 @@ One line per live week (`uv run nfl season weeks --season 2026`), plus any drift
 - **Reported (Rishi):** the Digest tab left the card's right side empty and the report card's tables scrolled sideways.
 - **Cause and fix:** `.digest { max-width: 74ch }` (mockup and app). Removed; table headers wrap when space is short; cell padding 10 → 8 px. Mockup first: `mockup/styles.css`, and the published mockup patched in those three CSS lines (version 3; a rebuild would also have swapped in today's data block, 28 KB larger).
 - **Checked in the app** (2026 week 5, the built `web/dist`): 1920 px and 1440 px, every table fits; 1280 px, two tables still scroll slightly (the digest column is 553 px beside the rail; options in D128).
+- **Rishi still saw the old page** on his 1440p monitor: the app served the new CSS, but index.html went out with no `Cache-Control`, so his browser kept a cached copy naming the previous build's CSS. Fix: `SPAStatic` sends `no-cache` on the page and `immutable` on the hashed `assets/` (test `test_a_rebuilt_app_shows_on_a_plain_refresh`); from the next `nfl app` start, a rebuild shows on a plain refresh.
 
 ### 2026-10-11 (Sunday afternoon): the Saturday injury update fixed (D126); its log moved to the Pipeline tab (D127)
 - **Reported (Rishi, 16:36 ET):** the injury update failed from the control room ("blocking quality checks failed: ['completed games in play-by-play']"), and Services showed Neo4j unreachable.

@@ -175,6 +175,27 @@ def test_static_app_and_client_routes(tmp_path):
         assert "not for the browser" not in client.get(sneaky).text
 
 
+def test_a_rebuilt_app_shows_on_a_plain_refresh(tmp_path):
+    """The page is revalidated on every load; the hashed assets are cached for good. Without
+    a header a browser kept a cached index.html naming the old CSS (2026-10-11, D128)."""
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text('<!doctype html><link href="/assets/index-a1.css">')
+    (dist / "assets" / "index-a1.css").write_text(".digest{}")
+    client = make_client(tmp_path / "root", web_dist=dist)
+    for page in ("/", "/index.html", "/week/2026/5/digest"):
+        assert client.get(page).headers["cache-control"] == "no-cache"
+    r = client.get("/assets/index-a1.css")
+    assert r.headers["cache-control"] == "public, max-age=31536000, immutable"
+    etag = client.get("/").headers["etag"]  # a refresh with nothing new: 304, still no-cache
+    again = client.get("/", headers={"if-none-match": etag})
+    assert again.status_code == 304 and again.headers["cache-control"] == "no-cache"
+    (dist / "index.html").write_text('<!doctype html><link href="/assets/index-b2.css">')
+    assert "index-b2.css" in client.get("/", headers={"if-none-match": etag}).text
+    assert client.get("/assets/missing.css").status_code == 404
+    assert client.get("/api/meta").headers["cache-control"] == "no-store"  # the API as before
+
+
 def test_an_unexpected_error_is_scrubbed_and_keeps_the_headers(tmp_path, caplog):
     """Sol review (CR00): a crash's message could carry a credential."""
     from fastapi.routing import APIRoute

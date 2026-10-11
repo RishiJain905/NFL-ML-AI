@@ -715,12 +715,24 @@ def create_app(settings: AppSettings) -> FastAPI:
 
 
 class SPAStatic(StaticFiles):
-    """The built React app; unknown non-file paths get index.html (client-side routes)."""
+    """The built React app; unknown non-file paths get index.html (client-side routes).
+
+    Caching: `assets/` files have a content hash in their names (Vite), so they never change
+    and are cached for a year; everything else (index.html) is `no-cache`, so the browser asks
+    again on every load (a 304 when unchanged) and a rebuilt `web/dist` shows on a plain
+    refresh. Without a header, a browser may reuse a cached index.html that still names the
+    previous build's CSS (2026-10-11: the Digest tab's D128 fix didn't show)."""
 
     async def get_response(self, path: str, scope: dict) -> Any:
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
         except StarletteHTTPException as e:
             if e.status_code == 404 and "." not in Path(path).name:
-                return await super().get_response("index.html", scope)
-            raise
+                response = await super().get_response("index.html", scope)
+            else:
+                raise
+        immutable = Path(path).parts[:1] == ("assets",) and response.status_code in (200, 304)
+        response.headers["cache-control"] = (
+            "public, max-age=31536000, immutable" if immutable else "no-cache"
+        )
+        return response
