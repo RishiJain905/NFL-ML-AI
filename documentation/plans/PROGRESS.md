@@ -126,6 +126,11 @@ One line per live week (`uv run nfl season weeks --season 2026`), plus any drift
 - week 05: published ✓ on time (47.5 h before kickoff), checks passed first time, 0 drift alerts (the first run from the control room; drift signals mostly "insufficient data" this early)
 
 ## Session log (newest first)
+### 2026-10-11 (Sunday, later): the Digest tab uses its card's full width (D128)
+- **Reported (Rishi):** the Digest tab left the card's right side empty and the report card's tables scrolled sideways.
+- **Cause and fix:** `.digest { max-width: 74ch }` (mockup and app). Removed; table headers wrap when space is short; cell padding 10 → 8 px. Mockup first: `mockup/styles.css`, and the published mockup patched in those three CSS lines (version 3; a rebuild would also have swapped in today's data block, 28 KB larger).
+- **Checked in the app** (2026 week 5, the built `web/dist`): 1920 px and 1440 px, every table fits; 1280 px, two tables still scroll slightly (the digest column is 553 px beside the rail; options in D128).
+
 ### 2026-10-11 (Sunday afternoon): the Saturday injury update fixed (D126); its log moved to the Pipeline tab (D127)
 - **Reported (Rishi, 16:36 ET):** the injury update failed from the control room ("blocking quality checks failed: ['completed games in play-by-play']"), and Services showed Neo4j unreachable.
 - **Neo4j:** the container had just started (Up 2 min at 16:38); the 16:36 check caught Neo4j's start-up; `nfl doctor` OK minutes later. Nothing to fix.

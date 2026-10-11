@@ -10,7 +10,7 @@ It's its own track, **CR00–CR03**, not a P phase. It was promoted from [STRETC
 
 ## 1. The mockup is the visual spec
 
-**Mockup:** <https://claude.ai/artifact/1z7AapJzJwKusNtWzXYfQw> (version 2, 2026-10-05, approved by Rishi: "I love this it is literally perfect", then the changes in §2).
+**Mockup:** <https://claude.ai/artifact/1z7AapJzJwKusNtWzXYfQw> (version 2, 2026-10-05, approved by Rishi: "I love this it is literally perfect", then the changes in §2; version 3, 2026-10-11: the digest uses its card's full width and its table headers wrap, D128).
 - The link is private to Rishi's account. Agents read it with the Artifact tool's `read` action (that returns the page's HTML).
 - **Source in this repo:** [`mockup/`](mockup/README.md) (`template.html`, `styles.css`, `app.js`, `build_mockup.py`).
 - **Rebuild:** `uv run python documentation/control-room/mockup/build_mockup.py` writes `{NFL_DATA_ROOT}/cache/control-room-mockup/control-room.html`. The data it shows is read from D: at build time, so no data is committed.

@@ -351,7 +351,7 @@ main { min-width: 0; display: flex; flex-direction: column; }
 .console .cursor { display: inline-block; width: 7px; height: 13px; background: var(--console-ink); vertical-align: -2px; animation: pulse 1s steps(1) infinite; }
 
 /* ---------- digest ---------- */
-.digest { max-width: 74ch; font-size: 15px; line-height: 1.6; }
+.digest { font-size: 15px; line-height: 1.6; } /* the card's full width: the report card's tables fit without a scrollbar (D128) */
 .digest h1 { font-family: var(--font-display); font-size: 32px; font-weight: 700; margin: 0 0 6px; }
 .digest h2 { font-family: var(--font-display); font-size: 22px; font-weight: 700; margin: 26px 0 8px; padding-top: 14px; border-top: 1px solid var(--line); }
 .digest p { margin: 0 0 12px; }
@@ -362,8 +362,8 @@ main { min-width: 0; display: flex; flex-direction: column; }
 .digest em { color: var(--ink-2); }
 .digest .tablewrap { margin: 6px 0 14px; border: 1px solid var(--line); border-radius: 6px; }
 .digest table { border-collapse: collapse; font-size: 13px; width: 100%; }
-.digest th { text-align: left; font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; background: var(--raised); }
-.digest td { padding: 7px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.digest th { text-align: left; font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); padding: 8px 8px; border-bottom: 1px solid var(--line); background: var(--raised); } /* headers wrap only when the table would otherwise scroll (D128) */
+.digest td { padding: 7px 8px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
 .digest tr:last-child td { border-bottom: 0; }
 .rail { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 12px; }
 .kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px 14px; font-size: 13px; }
