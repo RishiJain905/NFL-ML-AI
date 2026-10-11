@@ -37,3 +37,5 @@ The [knowledge-graph guide](../guides/knowledge-graph.md) explains the graph its
 | Week | File |
 |---|---|
 | 2026 week 4 (first live digest with graph sections) | [2026-week04-queries.md](2026-week04-queries.md) |
+
+**Any week:** [graph-views.md](graph-views.md) has 14 queries made for the Graph view, for exploring rather than checking a digest. You type a player, team, coach, school or season on the first line: a player's whole world, career path, passing family tree and "six degrees" between two players; a team's passing network, coaching tree, next game, common opponents and division; coaching chains, college pipelines, the trade map. It also covers the Browser settings that keep the pictures readable, and why double-clicking a node floods the view.

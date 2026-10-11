@@ -59,7 +59,7 @@ One guide per major technology or component, written for a reader who's new to i
 
 ## Weekly graph queries
 
-[`queries/`](queries/README.md) holds one file per live week (`<season>-week<NN>-queries.md`): Neo4j Browser queries that trace that week's digest back to the graph, the findings it didn't use, and anything else worth a look, each with the result it returned. Start with [2026 week 4](queries/2026-week04-queries.md).
+[`queries/`](queries/README.md) holds one file per live week (`<season>-week<NN>-queries.md`): Neo4j Browser queries that trace that week's digest back to the graph, the findings it didn't use, and anything else worth a look, each with the result it returned. Start with [2026 week 4](queries/2026-week04-queries.md). For exploring any week, [graph-views.md](queries/graph-views.md) has 14 Graph-view queries where you type a player, team or coach (a player's whole world, career path, "six degrees" between two players, a team's next game, coaching trees, the trade map).
 
 ## Model cards
 
