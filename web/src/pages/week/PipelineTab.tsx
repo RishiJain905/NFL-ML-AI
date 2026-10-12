@@ -189,7 +189,9 @@ export function PipelineTab({ season, week, detail }: { season: number; week: nu
 
   // ---- which run is this page about
   const run = cur.data?.run ?? null;
-  const mine = run != null && run.season === season && run.week === week && run.kind !== 'injury_update';
+  // the injury update's and the play-calling update's events aren't the week's run (D127, D132)
+  const mine =
+    run != null && run.season === season && run.week === week && run.kind !== 'injury_update' && run.kind !== 'playcalling_update';
   const running = mine && cur.data?.state === 'running';
   // a terminal run that hasn't written events has nothing to stream yet: the archive shows it as it stands
   const streamable = run != null && (run.launched_from === 'app' || run.has_events);

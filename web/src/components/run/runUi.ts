@@ -6,6 +6,7 @@ import { createContext, useContext } from 'react';
 import { ApiError, useRunCurrent } from '../../api/client';
 import { useNow } from '../../lib/useNow';
 import type { RunInfo } from '../../api/types';
+import { playcallEndToast } from './playcallUpdateModel';
 
 export type ToastTone = 'ok' | 'warn' | 'err';
 export interface ToastInput {
@@ -22,7 +23,8 @@ export interface RunUi {
   seenRunning: Set<string>;
   /** runs whose end was already toasted */
   announced: Set<string>;
-  /** injury updates whose Pipeline-tab notice was hidden (it stays hidden across tab switches) */
+  /** injury updates whose Pipeline-tab notice (and play-calling updates whose result) was hidden
+   *  (it stays hidden across tab switches) */
   hidden: Set<string>;
 }
 
@@ -120,6 +122,7 @@ export function injuryEndToast(run: RunInfo | null): ToastInput {
 /** The toast (and browser notification) when a run ends (mockup: `loop`'s toasts). */
 export function runEndToast(run: RunInfo): ToastInput {
   if (run.kind === 'injury_update') return injuryEndToast(run);
+  if (run.kind === 'playcalling_update') return playcallEndToast(run); // D132
   const w = run.week != null ? `Week ${run.week}` : 'The run';
   const text = run.message ?? undefined;
   const status = run.status ?? '';

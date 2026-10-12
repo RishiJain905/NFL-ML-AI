@@ -125,7 +125,8 @@ export function foldRun(events: readonly RunEvent[]): RunFold {
         break;
       }
       case 'step_end': {
-        if (!isStep(e.step)) break; // a step this model doesn't draw
+        // a step this model doesn't draw; 'skipped' comes only from a play-calling update
+        if (!isStep(e.step) || e.status === 'skipped') break;
         const f = (fold.steps[e.step] ??= openStep(ms === null ? null : ms - num(e.seconds) * 1000));
         f.status = e.status;
         f.seconds = Number.isFinite(e.seconds) ? e.seconds : null;
@@ -410,9 +411,11 @@ export const runStreamKey = (run: RunInfo): string => run.run_id ?? run.started 
 /** The run's kind from `run/current` (a terminal run: judged by its command), until its `run_start` is seen. */
 export function runKindOf(info?: { kind: string; command: string } | null): RunKindName {
   const kind = info?.kind;
-  if (kind === 'weekly' || kind === 'resume' || kind === 'injury_update' || kind === 'rehearsal') return kind;
+  if (kind === 'weekly' || kind === 'resume' || kind === 'injury_update' || kind === 'playcalling_update' || kind === 'rehearsal')
+    return kind;
   const cmd = info?.command ?? '';
   if (/injury-update/.test(cmd)) return 'injury_update';
+  if (/playcalling update/.test(cmd)) return 'playcalling_update'; // D132: never a weekly run
   if (/rehears/.test(cmd)) return 'rehearsal';
   if (/--from-step/.test(cmd)) return 'resume';
   return 'weekly';

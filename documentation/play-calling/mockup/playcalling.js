@@ -48,6 +48,7 @@ const S = {
   sort: { id: 'team', dir: 1 },
   gridView: 'tiles', // tiles | table
   weekKey: WEEK_KEYS[0],
+  upd: 'real', // the Update play calling card's state (mockup controls; all but 'real' are synthetic)
   pcView: 'fc', // the Play calls tab: fc (the forecast) | tend (PC01's tendencies so far)
   other: '',
 };
@@ -168,6 +169,8 @@ function syncMockbar() {
   $('#teamGrp').style.opacity = S.screen === 'team' ? '' : '.45';
   $('#weekPick').innerHTML = WEEK_KEYS.map(k => { const [sn, w] = k.split('_'); const st = weekFor(k).status; const wa = weekFor(k); const tag = st !== 'ok' ? st.replace('_', ' ') : !wa.forecast ? 'no forecast' : wa.graded && wa.graded.graded ? 'graded' : 'forecast'; return `<button type="button" data-v="${esc(k)}" aria-pressed="${k === S.weekKey}">${sn} wk ${w} · ${tag}</button>`; }).join('');
   $('#weekGrp').style.opacity = S.screen === 'week' ? '' : '.45';
+  $('#updPick').innerHTML = UPD_PICKS.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${v === S.upd}">${esc(l)}${v === 'real' ? '' : ' *'}</button>`).join('');
+  $('#updGrp').style.opacity = S.screen === 'week' ? '' : '.45';
   $$('#statePick button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S.state)));
   applyTheme();
 }
@@ -175,6 +178,7 @@ try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () =
 $('#screenPick').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; S.screen = b.dataset.v; syncMockbar(); render(); });
 $('#teamPick').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; S.team = b.dataset.v; S.screen = 'team'; S.season = NEWEST; S.hist = false; syncMockbar(); render(); });
 $('#weekPick').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; S.weekKey = b.dataset.v; S.screen = 'week'; S.state = 'ok'; syncMockbar(); render(); });
+$('#updPick').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; S.upd = b.dataset.v; S.screen = 'week'; S.state = 'ok'; const cw = (P.weeks.weeks.find(w => w.is_current) || {}).week; if (cw && P.play_calls[`${P.weeks.season}_${cw}`]) S.weekKey = `${P.weeks.season}_${cw}`; syncMockbar(); render(); });
 $('#statePick').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; S.state = b.dataset.v; syncMockbar(); render(); });
 
 /* ------------------------------------------------------------------ shell (as the control room) */
@@ -650,11 +654,12 @@ function weekView() {
   const view = hasF ? S.pcView : 'tend';
   const ftn = wk.ftn_waiting && wk.ftn_waiting.length ? `<div class="notice"><span class="ic">!</span><div><b>FTN hasn't charted ${wk.ftn_waiting.length === 1 ? 'one game' : wk.ftn_waiting.length + ' games'} yet:</b> ${esc(wk.ftn_waiting.join(' · '))}. Play-action, screens, RPO, motion, blitz and box rates wait for it.</div></div>` : '';
   const sw = hasF ? `<div class="wintool"><span class="eyebrow">Show</span><span class="seg" role="group" aria-label="View"><button type="button" data-pcv="fc" aria-pressed="${view === 'fc'}">Forecast</button><button type="button" data-pcv="tend" aria-pressed="${view === 'tend'}">Tendencies so far</button></span><span class="muted">${view === 'fc' ? "each team's rate for this game, its 80% range and its rate so far" : "each offense's rates so far next to what the other defense has allowed (no forecast)"}</span></div>` : '';
+  const upd = updCard(wk);
   if (view === 'fc') {
-    return `<div class="notice accent"><span class="ic">i</span><div>${esc(wk.note)}</div></div>
+    return `${upd}<div class="notice accent"><span class="ic">i</span><div>${esc(wk.note)}</div></div>
       ${backfillNote(wk.forecast)}${hintNotice(wk.forecast_hint)}${ftn}${sw}${forecastWeek(wk)}`;
   }
-  return `${hasF ? '' : `<div class="notice accent"><span class="ic">i</span><div>${esc(wk.note)}</div></div>`}${hintNotice(wk.forecast_hint)}${ftn}${sw}${tendWeek(wk)}`;
+  return `${upd}${hasF ? '' : `<div class="notice accent"><span class="ic">i</span><div>${esc(wk.note)}</div></div>`}${hintNotice(wk.forecast_hint)}${ftn}${sw}${tendWeek(wk)}`;
 }
 function tendWeek(wk) {
   const shifts = wk.shifts_kind !== 'forecast' && wk.shifts.length ? `<div class="card"><div class="card-h"><h2>Biggest matchup shifts</h2><span class="muted">where a defense allows or calls something far from the league · in standard deviations of the 32 defenses</span></div>
@@ -923,6 +928,129 @@ function recordCard(r) {
     <p class="gnote">A few games per rate: one team's record is noisy. ${fr.targets.some(t => t.backtest) ? 'The backtest (every team, 2019–2025) is the fairer test of the model.' : ''}</p></div></div>`;
 }
 
+/* ================================================================== D132: "Update play calling"
+   The current week's Play calls tab runs every post-run play-calling step from the app
+   (`nfl playcalling update --auto --expect-week N`), like the Pipeline tab's Run button. Ready:
+   pre-flight's `playcalling` gate (P.preflight, the real answer at the dump's pinned clock): the
+   five steps, the due ones "will run" with why, the others muted with why not. Running / finished:
+   the run's events (run_start, step_start / step_end per step, log lines, run_end). The running,
+   finished, failed, nothing-due, not-allowed and another-run states are mockup-only (synthetic,
+   built from the real steps), picked in the controls strip. */
+const UPD_PICKS = [['real', 'Ready (pre-flight)'], ['blocked', 'Not allowed'], ['none', 'Nothing due'], ['other', 'Another run'], ['running', 'Running'], ['done', 'Finished'], ['failed', 'Failed']];
+const UPD_ICON = { will: '●', pending: '○', running: '◐', ok: '✓', failed: '✗', skipped: '–', off: '–' };
+function updPreflight() {
+  const pf = P.preflight;
+  if (!pf || !pf.playcalling) return null;
+  const g = pf.playcalling;
+  if (S.upd === 'blocked') return Object.assign({}, pf, { playcalling: Object.assign({}, g, { allowed: false, reason: `Needs this week's Tuesday run first (Run week ${pf.week}).` }) });
+  if (S.upd === 'none') {
+    const why = { ftn: 'every game of last week has FTN', build: 'the tables are current', review: `week ${pf.week - 1} is already reviewed`, grade: `week ${pf.week - 1} is fully graded`, forecast: `week ${pf.week}'s forecast is current` };
+    return Object.assign({}, pf, { playcalling: Object.assign({}, g, { allowed: false, reason: 'Everything is up to date.', steps: g.steps.map(s => Object.assign({}, s, { due: false, reason: why[s.step] || s.reason })) }) });
+  }
+  if (S.upd === 'other') return Object.assign({}, pf, { playcalling: Object.assign({}, g, { allowed: false, reason: 'A run is in progress.' }) });
+  return pf;
+}
+/** Synthetic events of an update (mockup-only): the due steps, in order, with their details. */
+function updEvents(pf, phase) {
+  const due = pf.playcalling.steps.filter(s => s.due);
+  const t0 = Date.parse('2026-10-10T16:01:00Z');
+  let seq = 0;
+  const ev = (o, s) => Object.assign({ seq: ++seq, t: new Date(t0 + s * 1000).toISOString(), run_id: '20261010T160100Z-pc01' }, o);
+  const DETAIL = { ftn: 'FTN: ATL at NO charted (131 plays)', build: 'tables as of week 5 · 2026 · 4 files', review: 'week 4 reviewed: 46 fourth downs', grade: 'week 4: 352 of 352 graded', forecast: 'week 5: 330 forecasts' };
+  const LOG = { ftn: ['nflverse ftn_charting: 1 new snapshot', 'curate: ftn_charting 5,214 rows'], build: ['playcalling build 2026: as of weeks 1-5', 'team_tendencies.parquet written'], review: ['decision review week 4'], grade: ['grade week 4: 12 rows were waiting for FTN', 'scoreboard: 352 rows graded'], forecast: ['forecast week 5: 15 games'] };
+  const out = [ev({ type: 'run_start', kind: 'playcalling_update', command: pf.playcalling.command, season: pf.season, week: pf.week, steps: due.map(s => s.step), plan: pf.playcalling.steps.map(s => `${s.step}: ${s.reason}`), from_step: null, earlier: {}, launched_by: 'rishi', via: 'control-room' }, 0)];
+  let t = 2;
+  const failAt = phase === 'failed' ? (due.find(s => s.step === 'grade') || due[due.length - 1]).step : null;
+  let broken = null;
+  for (const s of due) {
+    if (broken && ['build', 'grade', 'forecast'].includes(s.step)) {
+      out.push(ev({ type: 'step_start', step: s.step }, t));
+      out.push(ev({ type: 'step_end', step: s.step, status: 'skipped', seconds: 0, detail: `skipped: the ${broken} step failed` }, t));
+      t += 1;
+      continue;
+    }
+    if (phase === 'running' && s.step === (due[1] || due[0]).step) { out.push(ev({ type: 'step_start', step: s.step }, t)); out.push(ev({ type: 'log', step: s.step, text: LOG[s.step][0], cls: 'dim' }, t + 3)); break; }
+    out.push(ev({ type: 'step_start', step: s.step }, t));
+    LOG[s.step].forEach((l, i) => out.push(ev({ type: 'log', step: s.step, text: l, cls: i ? 'ok' : 'dim' }, t + 2 + i)));
+    const failed = s.step === failAt;
+    out.push(ev({ type: 'step_end', step: s.step, status: failed ? 'failed' : 'ok', seconds: 14 + t, detail: failed ? 'scoreboard.parquet is open in another program (PermissionError)' : DETAIL[s.step] }, t + 14));
+    if (failed) {
+      out.push(ev({ type: 'log', step: s.step, text: `${s.step} failed: scoreboard.parquet is open in another program`, cls: 'err' }, t + 15));
+      if (['ftn', 'build'].includes(s.step)) broken = s.step;
+    }
+    t += 20;
+  }
+  if (phase === 'done' || phase === 'failed') {
+    const ok = out.filter(e => e.type === 'step_end' && e.status === 'ok').map(e => e.step);
+    out.push(ev({ type: 'run_end', status: phase === 'failed' ? 'failed' : 'ok', exit_code: phase === 'failed' ? 1 : 0, message: `done: ${ok.join(', ') || 'nothing'}${failAt ? `; failed: ${failAt}` : ''}`, published: false, failed_step: failAt, material: null }, t + 20));
+  }
+  return out;
+}
+/** The run's events folded onto the plan's steps: status and detail per step, the log, the end. */
+function updFold(steps, events) {
+  const st = Object.fromEntries(steps.map(s => [s.step, { status: s.due ? 'will' : 'off', detail: null }]));
+  const start = events.find(e => e.type === 'run_start');
+  if (start) for (const s of steps) st[s.step].status = start.steps.includes(s.step) ? 'pending' : 'off';
+  for (const e of events) {
+    if (e.type === 'step_start' && st[e.step]) st[e.step].status = 'running';
+    if (e.type === 'step_end' && st[e.step]) { st[e.step].status = e.status === 'degraded' ? 'ok' : e.status; st[e.step].detail = e.detail; }
+  }
+  return { st, log: events.filter(e => e.type === 'log'), end: events.find(e => e.type === 'run_end') || null };
+}
+function updCard(wk) {
+  const pf = updPreflight();
+  if (!pf || pf.season !== wk.season || pf.week !== wk.week) return '';
+  const g = pf.playcalling;
+  const phase = ['running', 'done', 'failed'].includes(S.upd) ? S.upd : null;
+  const events = phase ? updEvents(P.preflight, phase) : [];
+  const f = updFold(phase ? P.preflight.playcalling.steps : g.steps, events);
+  const steps = phase ? P.preflight.playcalling.steps : g.steps;
+  const dueN = g.steps.filter(s => s.due).length;
+  const failedStep = f.end && f.end.failed_step;
+  let right, top = '';
+  if (phase === 'running') right = '<span class="chip run"><span class="ic" style="animation:pulse 1.4s infinite">●</span>Running</span>';
+  else if (S.upd === 'other') right = `<button class="btn sm" disabled aria-disabled="true">Update play calling</button><span class="reason">Another run is in progress (Run week ${pf.week})</span>`;
+  else {
+    // after a run the page re-reads pre-flight: done -> nothing due; failed -> the failed step is due again
+    const after = phase === 'done' ? { allowed: false, reason: 'Everything is up to date.', n: 0 } : phase === 'failed' ? { allowed: true, reason: null, n: 1 } : { allowed: g.allowed, reason: g.reason, n: dueN };
+    right = `<button class="btn sm primary" id="updBtn" ${after.allowed ? '' : 'disabled aria-disabled="true"'}>Update play calling</button>${after.allowed ? `<span class="reason">${after.n} step${after.n === 1 ? '' : 's'} to run</span>` : `<span class="reason">${esc(after.reason || '')}</span>`}`;
+  }
+  if (phase === 'done') top = `<div class="notice ok"><span class="ic">✓</span><div><b>Play calling updated.</b> ${esc(f.end.message)}. The forecasts and grades below are refreshed. <button class="btn sm" data-upd-hide>Hide</button></div></div>`;
+  if (phase === 'failed') top = `<div class="notice err"><span class="ic">!</span><div><b>The play-calling update failed at ${esc(failedStep)}.</b> ${esc(f.end.message)}. Fix it and press Update play calling again: it runs only what's still due. <button class="btn sm" data-upd-hide>Hide</button></div></div>`;
+  const rows = steps.map(s => {
+    const x = f.st[s.step];
+    const word = { will: 'will run', pending: 'waiting', running: 'running', ok: 'done', failed: 'failed', skipped: 'skipped', off: 'not due' }[x.status];
+    return `<li class="ust ${x.status}"><span class="ui" aria-hidden="true">${UPD_ICON[x.status]}</span><span class="ul"><b>${esc(s.label)}</b><small>${esc(x.detail || s.reason)}</small></span><span class="uw">${word}</span></li>`;
+  }).join('');
+  const log = phase ? `<div class="ulog mono" aria-label="The update's last lines">${f.log.slice(-5).map(l => `<div class="${esc(l.cls || '')}"><span class="muted">${esc(eventClockET(l.t))}</span> ${esc(l.text)}</div>`).join('')}</div>` : '';
+  const sub = phase === 'running' ? "its steps and last lines follow the run · closing this tab doesn't stop it" : "the steps after Tuesday's run: Monday night's FTN, the tables, last week's review and grade, this week's forecast";
+  return `<div class="card pcupd${phase === 'running' ? ' live' : ''}"><div class="card-h"><h2>Update play calling</h2><span class="muted">${esc(sub)}</span><div class="right uright">${right}</div></div>
+    <div class="card-b">${top}<ol class="usteps">${rows}</ol>${log}
+    ${!phase && g.command ? `<div class="ufoot muted">Runs <span class="mono">${esc(g.command)}</span> · holds the weekly lock while it runs · only the steps marked "will run"</div>` : ''}</div></div>`;
+}
+const ET_CLOCK = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'America/New_York' });
+const eventClockET = t => { const d = new Date(t); return isNaN(d) ? '' : ET_CLOCK.format(d); };
+function updConfirm() {
+  const pf = updPreflight(); if (!pf) return;
+  const g = pf.playcalling;
+  const due = g.steps.filter(s => s.due);
+  const scrim = document.createElement('div');
+  scrim.className = 'scrim'; scrim.id = 'updScrim';
+  scrim.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="updT"><header><span class="eyebrow">Confirm the update</span><h2 id="updT">Update week ${pf.week}'s play calling?</h2></header>
+    <div class="mb"><span>Runs the steps that are due, in order. A failed FTN refresh or build skips the steps that need it; any other failure lets the rest run:</span>
+      <ol class="usteps compact">${due.map(s => `<li class="ust will"><span class="ui">●</span><span class="ul"><b>${esc(s.label)}</b><small>${esc(s.reason)}</small></span></li>`).join('')}</ol>
+      <dl class="kv"><dt>Week</dt><dd><b>${pf.week}</b> · from the calendar</dd><dt>Skipped</dt><dd>${esc(g.steps.filter(s => !s.due).map(s => s.label).join(' · ') || 'nothing')}</dd></dl>
+      ${g.command ? `<div class="cmd">${esc(g.command)}</div>` : ''}
+      <span>It holds the weekly lock while it runs: Run week ${pf.week} and the injury update wait for it. Its log stays on this tab, not the Pipeline tab.</span></div>
+    <footer><button class="btn" data-upd-cancel>Cancel</button><button class="btn primary" data-upd-go>Update play calling</button></footer></div>`;
+  document.body.appendChild(scrim);
+  scrim.addEventListener('click', e => {
+    if (e.target === scrim || e.target.closest('[data-upd-cancel]')) { scrim.remove(); return; }
+    if (e.target.closest('[data-upd-go]')) { scrim.remove(); S.upd = 'running'; syncMockbar(); render(); }
+  });
+  scrim.querySelector('[data-upd-go]').focus();
+}
+
 /* ------------------------------------------------------------------ interactions */
 $('#view').addEventListener('click', e => {
   if (e.target.closest('[data-nav-grid]')) { S.screen = 'grid'; syncMockbar(); render(); return; }
@@ -935,6 +1063,8 @@ $('#view').addEventListener('click', e => {
   const f = e.target.closest('[data-fam]'); if (f) { S.fam = f.dataset.fam; render(); return; }
   if (e.target.closest('#histBtn')) { S.hist = !S.hist; render(); return; }
   const pv = e.target.closest('[data-pcv]'); if (pv) { S.pcView = pv.dataset.pcv; render(); return; }
+  if (e.target.closest('#updBtn')) { updConfirm(); return; }
+  if (e.target.closest('[data-upd-hide]')) { S.upd = 'real'; syncMockbar(); render(); return; }
   if (e.target.closest('[data-go-week]')) goNextWeek();
 });
 $('#view').addEventListener('change', e => { if (e.target.id === 'sortSel') { const id = e.target.value; S.sort = { id, dir: id === 'team' ? 1 : -1 }; render(); } });
@@ -960,7 +1090,7 @@ document.addEventListener('focusin', e => {
   if (t) { const r = t.getBoundingClientRect(); showTip(tipHTML(t), r.left + Math.min(r.width, 220) * 0.5, r.bottom - 6); } else hideTip();
 });
 document.addEventListener('focusout', hideTip);
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { hideTip(); if (S.settings) { S.settings = false; renderSide(); } } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { const sc = document.getElementById('updScrim'); if (sc) sc.remove(); hideTip(); if (S.settings) { S.settings = false; renderSide(); } } });
 
 /* ------------------------------------------------------------------ boot */
 syncMockbar();

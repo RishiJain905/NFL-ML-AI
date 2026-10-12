@@ -204,7 +204,8 @@ export function useStartRun() {
 
 /** After a run ends (or a step finishes), everything the run may have written is refetched. */
 export function invalidateAfterRun(qc: ReturnType<typeof useQueryClient>) {
-  for (const key of [['run-current'], ['preflight'], ['meta'], ['weeks'], ['week'], ['season']]) {
+  // ['playcalling']: the Explore pages after a play-calling update (D132); the week tabs are ['week']
+  for (const key of [['run-current'], ['preflight'], ['meta'], ['weeks'], ['week'], ['season'], ['playcalling']]) {
     void qc.invalidateQueries({ queryKey: key });
   }
 }

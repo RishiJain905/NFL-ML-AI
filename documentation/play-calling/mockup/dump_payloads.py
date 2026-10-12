@@ -16,7 +16,8 @@ PC02 (the forecast): `play_calls["2026_5"]` is a forecast week not graded yet (t
 `["2026_4"]` a graded week (ATL at NO waiting for FTN), `["2026_1"]` graded on last season's
 rates, `["2026_6"]` not yet, `["2025_10"]` no forecast (descriptive, with `forecast_hint`). The
 team pages carry `next_game.forecast` (week 5) or `next_game.forecast_hint` (KC: a week-5 bye,
-week 6 not forecast yet) and `forecast_record` (weeks 1-4).
+week 6 not forecast yet) and `forecast_record` (weeks 1-4). D132: `preflight` (GET
+/api/preflight at NOW) for the current week's Update play calling card.
 """
 
 from __future__ import annotations
@@ -50,6 +51,11 @@ def get(tc: TestClient, path: str) -> Any:
     return body
 
 
+def _preflight(pf: dict[str, Any]) -> dict[str, Any]:
+    """Only what the card reads (the week and the gate): the checks stay out of the mockup."""
+    return {k: pf.get(k) for k in ("checked_at", "mode", "season", "week", "playcalling")}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", type=Path, default=None)
@@ -66,6 +72,8 @@ def main() -> None:
         "meta": get(tc, "/api/meta"),
         "weeks": get(tc, "/api/weeks"),
         "team_info": get(tc, "/api/team-info"),
+        # D132: the Update play calling card reads pre-flight's `playcalling` gate (at NOW)
+        "preflight": _preflight(get(tc, "/api/preflight")),
         "teams": {str(s): get(tc, f"/api/playcalling/teams?season={s}") for s in (2026, 2025)},
         "team": {},
         "history": {},

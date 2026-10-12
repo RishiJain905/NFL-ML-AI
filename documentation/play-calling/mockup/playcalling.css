@@ -293,6 +293,36 @@ code { font-family: var(--font-mono); font-size: 12px; }
 .pcmatch.fc > section + section { border-left: 0; border-top: 1px solid var(--line); }
 .ngrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; } /* stacked: a forecast row needs the width */
 
+
+/* ---------- D132: the Update play calling card (the current week's Play calls tab) ---------- */
+.pcupd { border-left: 5px solid var(--accent); }
+.pcupd.live { border-left-color: var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
+.pcupd .uright { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.pcupd .uright .reason { max-width: 40ch; }
+.usteps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ust { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 7px 2px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.ust:last-child { border-bottom: 0; }
+.ust .ui { font-size: 14px; line-height: 1.3; text-align: center; color: var(--ink-3); }
+.ust .ul b { font-weight: 600; color: var(--ink); }
+.ust .ul small { display: block; font-size: 12px; color: var(--ink-3); margin-top: 1px; }
+.ust .uw { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; font-weight: 700; color: var(--ink-3); white-space: nowrap; padding-top: 2px; }
+.ust.will .ui, .ust.will .uw { color: var(--accent-ink); }
+.ust.running .ui, .ust.running .uw { color: var(--accent-ink); }
+.ust.running .ui { animation: pulse 1.4s ease-in-out infinite; }
+.ust.ok .ui, .ust.ok .uw { color: var(--ok); }
+.ust.failed .ui, .ust.failed .uw { color: var(--err); }
+.ust.failed .ul small { color: var(--err); }
+.ust.off .ul b, .ust.skipped .ul b { color: var(--ink-3); font-weight: 500; }
+.usteps.compact .ust { grid-template-columns: 18px minmax(0, 1fr); padding: 5px 0; }
+.ulog { margin-top: 10px; padding: 8px 10px; border-radius: 6px; background: var(--raised); border: 1px solid var(--line); font-size: 11.5px; line-height: 1.55; max-height: 9.5em; overflow: hidden; }
+.ulog .ok { color: var(--ok); } .ulog .err { color: var(--err); } .ulog .warn { color: var(--warn); } .ulog .dim { color: var(--ink-2); }
+.ufoot { margin-top: 10px; font-size: 12px; }
+.notice.ok { border-color: color-mix(in srgb, var(--ok) 50%, transparent); background: color-mix(in srgb, var(--ok) 8%, var(--panel)); }
+.notice.ok .ic { color: var(--ok); }
+.notice.err { border-color: color-mix(in srgb, var(--err) 50%, transparent); background: color-mix(in srgb, var(--err) 8%, var(--panel)); }
+.notice.err .ic { color: var(--err); }
+.pcupd .notice { margin-bottom: 10px; }
+
 @media (max-width: 1100px) {
   .idgrid, .hgrid { grid-template-columns: minmax(0, 1fr); }
   .fieldgrid { grid-template-columns: minmax(0, 1fr); }
@@ -313,6 +343,9 @@ code { font-family: var(--font-mono); font-size: 12px; }
   .mtbl th, .mtbl td { padding-left: 5px; padding-right: 5px; }
   .mtbl th[scope="row"] { white-space: normal; }
   .wintool { position: static; }
+  .pcupd .uright { justify-content: flex-start; }
+  .ust { grid-template-columns: 18px minmax(0, 1fr); }
+  .ust .uw { grid-column: 2; padding-top: 0; }
   .ftbl .fviz, .gtbl .gbars { display: none; }
   .ftbl, .ngrid .ftbl { min-width: 0; }
   .gtbl { min-width: 0; }

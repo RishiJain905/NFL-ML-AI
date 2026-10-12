@@ -72,6 +72,12 @@ function preflight(over: Partial<PreflightResponse> = {}): PreflightResponse {
       closes: '2026-10-13T00:15:00+00:00',
       material_last: null,
     },
+    playcalling: {
+      allowed: false,
+      reason: 'Everything is up to date.',
+      command: 'nfl playcalling update --auto --expect-week 5',
+      steps: [],
+    },
     dry_run_log: [],
     ...over,
   };

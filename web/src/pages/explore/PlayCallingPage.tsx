@@ -5,7 +5,7 @@
 
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams, type To } from 'react-router-dom';
-import { usePlaycallTeams, useTeamInfo } from '../../api/client';
+import { usePlaycallTeams, useTeamInfo, useWeeks } from '../../api/client';
 import type { PlaycallGridColumn, PlaycallGridTeam, PlaycallSide, PlaycallTeamsResponse } from '../../api/types';
 import { DivLegend } from '../../charts/HeatTable';
 import { RateBar } from '../../charts/RateBar';
@@ -261,6 +261,7 @@ export function PlayCallingPage() {
   const season = seasonParam(params.get('season'));
   const q = usePlaycallTeams(season);
   const r = q.data;
+  const weeks = useWeeks().data;
   const shown = r?.season ?? season;
   return (
     <>
@@ -272,6 +273,12 @@ export function PlayCallingPage() {
             <>
               <Chip>{[r.season, asOfText(r)].filter(Boolean).join(' · ')}</Chip>
               <FtnWaiting games={r.ftn_waiting} />
+              {/* D132: the update runs from the current week's Play calls tab */}
+              {weeks?.current_week != null && weeks.season === r.season ? (
+                <Link className="chip run" to={`/week/${weeks.season}/${weeks.current_week}/play-calls`}>
+                  Update play calling on week {weeks.current_week}'s Play calls tab →
+                </Link>
+              ) : null}
             </>
           ) : null
         }

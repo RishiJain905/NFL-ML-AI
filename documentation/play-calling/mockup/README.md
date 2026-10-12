@@ -1,4 +1,4 @@
-# Play calling mockup (the visual spec for PC01 and PC02)
+# Play calling mockup (the visual spec for PC01, PC02 and the Update play calling button, D132)
 
 **Live mockup:** <https://claude.ai/artifact/KFwYaMJnxjpPdXEz7MsxPQ> ("Play Calling Mockup", published 2026-10-10; private to Rishi's account, agents read it with the Artifact tool's `read` action; Rishi waived the ✋ approval step for PC01). To update it: rebuild, check it, and publish the rebuilt HTML to that URL (a copy in the session scratchpad: the Artifact tool doesn't publish from D:). The spec that goes with it is [`../PC01-play-calling-pages.md`](../PC01-play-calling-pages.md) and [`../README.md`](../README.md) §3; what every number means is in the [guide](../../guides/play-calling.md).
 
@@ -37,6 +37,7 @@ The reader's answers in the shapes of `web/src/api/types.ts` (PC01 block), so th
 | `history.<TEAM>.<side>` | `GET /api/playcalling/teams/{team}/history?side=` (`PlaycallHistoryResponse`) |
 | `play_calls.<season>_<week>` | `GET /api/weeks/{S}/{W}/play-calls` (`PlayCallsResponse`): `2026_5` (the forecast, not graded yet: made after kickoff, a backfill), `2026_4` (graded; ATL at NO waiting for FTN), `2026_1` (graded on last season's rates), `2026_6` (`not_yet`), `2025_10` (no forecast: the PC01 view and `forecast_hint`) |
 | (team pages, PC02) | The clock is pinned to 2026-10-10 16:00 UTC: most teams' `next_game` is week 5 with `next_game.forecast`; KC (a week-5 bye) is week 6 with `forecast_hint`; every page carries `forecast_record` (weeks 1-4). The pages: MIN, KC, CIN, LA, BAL, PHI, NYG, DAL, ATL |
+| `preflight` | `GET /api/preflight` at the pinned clock, trimmed to `checked_at`, `mode`, `season`, `week` and `playcalling` (D132: the Update play calling gate and its five steps), so the other checks stay out of the published page. At 2026-10-10 16:00 UTC the real gate is allowed with FTN, build and grade due (ATL at NO's FTN), review and forecast not due |
 | `states` | The reader's own empty answers: `not_built.{teams,team,week}` (a season without tables: 2015), `not_yet.week`, `unknown_team` (a 404). Without one the page draws a stand-in and says so |
 
 ## What the mockup shows
@@ -59,12 +60,13 @@ The striped **Mockup controls** strip (not part of the app) picks the screen (Te
   - **Biggest expected moves** (`shifts` when `shifts_kind === 'forecast'`): the server's sentences, the change in points (rushers in rushers) and the move over the range's half-width;
   - each game: both matchups stacked (a forecast row needs the width), each the offense's calls then the defense's. A row: the forecast big with its 80% range, the **strip** (the range a band in the caller's colour, `--s1` offense / `--s2` defense; the forecast a bar; the team's rate so far a ring; the league a tick; after the game the actual an ink dot, ringed when outside the range), the rate so far and the change, then the actual with "in range" and "beat so far" marks or a status chip (FTN not in yet, Waiting for the tables, Not played yet, No plays to grade). The pieces (the team's shrunk rate, the opponent, or for run direction the home team's stats crew, and the game script for PROE / dropback rate) are in the row's tooltip. In week 1 the baseline is "last season".
 - **A team page (PC02):** a **Next game** card after the summary (this team's calls on this page's side, then the opponent's calls on the other side, with the pieces on a line under each forecast, a link to the week's tab; or the command that makes the forecast) and **How the forecast has done for {TEAM}** after Week by week (`forecast_record`, the same numbers as the week's grade card).
+- **Update play calling (D132)**, on top of the current week's Play calls tab, above every state (it's what builds the tables): the five steps as a checklist, each with the reason it will run ("will run") or won't ("not due"); the button, greyed with the gate's reason when it isn't allowed (Needs this week's Tuesday run first, A run is in progress, Everything is up to date). Pressing it opens a confirm (the due steps, the week, what's skipped, the command, "holds the weekly lock; its log stays on this tab"). While it runs each step goes waiting → running → done / failed with its `step_end` detail (or skipped, when a failed FTN refresh or build leaves nothing to grade or forecast) and the last five log lines show; at the end a notice with `run_end`'s message and Hide. The controls strip's **Update card** group: Ready (the real pre-flight), and mockup-only Not allowed, Nothing due, Another run, Running, Finished, Failed (synthetic events built from the real steps, labelled so). Explore → Play calling's header links to the current week's tab ("Update play calling on week N's Play calls tab").
 - **States:** Not built (the reader's message and the command to run), Not yet (a future week's tab), Loading (a skeleton).
 
 ## What's real and what's mockup-only
 
 - **Real (the reader's answers):** every number, sentence and message on the pages.
-- **Mockup-only (each says so on the page):** the Loading skeleton; any empty state the dump has no answer for (drawn with a stand-in message); the grid's "Not yet" (a season's grid never is: before week 1 it shows last season).
+- **Mockup-only (each says so on the page):** the Loading skeleton; the Update card's states other than Ready (their events are synthetic); any empty state the dump has no answer for (drawn with a stand-in message); the grid's "Not yet" (a season's grid never is: before week 1 it shows last season).
 
 ## What the real data changed
 

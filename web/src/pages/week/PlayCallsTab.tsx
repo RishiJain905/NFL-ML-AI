@@ -4,7 +4,8 @@
 // behind a switch. PC01 (no forecast): the week's biggest matchup shifts (the server's
 // sentences), then each game with two columns: each offense against the other defense, one row
 // per metric: what the offense does, what the defense allows (or, for a defense's call, calls),
-// the league; with the hint naming the command that makes the forecast.
+// the league; with the hint naming the command that makes the forecast. D132: the current week's
+// tab starts with the "Update play calling" card (components/run/PlaycallUpdate.tsx).
 
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -18,6 +19,7 @@ import { kickoffLabel } from '../../lib/format';
 import { ALLOWED_NOTE, fmtRate, perWord } from '../../lib/playcall';
 import { PlaycallEmpty } from '../explore/common';
 import { ForecastLegend } from '../../charts/ForecastStrip';
+import { PlaycallUpdateCard } from '../../components/run/PlaycallUpdate';
 import { BackfillNotice, ExpectedMoves, ForecastGames, HintNotice, WeekGrade } from '../explore/forecast';
 import { TabError, TabLoading, WarnNotice } from './WeekEmpty';
 
@@ -240,7 +242,7 @@ function Calls({ r }: { r: PlayCallsResponse }) {
   );
 }
 
-export function PlayCallsTab({ season, week }: { season: number; week: number; isCurrent?: boolean; lastPublishedWeek?: number | null }) {
+function TabBody({ season, week }: { season: number; week: number }) {
   const q = usePlayCalls(season, week);
   if (q.isLoading) return <TabLoading />;
   if (q.error) return <TabError error={q.error} />;
@@ -251,4 +253,14 @@ export function PlayCallsTab({ season, week }: { season: number; week: number; i
   // built, but the schedule has no games this week (the server says so in `message`)
   if (!r.games.length) return <PlaycallEmpty meta={r} title={`No week-${week} games`} />;
   return <Calls r={r} />;
+}
+
+export function PlayCallsTab({ season, week, isCurrent }: { season: number; week: number; isCurrent?: boolean; lastPublishedWeek?: number | null }) {
+  return (
+    <>
+      {/* D132: the current week's "Update play calling" (above every state: it's what builds the tables) */}
+      {isCurrent ? <PlaycallUpdateCard season={season} week={week} /> : null}
+      <TabBody season={season} week={week} />
+    </>
+  );
 }

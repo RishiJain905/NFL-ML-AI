@@ -450,7 +450,7 @@ export interface PreflightCheck {
   blocking: boolean; // a `fail` here keeps Run greyed out (Neo4j is warn-only: the run starts it)
 }
 
-export type RunKind = 'weekly' | 'resume' | 'injury_update';
+export type RunKind = 'weekly' | 'resume' | 'injury_update' | 'playcalling_update';
 
 export interface ActionGate {
   allowed: boolean;
@@ -485,7 +485,23 @@ export interface PreflightResponse {
     closes: string | null; // the week's last kickoff (ISO)
     material_last: boolean | null; // the last update's result this week, if one ran
   };
+  // D132: the Play calls tab's "Update play calling" button (`nfl playcalling update --auto
+  // --expect-week N`): allowed once the week's Tuesday run is published, the lock is free and a
+  // step is due; `steps` says what it would do now and why (all five, due or not)
+  playcalling: ActionGate & {
+    steps: PlaycallUpdateStep[];
+  };
   dry_run_log: LogLine[]; // `nfl weekly run --auto --expect-week N --dry-run`'s lines (read-only)
+}
+
+/** One step of `nfl playcalling update` (D132), in run order: Monday night's FTN, the tables, last
+ * week's 4th-down decision review, last week's forecast grade, this week's forecast. */
+export interface PlaycallUpdateStep {
+  step: 'ftn' | 'build' | 'review' | 'grade' | 'forecast';
+  label: string; // "Grade week 4's forecast"
+  due: boolean; // the button runs only the due steps
+  reason: string; // why it's due, or why it's skipped ("week 4 is already reviewed")
+  week: number | null; // the week it's about (review / grade: the week just played; forecast: this week)
 }
 
 /** POST /api/run body. 202 → RunStarted; 409 locked / running; 403 not allowed (with the reason). */
@@ -518,7 +534,7 @@ export interface RunInfo {
   exit_code: number | null;
   message: string | null; // run_end's message (scrubbed)
   published: boolean | null; // the week's digest is published after this run
-  failed_step: StepName | null;
+  failed_step: StepName | PlaycallUpdateStep['step'] | null; // a play-calling update names its own step
   material: boolean | null; // injury update only: an addendum was published (run_end's `material`)
   has_events: boolean; // an events file exists: GET /api/run/stream replays it
   output_tail: string[]; // last lines of the command's output (scrubbed), only when the run ended without a run_end event
@@ -544,7 +560,7 @@ interface EventBase {
 }
 export interface RunStartEvent extends EventBase {
   type: 'run_start';
-  kind: 'weekly' | 'resume' | 'injury_update' | 'rehearsal';
+  kind: 'weekly' | 'resume' | 'injury_update' | 'playcalling_update' | 'rehearsal';
   command: string;
   season: number;
   week: number;
@@ -571,7 +587,7 @@ export interface ProgressEvent extends EventBase {
 export interface StepEndEvent extends EventBase {
   type: 'step_end';
   step: string;
-  status: 'ok' | 'degraded' | 'failed';
+  status: 'ok' | 'degraded' | 'failed' | 'skipped'; // skipped: a play-calling update's step after a failed one
   seconds: number;
   detail: string; // scrubbed; data-root paths made relative by the server
 }
