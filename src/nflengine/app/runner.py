@@ -8,6 +8,7 @@ the command **in code** from three allowed kinds and nothing else:
 | `weekly` | `nfl weekly run --auto --expect-week N` (N = the server's calendar week) |
 | `resume` | `nfl weekly run --season S --week N --from-step X --promote` (X = the failed step) |
 | `injury_update` | `nfl weekly injury-update --auto` |
+| `playcalling_update` | `nfl playcalling update --auto --expect-week N` (D132: what's due) |
 
 Under `nfl app --rehearsal` they become `nfl weekly rehearse --season S --week N --out
 <data root>/rehearsals/control-room [--fresh | --steps <from the failed step>]` instead.
@@ -44,7 +45,7 @@ from nflengine.ops import events as E
 from nflengine.ops.lock import is_locked, lock_path, read_holder
 from nflengine.paths import DataPaths
 
-KINDS = ("weekly", "resume", "injury_update")
+KINDS = ("weekly", "resume", "injury_update", "playcalling_update")
 APP_DIR = ("cache", "control-room")
 REPO_ROOT = Path(__file__).resolve().parents[3]
 TAIL_LINES = 30
@@ -72,7 +73,7 @@ class RunRefused(Exception):
 @dataclass
 class Launch:
     run_id: str
-    kind: str  # weekly | resume | injury_update | rehearsal
+    kind: str  # weekly | resume | injury_update | playcalling_update | rehearsal
     request_kind: str  # the browser's kind
     argv: list[str]  # never leaves the server (absolute paths)
     command: str  # the display form
@@ -116,7 +117,8 @@ def build_launch(
     `RunRefused`. Nothing the browser sent goes into the command."""
     if kind not in KINDS:
         raise RunRefused(
-            "not_allowed", "Unknown kind: the app runs only weekly, resume and injury_update."
+            "not_allowed",
+            "Unknown kind: the app runs only weekly, resume, injury_update and playcalling_update.",
         )
     season, week = preflight.get("season"), preflight.get("week")
     if not isinstance(season, int) or not isinstance(week, int):
@@ -125,12 +127,23 @@ def build_launch(
         "weekly": preflight["run"],
         "resume": preflight["resume"],
         "injury_update": preflight["injury_update"],
+        "playcalling_update": preflight.get("playcalling") or {},
     }[kind]
     if not gate.get("allowed"):
         raise RunRefused("not_allowed", gate.get("reason") or "Not allowed right now.")
     base = [python, "-m", "nflengine.cli", "weekly"]
     tail = ["--app-run", run_id]
     week_dir = paths.run_dir(season, week)
+    if kind == "playcalling_update":  # its own events folder: never the week's Pipeline log
+        if rehearsal:
+            raise RunRefused("not_allowed", "No play-calling update in rehearsal mode.")
+        argv = [
+            python, "-m", "nflengine.cli", "playcalling", "update", "--auto",
+            "--expect-week", str(week), "--launched-by", "rishi", *tail,
+        ]  # fmt: skip
+        shown = f"nfl playcalling update --auto --expect-week {week}"
+        folder = E.events_dir(paths.playcalling / str(season))
+        return Launch(run_id, kind, kind, argv, shown, season, week, folder)
     if rehearsal:
         root = rehearsal_root(paths)
         if kind == "weekly":
@@ -559,6 +572,8 @@ class Runner:
             kind = (
                 "injury_update"
                 if "injury-update" in command
+                else "playcalling_update"
+                if "playcalling update" in command
                 else "resume"
                 if "--from-step" in command
                 else "weekly"
@@ -566,7 +581,11 @@ class Runner:
             root = paths.runs
         f = expected = None
         if season is not None and week is not None and "--as-of" not in command:
-            folder = E.events_dir(root / str(season) / f"week{week:02d}")
+            folder = (
+                E.events_dir(paths.playcalling / str(season))
+                if kind == "playcalling_update"
+                else E.events_dir(root / str(season) / f"week{week:02d}")
+            )
             rid = note.get("run_id")
             if E.valid_run_id(rid):  # the note names its events file exactly
                 expected = folder / f"{rid}.jsonl"

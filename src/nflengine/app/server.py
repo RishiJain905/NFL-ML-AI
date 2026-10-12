@@ -103,7 +103,7 @@ class RunBody(BaseModel):
     """`POST /api/run`: a kind and the browser's expected week, nothing else."""
 
     model_config = ConfigDict(extra="forbid")
-    kind: str = Field(pattern="^(weekly|resume|injury_update)$")
+    kind: str = Field(pattern="^(weekly|resume|injury_update|playcalling_update)$")
     expect_week: int = Field(ge=1, le=22)
 
 

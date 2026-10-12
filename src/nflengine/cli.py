@@ -2116,6 +2116,131 @@ def playcalling_grade(
             console.print(f"W&B: {out['url']}")
 
 
+@playcalling_app.command("update")
+def playcalling_update(
+    season: int | None = typer.Option(None, help="Season (omit with --auto)."),
+    week: int | None = typer.Option(None, help="The week to forecast (omit with --auto)."),
+    auto: bool = typer.Option(
+        False, "--auto", help="The week the calendar is in (the slate about to be played)."
+    ),
+    expect_week: int | None = typer.Option(
+        None,
+        "--expect-week",
+        min=1,
+        max=22,
+        help="With --auto: stop before anything (exit 6) unless the calendar's week is this one "
+        "(the control room's Update play calling button sends it).",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Only list what's due."),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log the steps to W&B."),
+    launched_by: str | None = LAUNCHED_BY,
+    app_run: str | None = APP_RUN,
+) -> None:
+    """Everything due after a weekly run, in order (D132): Monday night's FTN when it's out,
+    the play-calling tables, last week's 4th-down decision review, last week's forecast grade,
+    this week's forecast. Only the due steps run. Holds the weekly-run lock. Exit codes: 0 done
+    (or nothing due), 1 a step failed, 4 another run holds the lock, 5 data drive missing,
+    6 the calendar's week isn't --expect-week."""
+    import datetime as dt
+
+    from rich.markup import escape
+
+    from nflengine.ops import events
+    from nflengine.ops.calendar import load_schedules, plan_week
+    from nflengine.ops.lock import LockHeld, lock_path, run_lock
+    from nflengine.paths import DataRootError, ensure_data_root
+    from nflengine.playcalling import update as U
+    from nflengine.weekly import EXIT_LOCKED, EXIT_NO_DRIVE, EXIT_WEEK_MISMATCH, scrub
+
+    if expect_week is not None and not auto:
+        raise typer.BadParameter("--expect-week only works with --auto")
+    run_id = _app_run(app_run)
+    try:
+        paths = ensure_data_root(create_dirs=expect_week is None)
+    except DataRootError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(EXIT_NO_DRIVE) from None
+    if auto:
+        plan = plan_week(load_schedules(paths))
+        season, week = plan.season, plan.week
+        if expect_week is not None and week != expect_week:  # before any write
+            found = f"week {week}" if week is not None else "no week (offseason)"
+            console.print(
+                f"[red]the calendar's week is {found}, not week {expect_week} (--expect-week): "
+                "nothing was run[/]"
+            )
+            raise typer.Exit(EXIT_WEEK_MISMATCH)
+        if week is None:
+            console.print("offseason: nothing to update")
+            raise typer.Exit(0)
+        if expect_week is not None:
+            paths = ensure_data_root()
+    if season is None or week is None:
+        raise typer.BadParameter("give --season and --week, or --auto")
+    steps = U.plan_update(paths, season, week, dt.datetime.now(dt.UTC))
+    for s in steps:
+        mark = "[green]due[/]" if s.due else "[dim]skip[/]"
+        console.print(f"{mark} {s.step}: {escape(s.label)}: {escape(s.reason)}")
+    if dry_run:
+        return
+    todo = U.due(steps)
+    if not todo:
+        console.print("[green]nothing is due: everything is up to date[/]")
+        return
+    command = f"nfl playcalling update --season {season} --week {week}"
+    rid = run_id or events.new_run_id()
+    started = dt.datetime.now(dt.UTC)
+    try:
+        with (
+            run_lock(lock_path(paths.runs), command, run_id=rid),
+            events.writing(
+                events.events_dir(paths.playcalling / str(season)) / f"{rid}.jsonl", rid
+            ),
+        ):
+            log = events.tee(console.print)  # each console line is also a `log` event (CR02)
+            events.run_start(
+                kind="playcalling_update",
+                command="nfl playcalling update --auto" if auto else command,
+                season=season,
+                week=week,
+                steps=[s.step for s in todo],
+                launched_by=launched_by,
+                via="control-room" if run_id else None,
+                plan=[f"{s.step}: {s.reason}" for s in steps],
+            )
+            results = U.run_update(
+                season,
+                week,
+                steps=steps,
+                use_wandb=not no_wandb,
+                launched_by=launched_by,
+                log=log,
+                paths=paths,
+                on_step=lambda name, label: events.step_start(name),
+                on_step_end=lambda r: events.step_end(r.step, r.status, r.seconds, r.detail),
+            )
+            status, message = U.summary(results)
+            failed = next((r.step for r in results if r.status == "failed"), None)
+            events.run_end(
+                status=status,
+                exit_code=0 if status == "ok" else 1,
+                message=message,
+                failed_step=failed,
+            )
+    except LockHeld as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(EXIT_LOCKED) from None
+    except Exception as e:
+        console.print(
+            f"[red]play-calling update failed: {escape(scrub(f'{type(e).__name__}: {e}'))}[/]"
+        )
+        raise typer.Exit(1) from None
+    took = (dt.datetime.now(dt.UTC) - started).total_seconds()
+    console.print(f"{'[green]' if status == 'ok' else '[red]'}{escape(message)}[/] ({took:.0f} s)")
+    if status != "ok":
+        raise typer.Exit(1)
+
+
 PLACEHOLDERS: dict[str, tuple[str, str]] = {}
 
 

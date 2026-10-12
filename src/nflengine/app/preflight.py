@@ -417,6 +417,7 @@ def get_preflight(
         closes=closes,
         material_last=material,
     )
+    playcalling = playcalling_gate(paths, season, week, now, published=published, busy=busy)
 
     return {
         "checked_at": now,
@@ -439,10 +440,59 @@ def get_preflight(
         },
         "resume": resume,
         "injury_update": injury,
+        "playcalling": playcalling,
         "dry_run_log": _dry_run_log(plan, season, week, lock["held"])
         if plan is not None and week is not None
         else [],
     }
+
+
+def playcalling_gate(
+    paths: DataPaths,
+    season: int | None,
+    week: int | None,
+    now: dt.datetime,
+    *,
+    published: bool,
+    busy: bool,
+) -> dict[str, Any]:
+    """The Play calls tab's **Update play calling** button (D132): what
+    `nfl playcalling update --auto` would do now (`steps`: each with `due` and why), allowed
+    once the week's Tuesday run is published, nothing holds the lock, and a step is due."""
+    if season is None or week is None:
+        return _gate(False, "No week in the calendar.", None, steps=[])
+    from nflengine.playcalling.update import due, plan_update
+
+    try:
+        steps = plan_update(paths, season, week, now)
+    except Exception:  # noqa: BLE001 - a damaged file never breaks the pre-flight
+        steps = []
+    todo = due(steps)
+    if not published:
+        reason: str | None = f"Needs this week's Tuesday run first (Run week {week})."
+    elif busy:
+        reason = "A run is in progress."
+    elif not steps:
+        reason = "Couldn't read the play-calling files."
+    elif not todo:
+        reason = "Everything is up to date."
+    else:
+        reason = None
+    return _gate(
+        reason is None,
+        reason,
+        f"nfl playcalling update --auto --expect-week {week}",
+        steps=[
+            {
+                "step": x.step,
+                "label": clean(x.label, paths, 120),
+                "due": x.due,
+                "reason": clean(x.reason, paths, 240),
+                "week": x.week,
+            }
+            for x in steps
+        ],
+    )
 
 
 def rehearsal_target(
@@ -551,5 +601,6 @@ def _rehearsal_preflight(
         "injury_update": _gate(
             False, "Not in rehearsal mode.", None, opens=None, closes=None, material_last=None
         ),
+        "playcalling": _gate(False, "Not in rehearsal mode.", None, steps=[]),
         "dry_run_log": [],
     }

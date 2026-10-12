@@ -1833,7 +1833,16 @@ def test_the_existing_endpoints_answer_the_same_with_the_play_calling_tables_pre
     for url in urls:
         ra, rb = a.get(url), b.get(url)
         assert ra.status_code == rb.status_code == 200, url
-        assert ra.json() == rb.json(), url  # parsed: one existing reader orders a dict at random
+        ja, jb = ra.json(), rb.json()
+        if url == "/api/preflight":
+            # D132: the pre-flight gained the "Update play calling" gate, which reads the
+            # play-calling files, so it (and only it) may differ; every CR gate stays the same
+            pa, pb = ja.pop("playcalling"), jb.pop("playcalling")
+            assert pa["steps"] != pb["steps"], "the gate reads the play-calling tables"
+        for j in (ja, jb):  # the Neo4j probe stamps the wall clock; two calls can straddle a second
+            if isinstance(j.get("neo4j"), dict):
+                j["neo4j"].pop("checked_at", None)
+        assert ja == jb, url  # parsed: one existing reader orders a dict at random
     # a typo is still a JSON 404 from the catch-all, and the real tabs still answer
     assert b.get("/api/weeks/2026/5/nonsense").status_code == 404
 
