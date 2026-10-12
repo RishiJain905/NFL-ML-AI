@@ -388,7 +388,7 @@ Three checks on real plays, through the week the tab shows:
 
 ### 10.7 The W&B run
 
-`nfl live review --wandb` logs one **`decision-review`** run per week (group `live-decisions`, tags `season:S`, `week:NN`, `ld03`, `in-sample` for a training season): the week's decisions table, the five costliest, the season's leaderboard, the calibration chart, the conversion chart, the field-goal table, the go rate by week, and scalars `week/*` and `season/*`. The W&B guide §6.8 has every panel and what to look for. `--smoke` sends a check run to the group `live-decisions-smoke`.
+**Since D132 the week's review is written by the control room's Update play calling button** (the Play calls tab, after Tuesday's run: it runs `nfl live review --season S --week <the week just played> --wandb` when the week hasn't been reviewed yet, with the play-calling steps); the command still works on its own. `nfl live review --wandb` logs one **`decision-review`** run per week (group `live-decisions`, tags `season:S`, `week:NN`, `ld03`, `in-sample` for a training season): the week's decisions table, the five costliest, the season's leaderboard, the calibration chart, the conversion chart, the field-goal table, the go rate by week, and scalars `week/*` and `season/*`. The W&B guide §6.8 has every panel and what to look for. `--smoke` sends a check run to the group `live-decisions-smoke`.
 
 ### 10.8 How it's wired
 

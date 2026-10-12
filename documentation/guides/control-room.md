@@ -171,7 +171,7 @@ Beside the checks: **Run week N** (greyed out with the reason while a blocking c
 
 **Rehearsal mode** (`uv run nfl app --rehearsal`): a banner says so, and the Run button **rehearses the newest published week** (`nfl weekly rehearse --season 2026 --week 4 --out rehearsals/control-room --fresh`: `ready`, `game`, `player`, `digest` with the clock pinned to that week's Tuesday, the placeholder writer, no W&B, no graph write, no records; ingest, curate, ratings and graph show as skipped). The current week can't be rehearsed before its previous week is in the data, which is why it's a past week. `--fail-at <step>` (a hidden option, rehearsal mode only) makes the first rehearsal fail at that step on purpose, to try the failure banner and Resume (a rehearsal resume runs `--steps <that step onward>`). The rehearsal's result shows in its own card ("The rehearsal"); its files stay in the rehearsal folder, not in the archive.
 
-**What stays in the terminal:** re-running a published week, `--force`, `--as-of`, graph rebuilds, resumes of older weeks, deletes. The app runs exactly three commands (§4b).
+**What stays in the terminal:** re-running a published week, `--force`, `--as-of`, graph rebuilds, resumes of older weeks, deletes. The app runs exactly four commands (§4b): the weekly run, a resume, the Saturday injury update, and the Play calls tab's **Update play calling** (§2f, D132).
 
 ## 2c. The MLOps tab (CR03)
 
@@ -242,6 +242,11 @@ How each team calls plays, drawn like a playbook (the Play calling track, D108's
 - **Reads:** `playcalling/<season>/build.json`, `team_tendencies.parquet`, `team_game_tendencies.parquet` (written by `nfl playcalling build`, runbook → Play calling tables), curated `games`; since PC02 also `playcalling/<season>/week<NN>/forecast.parquet` + `forecast.json` (`nfl playcalling forecast`), `playcalling/<season>/playcall_scoreboard.parquet` (`nfl playcalling grade`) and `models/playcall/production.json` + the version's `params.json` (each target's backtest record; the version string is checked before it names a folder). Only shipped targets are shown.
 - **Endpoints:** `GET /api/playcalling/teams?season=`, `/api/playcalling/teams/{team}?season=&side=`, `/api/playcalling/teams/{team}/history?side=`, `/api/weeks/{season}/{week}/play-calls` (`src/nflengine/app/readers/playcalling.py`).
 - **Writes:** nothing. **Calls out:** nothing. A page whose tables aren't built says so and names the command.
+- **The Update play calling button (D132)**, at the top of the current week's Play calls tab: it runs `nfl playcalling update --auto --expect-week N` through the runner (the fourth kind, built in code), which does only what's due, in order: Monday night's FTN refresh (once it's out, ~2 days after the game), the play-calling tables, last week's 4th-down decision review, last week's forecast grade, this week's forecast. The card lists all five with the reason each will run or not (pre-flight's `playcalling` gate); greyed out until the week's Tuesday run is published ("Run week N first"), while another run holds the lock, or when everything is up to date. A confirm dialog, then the steps tick off live from the run's events (its own file under `playcalling/<S>/events/`, so the Pipeline tab's log stays the week run's), and a toast when it ends; the tab's forecasts and grades refresh. It holds the weekly lock, so Run week N and the Saturday update wait for it (and it for them). Press it on Tuesday after **Run week N**, and again on Wednesday afternoon for Monday night's FTN.
+
+  ![The Update play calling card on 2026 week 5, everything up to date](img/playcalling-update.png)
+
+  ![The card while an update runs (the mockup's synthetic run)](img/playcalling-update-running.png)
 
 ## 3. Themes and modes
 
@@ -264,7 +269,7 @@ flowchart LR
     A --> L[The run lock<br/>runs/.weekly.lock]
     A -. every 30 s .-> N[Neo4j ping]
     B -- "POST /api/run + token" --> A
-    A --> X[Runner: 3 commands,<br/>built in code]
+    A --> X[Runner: 4 commands,<br/>built in code]
     X -- "python -m nflengine.cli weekly ...<br/>detached" --> P[The pipeline<br/>as at the terminal]
     P -- "events/&lt;run-id&gt;.jsonl" --> D
     A -- "GET /api/run/stream (SSE)<br/>tails the events file" --> B
@@ -289,7 +294,7 @@ flowchart LR
 | `readers/results.py` | The Results tab (D101) |
 | `readers/graph.py` | The Graph tab |
 | `preflight.py` (CR02) | The pre-flight checks, the gates for Run / Resume / the injury update, the dry run's log (built from the calendar's plan, no command) |
-| `runner.py` (CR02) | Builds the command for one of three kinds from the server's own pre-flight, starts it detached, keeps a record, finds the current run after a reload or a restart (§4b) |
+| `runner.py` (CR02) | Builds the command for one of four kinds (D132 added `playcalling_update`) from the server's own pre-flight, starts it detached, keeps a record, finds the current run after a reload or a restart (§4b) |
 | `stream.py` (CR02) | `GET /api/run/stream`: tails the run's events file as server-sent events |
 | `wandb_api.py` (CR03) | The cached, read-only W&B reads (§4c): the week's runs, the artifact versions, a run's used artifacts, the ratings evaluation |
 | `health.py` (CR03) | The Health page: the doctor's checks on a background thread, variables by name, recent runs |
@@ -454,7 +459,7 @@ The app can't be reached from other computers, and other websites open in your b
 - **Adding a model card:** add its file to `CARDS` in `readers/models.py` (id → title, path under `documentation/`) and to the model's `_cards(...)`; the browser only ever sends the id.
 - **Reviews:** CR00 had a Sol review (8 findings, all fixed, D98), CR01 too (7 findings, all fixed, D102), CR02 too (D104), CR03 too (D106), and LD02's Game day tab too (D119), and LD03's decision review (D121). Each phase got one before its close.
 - **Adding an outbound call:** don't, outside Game day. Game day's ESPN calls go only through `nflengine.live.espn.EspnClient` (the one allowlisted host), are triggered by a click or the 30 s list, and their GETs refuse cross-site requests; a new kind of call needs the live-decisions spec (README §5), a decision and a Sol review.
-- **Changing what the app can run:** don't, without Rishi. The three kinds are the allowlist (README §5.3); a new kind needs the spec, a decision, the gate in `preflight.py`, the argv in `runner.build_launch`, tests that every other shape is refused, and a Sol review.
+- **Changing what the app can run:** don't, without Rishi. The four kinds are the allowlist (README §5.3); a new kind needs the spec, a decision, the gate in `preflight.py`, the argv in `runner.build_launch`, tests that every other shape is refused, and a Sol review.
 - **Gates before a commit:** `uv run pytest`, `uv run ruff check`, and in `web/`: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`.
 - **Never** add an endpoint that takes a file path or a command, never send a key or an environment value to the browser, and never make the server listen on anything but 127.0.0.1 (README §5).
 

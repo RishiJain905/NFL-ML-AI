@@ -38,6 +38,7 @@ It's its own track, **CR00–CR03**, not a P phase. It was promoted from [STRETC
 | Before running | A **pre-flight** panel. While something is wrong, the Run button is greyed out with the reason and a "Check again" button. A **confirm dialog** names the week, last week's status, the deadline and what gets published |
 | Repairs | "Resume from <step>" only for the **current week's failed run**, from the step that failed. Re-running a published week, `--force`, `--as-of` and graph rebuilds stay in the terminal |
 | Saturday | A **Saturday injury update** button (`nfl weekly injury-update --auto`), greyed out until the week's Tuesday run exists |
+| After the run | An **Update play calling** button on the current week's Play calls tab (`nfl playcalling update --auto`, D132): Monday night's FTN when it's out, the play-calling tables, last week's 4th-down decision review and forecast grade, this week's forecast; only what's due, greyed out until the week's Tuesday run exists |
 | Themes | **Turf & Pylon** (field green, end-zone pylon orange) and **Playbook** (whiteboard by day, chalkboard by night), each with a dark and a light mode, plus "System". Chosen under the gear next to "Control Room" and saved in the browser. Floodlight and Sideline Tablet were shown and dropped |
 | Pipeline views | All three stay: **Drive chart** (each step is a play, the digest is the touchdown, run records are the extra point, a failure is a fumble), **Pipeline map** (sources flow through the steps; files and W&B artifacts appear as each finishes), **Timeline** (a bar per step). Picked on each week's Pipeline tab and remembered per week, with **"Surprise me"** |
 | Week tabs | Pipeline · Digest · Games · Players · Results · **MLOps** · Graph. The current week is first; earlier weeks stay as a track record |
@@ -136,7 +137,7 @@ flowchart LR
 | `GET /api/weeks/{season}/{week}/mlops/{health,wandb,artifacts}` | The MLOps sections |
 | `GET /api/season/{season}/scorecard?source=live\|backtest`, `/api/teams`, `/api/models`, `/api/alerts`, `/api/health` | Season and system pages |
 | `GET /api/preflight` | The checks and whether Run is allowed, with reasons |
-| `POST /api/run` | `{"kind": "weekly" \| "resume" \| "injury_update", "expect_week": N}`; needs the launch token |
+| `POST /api/run` | `{"kind": "weekly" \| "resume" \| "injury_update" \| "playcalling_update", "expect_week": N}`; needs the launch token |
 | `GET /api/run/current`, `GET /api/run/stream` (SSE) | The run in progress (also after a page reload) and its live events |
 
 Season and week are validated integers. **No endpoint takes a file path.**
@@ -147,10 +148,11 @@ These sit on top of the Security section of `CLAUDE.md`, which always wins.
 
 1. **Localhost only.** Bind to `127.0.0.1`, never `0.0.0.0`. `nfl app` refuses any other host. Requests whose `Host` header isn't `127.0.0.1:<port>` or `localhost:<port>` are rejected, which blocks DNS-rebinding tricks from other websites.
 2. **Changes need the launch token.** `POST` endpoints need a token generated when `nfl app` starts and handed to the page, plus a matching `Origin`. No CORS, except the Vite dev origin under `--dev`.
-3. **Three commands, built in code.** The browser sends a kind, never a command line:
+3. **Four commands, built in code.** The browser sends a kind, never a command line:
    - `weekly` → `nfl weekly run --auto --expect-week N`. N is the server's own calendar week, and the browser's `expect_week` must match it.
    - `resume` → `nfl weekly run --season S --week N --from-step X`. Only when the calendar's current week has a last run that failed, and X is that run's failed step.
    - `injury_update` → `nfl weekly injury-update --auto`. Only once the week's Tuesday run exists; the button opens on Saturday (ET) until the week's last kickoff.
+   - `playcalling_update` → `nfl playcalling update --auto --expect-week N` (D132). Only once the week's Tuesday run exists and a step is due; never in rehearsal mode.
    - Under `--rehearsal`, `nfl weekly rehearse --season S --week N --out <scratch>` instead.
    - Nothing else: no `--force`, `--as-of`, re-runs of a published week, graph rebuilds or deletes from the app.
 4. **Secrets stay on the server.**

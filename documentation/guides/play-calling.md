@@ -142,7 +142,7 @@ uv run nfl playcalling build --season 2026 --no-wandb            # no W&B run
 
 It prints one line per season (plays, as-of weeks, tendency rows, FTN and participation join rates, seconds), a summary table, the games still waiting for FTN, and the W&B link. A season takes under a second to compute; the whole 2016–2026 history took 22 seconds end to end on 2026-10-10, W&B run included.
 
-**The weekly refresh (D122, Rishi chose a runbook line, not a button or a weekly-run step):**
+**The weekly refresh: one button since D132.** The control room's **Update play calling** button (the current week's Play calls tab) runs `nfl playcalling update --auto`, which does what's due: on Tuesday after the weekly run the build (with last week's decision review, forecast grade and this week's forecast, §9.3), on Wednesday afternoon Monday night's FTN refresh and the build again. The commands below are what it runs, still there for the terminal (PC00 chose a runbook line, D122; Rishi asked for the button on 2026-10-11):
 - **Tuesday, after the weekly run:** `uv run nfl playcalling build --season 2026`. The weekly run has just refreshed the curated data; FTN has every game of the week just played except Monday night's (which the as-of tables wouldn't count yet anyway: §4).
 - **Wednesday after 13:00 ET (or Thursday):** pick up Monday night's FTN, then rebuild:
   ```bash
@@ -362,6 +362,24 @@ Then a **range** that holds 80% of games: the game's sampling noise (about 60 pl
 The forecast beats "the team's season-to-date rate" in every season of the 2019–2025 backtest for every target, but by 3–7% on most (28% on middle runs, 11% on outside runs). That's the ceiling the noise allows: on PROE, 8.8 of a game's 10 points of spread is sampling noise, so no forecast can get a game's PROE within a couple of points. What the forecast fixes is the early season: in weeks 1–4 its error on dropback rate is 7.97 points against season-to-date's 9.35; by week 11 the two are 7.92 vs 8.27. **Read a forecast with its range:** "PIT's PROE −1.4 (range −12.7 to +9.3), +5.1 so far" says PIT will probably throw a bit less than its first three games suggested, not that it will throw exactly −1.4.
 
 ### 9.3 Running it
+
+**From the app (D132):** press **Update play calling** on the current week's Play calls tab, on Tuesday after **Run week N** and again on Wednesday afternoon. It runs `nfl playcalling update --auto`, which works out what's due and runs only that: Monday night's FTN refresh (once it's out), the tables, last week's 4th-down decision review, the grade of last week's forecast, this week's forecast. The card lists each step with the reason it will or won't run; the steps tick off live, and the tab refreshes when it's done. The same from a terminal: `uv run nfl playcalling update --auto` (`--dry-run` lists what's due).
+
+![The Update play calling card on 2026 week 5 after the first real run: every step not due, each with its reason](img/playcalling-update.png)
+
+![The card during a run (the mockup's synthetic events): FTN done, the build running, the grade waiting, the last log lines](img/playcalling-update-running.png)
+
+When each step is due (`playcalling/update.py`, `plan_update`; the button greys out when none is):
+
+| Step | Due when | Typical day |
+|---|---|---|
+| **Refresh FTN charting** | an earlier game the tables list without FTN (`build.json → coverage.games_without_ftn`) kicked off **30 h or more** ago, and **less than a week** ago (FTN lands 35–51 h after a game; a game still without it after a week never gets it, so the button stops asking and its plays count without FTN). It pulls this season's FTN only and fails unless this season's file came (a "partial" pull doesn't count) | Wednesday afternoon (Monday night's game) |
+| **Build the play-calling tables** | no tables yet, they don't reach this week, the curated plays are newer than the last build, or FTN was just refreshed | Tuesday, Wednesday |
+| **4th-down decision review** | last week has no `decision_review.json` yet | Tuesday |
+| **Grade last week's forecast** | last week has a forecast and any row is still waiting (`waiting_ftn`, `waiting_build`, `not_played`), the forecast was re-made after the grade, the tables are newer than the grade (`graded_at` before `build.json`'s `built_at`: so a re-grade that failed after a rebuild is due again), or the tables are being rebuilt in this run | Tuesday, Wednesday |
+| **Forecast this week** | a model is in production and there's no forecast yet, or the tables are newer than it and **none of the week's games has kicked off** (a forecast is never re-made after a kickoff; checked again right before the step runs, so a press minutes before Thursday's kickoff that reaches the forecast after it keeps the saved one) | Tuesday |
+
+A failed FTN refresh or build skips the steps that need its output; a failed decision review or grade doesn't stop the rest. The card's end notice and toast call a run "updated" only when it ended with its own `run_end` ok (or found nothing due); a refusal (the lock, a changed week), a missing drive or an end the app didn't see says so instead. The run holds the weekly-run lock (it can re-curate), so it can't overlap a weekly run, a resume or the Saturday injury update, and the Run button can't start while it goes. Its log is `playcalling/<S>/events/<run id>.jsonl`, not the week's Pipeline log. The first real run (2026-10-11, from a terminal, week 5): FTN refresh (ATL at NO's charting had landed), build, re-grade of week 4, 18 seconds; afterwards nothing was due. The single commands:
 
 ```bash
 uv run nfl playcalling forecast --season 2026 --week 6     # Tuesday, after `nfl playcalling build`

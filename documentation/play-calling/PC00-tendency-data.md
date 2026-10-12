@@ -73,7 +73,7 @@ Everything is as of a week, so the same tables serve the pages, the forecast's f
 
   Also decide whether a Wednesday / Thursday rebuild is worth it to pick up FTN's late games. Log the decision.
 
-  **Decided (Rishi, 2026-10-10): (a), a runbook line**, plus a Wednesday rebuild after 13:00 ET with an FTN-only refresh, because the probe showed Tuesday's FTN misses Monday night's game (D122).
+  **Decided (Rishi, 2026-10-10): (a), a runbook line**, plus a Wednesday rebuild after 13:00 ET with an FTN-only refresh, because the probe showed Tuesday's FTN misses Monday night's game (D122). **Superseded on 2026-10-11 (D132):** Rishi asked for (b) after all, wider: one **Update play calling** button that runs every post-run step that's due (FTN, the build, the decision review, PC02's grade and forecast).
 
 ### Docs and close
 - [x] 🤖 Guide `documentation/guides/play-calling.md`:
