@@ -1,0 +1,119 @@
+/* PC03: the diagram player (mockup: documentation/play-calling/mockup/playcalling.css, the PC03 block).
+   The field is drawn in yards (1 SVG unit = 1 yard), x to the right, y down. Offense --s1, defense --s2;
+   a measured player is a filled dot, an approximate one a hollow dashed ring. Tokens only. */
+.pdcard { overflow: hidden; }
+.pdcard > * { margin: 0; }
+.pdreal { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.pdreal.real { background: var(--raised); }
+.pdreal .grow { flex: 1; min-width: 140px; }
+.pdwait { padding: 28px 12px; text-align: center; }
+.pdreal .seg .exn { padding: 5px 10px; font-size: 12.5px; border-left: 1px solid var(--line); }
+.pdreal .seg .exn + button { border-left: 1px solid var(--line); }
+.pdreal .seg button[disabled]:not(.exn) { opacity: .45; cursor: default; }
+/* the label: always on, the first thing over the field */
+.pdlabel { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; padding: 8px 12px; font-size: 13px; color: var(--ink);
+  background: repeating-linear-gradient(135deg, var(--raised) 0 8px, var(--panel) 8px 16px); border-bottom: 1px dashed var(--line-2); }
+.pdlabel .ic { color: var(--ink-2); }
+.pdlabel.real { background: color-mix(in srgb, var(--s3) 10%, var(--panel)); border-bottom: 1px solid color-mix(in srgb, var(--s3) 45%, transparent); }
+.pdlabel.real .ic { color: var(--s3); }
+.pdlabel .standin { flex-basis: 100%; font-size: 12px; color: var(--warn); font-weight: 600; }
+.pdfield { background: var(--field); line-height: 0; }
+.pdfield svg { display: block; width: 100%; height: auto; max-height: 66vh; margin: 0 auto; }
+.pdturf { fill: var(--field); }
+.pdturf2 { fill: var(--field-2); }
+.pdez { fill: color-mix(in srgb, var(--s1) 16%, var(--field)); }
+.pdyl { stroke: var(--chalk); stroke-width: .12; opacity: .55; }
+.pdyl.goal { stroke-width: .3; opacity: .9; }
+.pdtk { stroke: var(--chalk); stroke-width: .1; opacity: .45; }
+.pdside { stroke: var(--chalk); stroke-width: .35; }
+.pdno { fill: var(--chalk); opacity: .5; font-family: var(--font-display); font-weight: 700; font-size: 2.6px; }
+.pdlos { stroke: var(--chalk); stroke-width: .32; }
+.pdfd { stroke: var(--warn); stroke-width: .32; stroke-dasharray: 1 .6; }
+.pdlt { fill: var(--chalk); font-family: var(--font-display); font-weight: 700; font-size: 1.5px; letter-spacing: .04px; }
+.pdlt.fd { fill: var(--warn); }
+.pdwm { fill: var(--chalk); opacity: .75; font-family: var(--font-display); font-weight: 700; font-size: 1.5px; letter-spacing: .06px; }
+.pdah, .pdahs { fill: var(--chalk); }
+.pdtr { fill: none; stroke-width: .22; stroke-linecap: round; stroke-linejoin: round; opacity: .7; }
+.pdtr.o { stroke: var(--s1); }
+.pdtr.d { stroke: var(--s2); }
+.pdtr.ap { stroke-dasharray: .7 .5; }
+.pdmk { fill: none; stroke: var(--chalk); stroke-linecap: round; stroke-linejoin: round; }
+.pdmk.motion { stroke-width: .24; stroke-dasharray: .8 .5; }
+.pdmk.fake { stroke-width: .2; stroke-dasharray: .4 .4; opacity: .8; }
+.pdmk.lane { stroke-width: .55; }
+.pdmk.run { stroke-width: .32; }
+.pdmk.run.ap { stroke-dasharray: 1 .6; }
+.pdmk.throw { stroke-width: .3; }
+.pdmk.throwg { stroke-width: .12; stroke-dasharray: .3 .5; opacity: .45; }
+.pdmt { fill: var(--chalk); font-size: 1.25px; font-weight: 600; paint-order: stroke; stroke: var(--field); stroke-width: .35px; stroke-linejoin: round; }
+.pdmt.strong { font-weight: 700; font-size: 1.35px; }
+.pdho circle { fill: none; stroke: var(--chalk); stroke-width: .2; }
+.pdp { stroke-width: .16; }
+.pdp.o { fill: var(--s1); stroke: var(--panel); }
+.pdp.d { fill: var(--s2); stroke: var(--panel); }
+.pdp.ap { fill: var(--field); stroke-dasharray: .45 .3; stroke-width: .24; }
+.pdp.ap.o { stroke: var(--s1); }
+.pdp.ap.d { stroke: var(--s2); }
+.pdpl { font-family: var(--font-display); font-weight: 700; font-size: 1.02px; fill: var(--panel); pointer-events: none; }
+.pdpl.ap.o { fill: var(--s1); }
+.pdpl.ap.d { fill: var(--s2); }
+.pdrush { fill: none; stroke: var(--s2); stroke-width: .2; opacity: .85; }
+.pdtgt { fill: none; stroke: var(--chalk); stroke-width: .22; stroke-dasharray: .55 .35; }
+.pdcar { fill: none; stroke: var(--chalk); stroke-width: .3; }
+.pdball { fill: var(--ball); stroke: var(--chalk); stroke-width: .12; }
+.pdbs { fill: var(--ink); opacity: .25; }
+.pdx path { fill: none; stroke: var(--err); stroke-width: .45; stroke-linecap: round; }
+.pdx path.burst { fill: var(--err); stroke: var(--panel); stroke-width: .12; }
+.pdtag line { stroke: var(--chalk); stroke-width: .1; opacity: .7; }
+.pdtag rect { fill: var(--panel); stroke: var(--line-2); stroke-width: .1; }
+.pdtag.bad rect { stroke: var(--err); stroke-width: .16; }
+.pdtag text { fill: var(--ink); font-size: 1.45px; font-weight: 600; }
+.pdctl { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px 2px; }
+.pdbtns { display: flex; gap: 5px; }
+.pdbtns .iconbtn.play { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.pdscrub { position: relative; padding-bottom: 10px; }
+.pdscrub input { width: 100%; accent-color: var(--accent); margin: 0; }
+.pdticks { position: absolute; left: 8px; right: 8px; bottom: 0; height: 10px; }
+.pdtick { position: absolute; top: 0; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 50%; border: 1.5px solid var(--ink-3); background: var(--panel); padding: 0; cursor: pointer; }
+.pdtick.on { background: var(--ink); border-color: var(--ink); }
+.pdtime { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.pdphase { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 4px 12px 10px; font-size: 13.5px; font-weight: 600; min-height: 1.6em; }
+.pdpn { font-size: 11.5px; color: var(--ink-3); font-weight: 500; }
+.pdlegend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 8px 12px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--ink-2); }
+.pdlegend span { display: inline-flex; align-items: center; gap: 5px; }
+.lg-dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; box-sizing: border-box; }
+.lg-dot.o { background: var(--s1); }
+.lg-dot.d { background: var(--s2); }
+.lg-dot.ap { border: 1.5px dashed var(--ink-2); background: transparent; }
+.lg-ring { width: 13px; height: 13px; border-radius: 50%; display: inline-block; box-sizing: border-box; }
+.lg-ring.rush { border: 2px solid var(--s2); }
+.lg-ring.tgt { border: 2px dashed var(--ink-2); }
+.lg-ring.car { border: 2.5px solid var(--ink-2); }
+.lg-line { width: 18px; height: 0; display: inline-block; border-top: 2.5px solid var(--ink-2); }
+.lg-line.fd { border-top: 2.5px dashed var(--warn); }
+.lg-line.ap { border-top: 2px dashed var(--ink-2); }
+.pdnote { padding: 0 12px 10px; font-size: 12px; }
+.pdinfo { border-top: 1px solid var(--line); padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.pdhead { display: flex; flex-direction: column; gap: 4px; }
+.pdh1 { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 15px; }
+.pdh1 b { font-family: var(--font-display); font-size: 19px; }
+.pdh2 { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-size: 14px; }
+.pdkau { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.pdkau h4 { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 6px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pdkau h4 small { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--ink-3); }
+.pdkau ul { margin: 0; padding-left: 16px; font-size: 12.5px; color: var(--ink-2); display: flex; flex-direction: column; gap: 3px; }
+.kk { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; box-sizing: border-box; }
+.kk.kn { background: var(--ink-2); }
+.kk.ap { border: 1.5px dashed var(--ink-2); }
+.kk.un { border: 1.5px solid var(--line-2); background: repeating-linear-gradient(135deg, var(--line-2) 0 2px, transparent 2px 4px); }
+.pdsrc { margin: 0; font-size: 11.5px; }
+.pdlabel { flex-wrap: nowrap; align-items: flex-start; }
+.pdlabel b { flex: 1; min-width: 0; }
+@media (max-width: 1100px) {
+  .pdkau { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .pdctl { grid-template-columns: auto minmax(0, 1fr); }
+  .pdtime { display: none; }
+  .pdfield svg { max-height: none; }
+}

@@ -1,0 +1,57 @@
+/* PC03: the play browser on a team page (mockup: documentation/play-calling/mockup/playcalling.css,
+   the PC03 block). Tokens only. */
+.pbbody { display: flex; flex-direction: column; gap: 14px; }
+.pbweek { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pbweek select { max-width: 100%; }
+.pbweek .seg button { font-size: 16px; line-height: 1; padding: 4px 11px; }
+.pbweek .seg button[disabled] { color: var(--ink-3); opacity: .5; cursor: default; }
+.pbcount { margin-left: auto; font-size: 13px; color: var(--ink-2); }
+.pbcount b { color: var(--ink); }
+.pbfilters { display: flex; flex-direction: column; gap: 6px; }
+.pbfg { display: grid; grid-template-columns: 74px minmax(0, 1fr); align-items: baseline; gap: 8px; }
+.pbchips { display: flex; flex-wrap: wrap; gap: 5px; }
+.pbchip { border: 1px solid var(--line-2); background: var(--panel); color: var(--ink-2); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+.pbchip:hover { background: var(--raised); color: var(--ink); }
+.pbchip[aria-pressed="true"] { background: var(--accent-wash); border-color: var(--accent); color: var(--ink); font-weight: 600; }
+.pbclear { align-self: flex-start; font: inherit; font-size: 12.5px; margin-left: 82px; border: 0; background: none; padding: 0; color: var(--accent-ink); cursor: pointer; }
+.pbclear:hover { text-decoration: underline; }
+.pbintro { margin: 0; font-size: 13px; }
+.pbgrid { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.2fr); gap: 16px; align-items: start; }
+.pbleft { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.pbright { min-width: 0; position: sticky; top: 12px; }
+.pblib { margin: 0; font-size: 12.5px; }
+.pbempty { padding: 28px 16px; }
+.pbempty .glyph { font-size: 34px; }
+.pbempty h3 { font-size: 19px; }
+.plist { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--r); max-height: min(78vh, 900px); overflow-y: auto; }
+.plist li + li { border-top: 1px solid var(--line); }
+.prow { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; border: 0; background: var(--panel); color: var(--ink); padding: 8px 10px 8px 12px; cursor: pointer; font: inherit; position: relative; }
+.prow:hover { background: var(--raised); }
+.prow.on { background: var(--accent-wash); }
+.prow.on::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--accent); }
+.prow:focus-visible { outline-offset: -2px; }
+.pr1 { display: flex; align-items: baseline; gap: 4px 9px; flex-wrap: wrap; font-size: 13px; }
+.pq { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-3); min-width: 72px; }
+.pdd { font-weight: 600; }
+.psp { font-size: 12px; }
+.pch { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.chip.pbt { font-size: 10.5px; padding: 0 6px; line-height: 17px; }
+.pres { margin-left: auto; font-size: 12.5px; color: var(--ink-2); text-align: right; }
+.prow.fd .pres { color: var(--ink); font-weight: 600; }
+.pepa { font-size: 12px; color: var(--ink-2); min-width: 54px; text-align: right; }
+.pepa small { font-size: 9.5px; color: var(--ink-3); margin-left: 2px; letter-spacing: .04em; }
+.pr2 { font-size: 12px; color: var(--ink-3); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pddesc { margin: 2px 0 0; font-size: 13px; color: var(--ink-2); border-left: 3px solid var(--line-2); padding-left: 10px; }
+@media (max-width: 1100px) {
+  .pbgrid { grid-template-columns: minmax(0, 1fr); }
+  .pbright { position: static; }
+  .plist { max-height: 420px; }
+}
+@media (max-width: 640px) {
+  .pbfg { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .pbclear { margin-left: 0; }
+  .pbcount { margin-left: 0; flex-basis: 100%; }
+  .pq { min-width: 0; }
+  .pres { margin-left: 0; flex-basis: 100%; text-align: left; }
+  .pepa { min-width: 0; text-align: left; }
+}

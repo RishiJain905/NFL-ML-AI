@@ -4,6 +4,7 @@
 // goes; Week by week; and History 2023-2025 (research data), fetched only when opened. PC02: the
 // Next game card (the forecast of this team's calls and the opponent's in the next matchup, or the
 // command that makes it) after the summary, and "How the forecast has done" after Week by week.
+// PC03: Plays (the play browser and the diagram player), before History, fetched only when opened.
 
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
@@ -26,6 +27,7 @@ import { WINDOW_LABEL, allowedNote, cellTip, fmtRate, perWord, rateDomain, readS
 import { PageError } from '../season/common';
 import { ExploreHeader, FtnWaiting, PlaycallEmpty, PlaycallLoading, SeasonSwitch } from './common';
 import { NextGameCard, RecordCard } from './forecast';
+import { PlayBrowser } from './PlayBrowser';
 import { asOfText, emptyTitle, seasonParam } from './text';
 
 const WINDOWS: PlaycallWindow[] = ['season', 'last4', 'last_season'];
@@ -376,6 +378,7 @@ function TeamBody({ r, nick }: { r: PlaycallTeamResponse; nick: string }) {
       <BallGoes r={r} win={win} />
       <Weekly r={r} />
       <RecordCard r={r} />
+      <PlayBrowser team={r.team} season={r.season} side={r.side} />
       <History team={r.team} side={r.side} />
       {r.notes.length ? (
         <div className="foot">

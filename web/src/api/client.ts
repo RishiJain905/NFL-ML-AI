@@ -20,6 +20,9 @@ import type {
   PipelineResponse,
   PlayCallsResponse,
   PlaycallHistoryResponse,
+  PlaycallPlaysResponse,
+  PlayDiagramResponse,
+  RealClipResponse,
   PlaycallSide,
   PlaycallTeamResponse,
   PlaycallTeamsResponse,
@@ -433,6 +436,80 @@ export function usePlaycallTeam(team: string, side: PlaycallSide, season?: numbe
     enabled: /^[A-Z]{2,3}$/.test(team),
     staleTime: PLAYCALL_STALE_MS,
     refetchOnWindowFocus: false,
+  });
+}
+
+export interface PlaycallPlaysQuery {
+  season?: number;
+  week?: number | null; // null / undefined: the newest week with plays
+  down?: number | null;
+  type?: string | null;
+  result?: string | null;
+}
+
+/** PC03: the play browser's list for one week; fetched only when the browser is open. */
+export function usePlaycallPlays(
+  team: string,
+  side: PlaycallSide,
+  query: PlaycallPlaysQuery = {},
+  enabled = true,
+) {
+  const params = new URLSearchParams({ side });
+  if (query.season) params.set('season', String(query.season));
+  if (query.week) params.set('week', String(query.week));
+  if (query.down) params.set('down', String(query.down));
+  if (query.type) params.set('type', query.type);
+  if (query.result) params.set('result', query.result);
+  return useQuery({
+    queryKey: [
+      'playcalling',
+      'plays',
+      team,
+      side,
+      query.season ?? 'newest',
+      query.week ?? 'newest',
+      query.down ?? null,
+      query.type ?? null,
+      query.result ?? null,
+    ],
+    queryFn: () =>
+      apiGet<PlaycallPlaysResponse>(
+        `/api/playcalling/teams/${encodeURIComponent(team)}/plays?${params.toString()}`,
+      ),
+    enabled: enabled && /^[A-Z]{2,3}$/.test(team),
+    staleTime: PLAYCALL_STALE_MS,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** PC03: one play's reconstruction (a play's diagram never changes once built). */
+export function usePlayDiagram(gameId: string | null, playId: number | null) {
+  const valid = !!gameId && /^\d{4}_\d{2}_[A-Z]{2,3}_[A-Z]{2,3}$/.test(gameId) && !!playId;
+  return useQuery({
+    queryKey: ['playcalling', 'diagram', gameId, playId],
+    queryFn: () =>
+      apiGet<PlayDiagramResponse>(
+        `/api/playcalling/plays/${encodeURIComponent(gameId ?? '')}/${playId}/diagram`,
+      ),
+    enabled: valid,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+/** PC03: a real Big Data Bowl example of a concept ("See a real one"); only when asked for. */
+export function usePlaycallRealClip(concept: string | null, index: number, enabled = true) {
+  return useQuery({
+    queryKey: ['playcalling', 'real', concept, index],
+    queryFn: () =>
+      apiGet<RealClipResponse>(
+        `/api/playcalling/concepts/${encodeURIComponent(concept ?? '')}?example=${index}`,
+      ),
+    enabled: enabled && !!concept && /^[a-z0-9_]{2,30}$/.test(concept),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    retry: false,
   });
 }
 

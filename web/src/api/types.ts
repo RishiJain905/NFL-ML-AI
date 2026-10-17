@@ -1731,3 +1731,187 @@ export interface PlaycallForecastRecord {
   overall: PlaycallGradeSummary;
   targets: (PlaycallTarget & PlaycallGradeSummary)[];
 }
+
+// ---- PC03: the play browser and the play diagrams (documentation/play-calling/PC03-play-diagrams.md) --
+// A play's diagram is a playbook card RECONSTRUCTED from the charting data (play-by-play, FTN and,
+// 2016-2025, participation): never player tracking, and `label` says so on the player at all
+// times. Coordinates: x in yards from the offense's own goal line (0) to the opponent's (100), end
+// zones -10..0 and 100..110, the offense always moving towards +x; y in yards from the offense's
+// LEFT sideline (0) to its right (53.33): draw with x to the right and y down. Keyframes are
+// [t, x, y] (the ball [t, x, y, h], h its height for the arc); interpolate linearly between keys
+// and hold the last key. The same shape carries a REAL Big Data Bowl play (`kind: 'real'`, dense
+// keys at 10 per second, its own label), so one player draws both.
+
+export type PlayType = 'run' | 'pass' | 'sack' | 'scramble' | 'aborted' | 'dropback';
+export type PlayTag =
+  | 'play_action'
+  | 'screen'
+  | 'rpo'
+  | 'deep_shot'
+  | 'motion'
+  | 'no_huddle'
+  | 'trick_play'
+  | 'fake_kick'
+  | 'direct_snap';
+export type PlayResultKind =
+  'run' | 'complete' | 'incomplete' | 'interception' | 'sack' | 'scramble' | 'aborted' | 'dropback';
+export type PlayConcept =
+  | 'screen'
+  | 'rpo'
+  | 'play_action_deep'
+  | 'inside_zone'
+  | 'outside_zone'
+  | 'cover_1'
+  | 'cover_3'
+  | '2_man';
+
+export interface PlayResult {
+  kind: PlayResultKind;
+  yards: number | null;
+  first_down: boolean;
+  touchdown: boolean;
+  turnover: boolean; // an interception or a fumble the defense recovered
+  fumble_lost: boolean; // read from the play-by-play text
+  text: string; // "Complete, +27 (22 air yards), first down"
+}
+/** One play's row in the play browser (the diagram's `play` block is the same + 2 fields). */
+export interface PlaySummary {
+  game_id: string;
+  play_id: number;
+  week: number;
+  offense: string | null;
+  defense: string | null;
+  quarter: number | null;
+  quarter_text: string | null; // "Q1" ... "OT"
+  clock: string | null; // "5:32" left in the quarter
+  down: number | null;
+  distance: number | null;
+  down_text: string | null; // "3rd & 8", "1st & Goal"
+  yards_to_goal: number | null;
+  spot: string | null; // "KC 29" (own half), "50", "LV 43" (the opponent's half)
+  type: PlayType;
+  tags: PlayTag[];
+  result: PlayResult;
+  epa: number | null;
+  explosive: boolean;
+  charted: boolean; // FTN charted the play (hash, box, rushers, motion, play-action ...)
+  concept: PlayConcept | null; // the Big Data Bowl concept it matches ("See a real one")
+  desc: string | null; // the play-by-play text, cleaned (names players)
+}
+export interface PlaycallPlaysWeek {
+  week: number;
+  game_id: string;
+  opponent: string | null;
+  home: boolean | null; // the page's team at home
+  plays: number;
+  label: string; // "Week 4 · at LV"
+}
+export interface PlaycallPlaysResponse {
+  status: 'ok' | 'not_built' | 'no_plays' | 'no_week';
+  message: string | null;
+  season: number;
+  seasons: number[];
+  team: string;
+  side: PlaycallSide; // offense: the team's plays; defense: the plays run against it
+  label: string; // "Reconstructed from charting data, not player tracking"
+  weeks: PlaycallPlaysWeek[]; // every week the team has plays, in order
+  week: number | null; // the week shown (default: the newest)
+  game: PlaycallPlaysWeek | null;
+  filters: { down: number | null; type: string | null; result: string | null };
+  options: {
+    down: number[];
+    type: { value: string; label: string }[];
+    result: { value: string; label: string }[];
+  };
+  counts: { total: number; shown: number };
+  plays: PlaySummary[]; // in game order
+  library: boolean; // the Big Data Bowl concept library exists on this computer
+}
+
+export type DiagramKey = [number, number, number]; // [t s, x yd, y yd]
+export type DiagramBallKey = [number, number, number, number]; // [t, x, y, h yd]
+export interface DiagramPlayer {
+  id: string;
+  side: 'offense' | 'defense';
+  role: 'ol' | 'qb' | 'back' | 'receiver' | 'dl' | 'lb' | 'db';
+  label: string; // "C", "QB", "RB", "WR", "TE", "R" (receiver, type unknown), "DL", "LB", "CB", "S", "DB"
+  approx: boolean; // a generic spot: draw it marked (dashed / hollow), never as if measured
+  rusher: boolean;
+  target: boolean; // the targeted receiver
+  carrier: boolean; // carried the ball at the end
+  track: DiagramKey[]; // [t, x, y] keyframes, at least one; times ascending
+}
+export interface DiagramMark {
+  kind:
+    | 'motion'
+    | 'fake'
+    | 'handoff'
+    | 'lane'
+    | 'run'
+    | 'throw'
+    | 'end'
+    | 'sack'
+    | 'incomplete'
+    | 'interception';
+  points: [number, number][]; // [x, y]
+  t: number; // when it appears
+  approx: boolean;
+  text: string | null;
+}
+export interface DiagramPhase {
+  name: string; // presnap, motion, snap, fake, handoff, carry, throw, catch, scramble, end (real: the tracking events)
+  t: number;
+  text: string;
+}
+export interface DiagramField {
+  los: number;
+  first_down: number | null; // null on goal to go
+  goal: number; // 100
+  ball_y: number;
+  hash: 'left' | 'middle' | 'right' | null; // null: not charted (drawn in the middle)
+  width: number; // 53.33
+  view: [number, number]; // the x range to draw
+}
+export interface RealExampleRef {
+  concept: PlayConcept;
+  name: string; // "Inside zone run"
+  match: string | null; // "a run inside the tackles"
+  count: number; // real examples in the library
+}
+export interface PlayDiagram {
+  version: number;
+  kind: 'reconstruction' | 'real';
+  label: string; // always shown on the player
+  play: PlaySummary & { game_label: string | null; season: number };
+  field: DiagramField;
+  players: DiagramPlayer[]; // 11 + 11 for a reconstruction
+  ball: DiagramBallKey[];
+  marks: DiagramMark[];
+  phases: DiagramPhase[]; // for the step button, times ascending
+  duration: number; // seconds, the last key + a short hold
+  known: string[]; // what the data says, with its source
+  approximate: string[]; // drawn at generic spots
+  unknown: string[]; // not drawn
+  sources: string[];
+  concept: PlayConcept | null;
+  real_example: RealExampleRef | null; // set when the library holds real examples of `concept`
+}
+export interface PlayDiagramResponse {
+  status: 'ok';
+  diagram: PlayDiagram;
+}
+
+/** PC03 "See a real one": a real Big Data Bowl play of a concept, drawn by the same player.
+ * GET /api/playcalling/concepts/{concept}?example=N. Read from playcalling/bdb_library/ on this
+ * computer only (the competition's terms: non-commercial use, no redistribution). */
+export interface RealClipResponse {
+  status: 'ok' | 'no_library' | 'none'; // no_library: not built here; none: no example of it
+  message: string | null;
+  concept: PlayConcept;
+  name: string; // "Inside zone run"
+  match: string | null;
+  note: string; // the source and terms line, shown under the player
+  examples: { index: number; label: string }[]; // "2022 week 6 · KC vs LV · 3rd & 5"
+  index: number | null; // the example shown
+  diagram: PlayDiagram | null; // kind 'real': dense keys, approx false, its own label
+}
