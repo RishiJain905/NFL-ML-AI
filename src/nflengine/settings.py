@@ -30,6 +30,7 @@ OPTIONAL_ENV_VARS = (
     "ODDS_API_KEY2",
     "KAGGLE_USERNAME",
     "KAGGLE_KEY",
+    "KAGGLE_API_TOKEN",
 )
 
 
@@ -55,7 +56,8 @@ class EnvSettings(BaseSettings):
     odds_api_key: SecretStr | None = None
     odds_api_key2: SecretStr | None = None  # backup key, used when the first is exhausted
     kaggle_username: str | None = None
-    kaggle_key: SecretStr | None = None
+    kaggle_key: SecretStr | None = None  # a classic key (kaggle.json), HTTP basic with the username
+    kaggle_api_token: SecretStr | None = None  # Kaggle's newer API token, sent as a Bearer header
 
     def is_set(self, var_name: str) -> bool:
         """Whether a variable has a non-empty value. Never exposes the value itself."""

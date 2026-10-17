@@ -2241,6 +2241,85 @@ def playcalling_update(
         raise typer.Exit(1)
 
 
+@playcalling_app.command("library")
+def playcalling_library(
+    list_files: bool = typer.Option(
+        False,
+        "--list",
+        help="List the library's Big Data Bowl edition's files on Kaggle (and sizes); no writes.",
+    ),
+    download: bool = typer.Option(
+        False,
+        "--download",
+        help="Download the play labels and the --weeks tracking files into bdb/2026/raw/.",
+    ),
+    weeks: str = typer.Option(
+        "",
+        help="Tracking weeks, e.g. '1', '5,6' or '1-18' (download: required; build: default all).",
+    ),
+    per_concept: int = typer.Option(10, min=1, max=40, help="Examples per concept."),
+    build: bool = typer.Option(
+        True, "--build/--no-build", help="Build the concept library from the files on disk."
+    ),
+) -> None:
+    """The Big Data Bowl concept library for "See a real one" (PC03): real tracked plays of
+    five pass concepts from BDB 2026 (2023 weeks 1-18). The data stays on this computer (the
+    competition's rules: non-commercial, no redistribution); join the competition on Kaggle and
+    set KAGGLE_API_TOKEN (or KAGGLE_USERNAME + KAGGLE_KEY) before --list / --download. Exit 1
+    on a Kaggle or file error, 5 when the data drive is missing."""
+    import re
+
+    from rich.markup import escape
+
+    from nflengine.paths import DataRootError, ensure_data_root
+    from nflengine.playcalling import bdb
+    from nflengine.weekly import EXIT_NO_DRIVE, scrub
+
+    try:
+        paths = ensure_data_root()
+    except DataRootError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(EXIT_NO_DRIVE) from None
+    week_list: list[int] = []
+    for part in (w for w in re.split(r"[,\s]+", weeks.strip()) if w):
+        m = re.fullmatch(r"(\d+)-(\d+)", part)
+        if m and int(m.group(1)) <= int(m.group(2)):
+            week_list += range(int(m.group(1)), int(m.group(2)) + 1)
+        elif part.isdigit():
+            week_list.append(int(part))
+        else:
+            raise typer.BadParameter("--weeks: whole numbers or ranges, e.g. '1', '1,2' or '1-18'")
+    week_list = sorted(set(week_list))
+    first, last = bdb.WEEKS
+    if any(not first <= w <= last for w in week_list):
+        raise typer.BadParameter(f"--weeks: BDB {bdb.EDITION} has weeks {first}-{last}")
+    try:
+        if list_files:
+            files = bdb.list_files()
+            have = bdb.raw_dir(paths)
+            for f in sorted(files, key=lambda f: f["name"]):
+                local = f["name"].rsplit("/", 1)[-1]  # downloads keep the file name only
+                on = " (on disk)" if (have / local).exists() else ""
+                console.print(f"{f['name']:<24} {f['bytes'] / 1e6:>9.1f} MB{on}")
+            console.print(f"{len(files)} files, {sum(f['bytes'] for f in files) / 1e9:.2f} GB")
+            return
+        if download:
+            if not week_list:
+                raise typer.BadParameter("--download needs --weeks (e.g. --weeks 1)")
+            wanted = [*bdb.NEEDED, *bdb.week_files(week_list)]
+            names = bdb.kaggle_names(bdb.list_files(), wanted)  # Kaggle keeps them in folders
+            bdb.download(paths, names, log=lambda s: console.print(escape(s)))
+        if build:
+            index = bdb.build_library(
+                paths, per_concept, week_list or None, log=lambda s: console.print(escape(s))
+            )
+            n = sum(len(c["examples"]) for c in index["concepts"].values())
+            console.print(f"[green]library: {n} real plays in {len(index['concepts'])} concepts[/]")
+    except (bdb.KaggleError, FileNotFoundError) as e:
+        console.print(f"[red]{escape(scrub(str(e)))}[/]")
+        raise typer.Exit(1) from None
+
+
 PLACEHOLDERS: dict[str, tuple[str, str]] = {}
 
 
