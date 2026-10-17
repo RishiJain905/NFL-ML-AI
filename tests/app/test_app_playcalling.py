@@ -54,7 +54,11 @@ from nflengine.ops.summary import scrub
 from nflengine.paths import DataRootError
 
 WINDOWS = ("season", "last4", "last_season")
-FAIL_422 = "The season must be a year, the side offense or defense, and the team a 2-3 letter code."
+FAIL_422 = (
+    "The season must be a year, the side offense or defense, the team a 2-3 letter code, the "
+    "week 1-22, the down 1-4, the play type and result from the listed values, and a game id "
+    "<season>_<week>_<away>_<home>."
+)  # one text for every /api/playcalling/ 422 (PC03 widened it for the play browser)
 NO_TEAM = "No such team: use one of the 32 team codes."
 WEEK5 = [
     "2026_05_ARI_ATL",
@@ -868,7 +872,7 @@ def test_unknown_routes_under_playcalling_stay_json_404s(base):
         "/api/playcalling",
         "/api/playcalling/",
         "/api/playcalling/league",
-        "/api/playcalling/teams/KC/plays",
+        "/api/playcalling/teams/KC/plays/2026",  # PC03 made `.../plays` itself a route
         "/api/playcalling/teams/KC/history/2025",
         "/api/weeks/2026/5/play-call",
     ):

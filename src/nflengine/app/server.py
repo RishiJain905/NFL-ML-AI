@@ -31,7 +31,7 @@ from nflengine.app import wandb_api
 from nflengine.app.health import SystemChecks, get_health
 from nflengine.app.jsonsafe import SafeJSONResponse
 from nflengine.app.preflight import get_preflight, rehearsal_target
-from nflengine.app.readers import mlops
+from nflengine.app.readers import mlops, playbrowser
 from nflengine.app.readers import playcalling as playcall
 from nflengine.app.readers.alerts import get_alerts
 from nflengine.app.readers.common import strip_root, use_data_root
@@ -266,8 +266,9 @@ def create_app(settings: AppSettings) -> FastAPI:
             return _error(
                 422,
                 "bad_request",
-                "The season must be a year, the side offense or defense, and the team a 2-3 "
-                "letter code.",
+                "The season must be a year, the side offense or defense, the team a 2-3 "
+                "letter code, the week 1-22, the down 1-4, the play type and result from the "
+                "listed values, and a game id <season>_<week>_<away>_<home>.",
             )
         return _error(422, "bad_request", "A parameter is malformed or out of range.")
 
@@ -699,6 +700,50 @@ def create_app(settings: AppSettings) -> FastAPI:
     def play_calls_route(season: int = Season, week: int = Week) -> SafeJSONResponse:
         paths = ctx.paths()
         return week_json(paths, playcall.get_play_calls(paths, season, week))
+
+    # ---- PC03: the play browser and the reconstructed play diagrams. The game id is
+    # validated by pattern and existence (an unknown game or play is a fixed-text 404).
+    GameId = PathParam(pattern=r"^\d{4}_\d{2}_[A-Z]{2,3}_[A-Z]{2,3}$")
+    PlayId = PathParam(ge=1, le=99999)
+    play_type = "^(" + "|".join(playbrowser.TYPES) + ")$"
+    play_result = "^(" + "|".join(playbrowser.RESULTS) + ")$"
+
+    @app.get("/api/playcalling/teams/{team}/plays")
+    def playcall_plays_route(
+        team: str = Team,
+        season: int | None = Query(None, ge=1999, le=2100),
+        side: str = Side,
+        week: int | None = Query(None, ge=1, le=22),
+        down: int | None = Query(None, ge=1, le=4),
+        kind: str | None = Query(None, alias="type", pattern=play_type),
+        result: str | None = Query(None, pattern=play_result),
+    ) -> SafeJSONResponse:
+        if team not in playcall.CANONICAL_TEAMS:
+            return unknown_team()
+        paths = ctx.paths()
+        body = playbrowser.get_team_plays(
+            paths, playcall_season(paths, season), team, side, week, down, kind, result
+        )
+        return week_json(paths, body)
+
+    @app.get("/api/playcalling/plays/{game_id}/{play_id}/diagram")
+    def playcall_diagram_route(game_id: str = GameId, play_id: int = PlayId) -> SafeJSONResponse:
+        paths = ctx.paths()
+        body = playbrowser.get_play_diagram(paths, game_id, play_id)
+        if body is None:
+            return _error(404, "not_found", "No such play: check the game and the play id.")
+        return week_json(paths, body)
+
+    @app.get("/api/playcalling/concepts/{concept}")
+    def playcall_real_route(
+        concept: str = PathParam(pattern="^[a-z0-9_]{2,30}$"),
+        example: int = Query(0, ge=0, le=99),
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        body = playbrowser.get_real_clip(paths, concept, example)
+        if body is None:
+            return _error(404, "not_found", "No such concept in the Big Data Bowl library.")
+        return week_json(paths, body)
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def api_not_found(rest: str) -> SafeJSONResponse:

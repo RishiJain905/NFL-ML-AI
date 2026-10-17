@@ -43,6 +43,12 @@ SCANNED_GETS = [
     "/api/playcalling/teams/KC?season=2026&side=defense",
     "/api/playcalling/teams/KC/history",
     "/api/weeks/2026/5/play-calls",
+    # PC03: the play browser, a play's diagram and a real Big Data Bowl example (the empty
+    # states here; scanned with planted text in test_app_playbrowser.py)
+    "/api/playcalling/teams/KC/plays",
+    "/api/playcalling/teams/KC/plays?season=2026&side=defense&week=4&type=pass&down=3",
+    "/api/playcalling/plays/2026_04_KC_DEN/1234/diagram",
+    "/api/playcalling/concepts/inside_zone",
 ]
 
 
