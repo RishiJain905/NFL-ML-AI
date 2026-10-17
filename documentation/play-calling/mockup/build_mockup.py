@@ -7,8 +7,10 @@ so it reuses the control room mockup's styles.css unchanged
 and adds playcalling.css on top. The data it shows is the reader's answers (the shapes in
 web/src/api/types.ts, PC01 block) in a payloads JSON, plus the team colours from the curated
 tables; nothing is committed. PC02 adds the forecast (the Play calls tab's forecast view,
-the team page's Next game and season cards). The payloads come from dump_payloads.py (the
-real app API).
+the team page's Next game and season cards); PC03 the play browser and the diagram player
+(`plays`, `plays_filtered`, `diagrams`, `states.{not_built.plays, no_week, no_play}`). The
+published page holds no Big Data Bowl data: "See a real one" plays a labelled stand-in. The
+payloads come from dump_payloads.py (the real app API).
 
     uv run python documentation/play-calling/mockup/build_mockup.py [--payloads PATH]
 
@@ -59,6 +61,39 @@ WEEK_NEEDS = (
     "graded",
     "forecast_hint",
 )
+# PC03: the play browser's list (PlaycallPlaysResponse) and a play's diagram (PlayDiagram)
+PLAYS_NEEDS = (
+    "status",
+    "season",
+    "team",
+    "side",
+    "label",
+    "weeks",
+    "week",
+    "game",
+    "filters",
+    "options",
+    "counts",
+    "plays",
+    "library",
+)
+DIAGRAM_NEEDS = (
+    "kind",
+    "label",
+    "play",
+    "field",
+    "players",
+    "ball",
+    "marks",
+    "phases",
+    "duration",
+    "known",
+    "approximate",
+    "unknown",
+    "sources",
+    "concept",
+    "real_example",
+)
 
 
 def clean(o: Any) -> Any:
@@ -96,6 +131,27 @@ def check_payloads(p: dict[str, Any]) -> None:
             _need(missing, f"history.{team}.{side}", (sides or {}).get(side), HISTORY_NEEDS)
     for key, ans in (p.get("play_calls") or {}).items():
         _need(missing, f"play_calls.{key}", ans, WEEK_NEEDS)
+    # PC03: the play browser (plays.<S>.<TEAM>.<side>.<week|newest>), its diagrams and states
+    for top in ("plays", "diagrams", "plays_filtered"):
+        if not p.get(top):
+            missing.append(top)
+    for season, teams in (p.get("plays") or {}).items():
+        for team, sides in teams.items():
+            for side, weeks in sides.items():
+                for wk, ans in weeks.items():
+                    _need(missing, f"plays.{season}.{team}.{side}.{wk}", ans, PLAYS_NEEDS)
+    if p.get("plays_filtered"):
+        _need(missing, "plays_filtered", p["plays_filtered"], PLAYS_NEEDS)
+    for key, ans in (p.get("diagrams") or {}).items():
+        if isinstance(ans, dict) and "http_status" in ans:
+            continue  # a 404 the page draws as one
+        _need(missing, f"diagrams.{key}", (ans or {}).get("diagram"), DIAGRAM_NEEDS)
+    states = p.get("states") or {}
+    _need(
+        missing, "states.not_built.plays", (states.get("not_built") or {}).get("plays"), PLAYS_NEEDS
+    )
+    _need(missing, "states.no_week", states.get("no_week"), PLAYS_NEEDS)
+    _need(missing, "states.no_play", states.get("no_play"), ("http_status", "error"))
     if missing:
         raise SystemExit(f"payloads: missing {', '.join(missing)}")
 

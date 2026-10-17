@@ -56,6 +56,58 @@ def _preflight(pf: dict[str, Any]) -> dict[str, Any]:
     return {k: pf.get(k) for k in ("checked_at", "mode", "season", "week", "playcalling")}
 
 
+def _play_browser(tc: TestClient, p: dict[str, Any]) -> None:
+    """PC03: the play browser's lists and diagrams. `plays["<S>"]["<TEAM>"]["<side>"]["<week>"]`
+    (`newest` = no week asked); `plays_filtered` one filtered list; `diagrams["<game>/<play>"]`
+    every play of the dumped 2026 offense weeks plus a handful from 2025 and 2019 (participation:
+    personnel, coverage, the target's route)."""
+    p["plays"], p["diagrams"] = {}, {}
+    lists = (
+        (SEASON, "MIN", "offense", (None, 1, 2, 3, 4)),
+        (SEASON, "MIN", "defense", (None,)),
+        (SEASON, "KC", "offense", (None, 3)),
+        (SEASON, "KC", "defense", (None,)),
+        (2025, "KC", "offense", (5,)),
+        (2025, "MIN", "offense", (8,)),
+        (2019, "BAL", "offense", (6,)),
+    )
+    for season, team, side, weeks in lists:
+        for w in weeks:
+            q = f"?season={season}&side={side}" + (f"&week={w}" if w else "")
+            ans = get(tc, f"/api/playcalling/teams/{team}/plays{q}")
+            p["plays"].setdefault(str(season), {}).setdefault(team, {}).setdefault(side, {})[
+                "newest" if w is None else str(w)
+            ] = ans
+    p["plays_filtered"] = get(
+        tc,
+        f"/api/playcalling/teams/KC/plays?season={SEASON}&side=defense&week=2&type=pass&result=first_down",
+    )
+    want: list[tuple[str, int]] = []
+    # every play of the weeks the mockup opens on (the newest, as the app does) and of week 3
+    for team, side, w in (
+        ("MIN", "offense", "3"),
+        ("KC", "offense", "3"),
+        ("MIN", "offense", "newest"),
+        ("KC", "offense", "newest"),
+        ("MIN", "defense", "newest"),
+        ("KC", "defense", "newest"),
+    ):
+        want += [
+            (x["game_id"], x["play_id"]) for x in p["plays"][str(SEASON)][team][side][w]["plays"]
+        ]
+    for season, team, w, n in (
+        (2025, "KC", "5", 14),
+        (2025, "MIN", "8", 10),
+        (2019, "BAL", "6", 6),
+    ):
+        want += [
+            (x["game_id"], x["play_id"])
+            for x in p["plays"][str(season)][team]["offense"][w]["plays"][:n]
+        ]
+    for g, pid in dict.fromkeys(want):
+        p["diagrams"][f"{g}/{pid}"] = get(tc, f"/api/playcalling/plays/{g}/{pid}/diagram")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", type=Path, default=None)
@@ -101,10 +153,14 @@ def main() -> None:
             "teams": get(tc, "/api/playcalling/teams?season=2015"),
             "team": get(tc, "/api/playcalling/teams/KC?season=2015&side=offense"),
             "week": get(tc, "/api/weeks/2015/5/play-calls"),
+            "plays": get(tc, "/api/playcalling/teams/KC/plays?season=2015&side=offense"),
         },
         "not_yet": {"week": p["play_calls"][f"{SEASON}_6"]},
         "unknown_team": get(tc, "/api/playcalling/teams/XYZ?side=offense"),
+        "no_week": get(tc, f"/api/playcalling/teams/KC/plays?season={SEASON}&week=5"),
+        "no_play": get(tc, f"/api/playcalling/plays/{SEASON}_03_MIN_TB/9999/diagram"),
     }
+    _play_browser(tc, p)
     out.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(p, ensure_ascii=False, separators=(",", ":"))
     out.write_text(text, encoding="utf-8")

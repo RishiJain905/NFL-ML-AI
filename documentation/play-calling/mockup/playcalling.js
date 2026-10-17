@@ -172,11 +172,34 @@ function syncMockbar() {
   $('#updPick').innerHTML = UPD_PICKS.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${v === S.upd}">${esc(l)}${v === 'real' ? '' : ' *'}</button>`).join('');
   $('#updGrp').style.opacity = S.screen === 'week' ? '' : '.45';
   $$('#statePick button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S.state)));
+  $$('#screenPick button').forEach(b => { if (b.dataset.v === 'plays') b.setAttribute('aria-pressed', String(S.screen === 'team' && S.pb.open)); else if (b.dataset.v === 'team') b.setAttribute('aria-pressed', String(S.screen === 'team' && !S.pb.open)); });
+  $$('#pbPick button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S.pb.state)));
+  $$('#libPick button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S.pb.lib)));
+  $$('#motionPick button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S.pb.motion)));
+  ['pbGrp', 'libGrp', 'motionGrp'].forEach(id => { const g = document.getElementById(id); if (g) g.style.opacity = S.screen === 'team' && S.pb.open ? '' : '.45'; });
   applyTheme();
 }
 try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (S.mode === 'system') applyTheme(); }); } catch (e) { /* old browsers */ }
-$('#screenPick').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; S.screen = b.dataset.v; syncMockbar(); render(); });
-$('#teamPick').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; S.team = b.dataset.v; S.screen = 'team'; S.season = NEWEST; S.hist = false; syncMockbar(); render(); });
+$('#screenPick').addEventListener('click', e => {
+  const b = e.target.closest('[data-v]'); if (!b) return;
+  if (b.dataset.v === 'plays') { openPlays(); return; }
+  S.screen = b.dataset.v; syncMockbar(); render();
+});
+function openPlays() {
+  S.screen = 'team'; S.state = 'ok'; S.pb.open = true; syncMockbar(); render();
+  const c = document.getElementById('pbCard'); if (c) c.scrollIntoView({ block: 'start' });
+}
+const pbReset = () => { S.pb.week = null; S.pb.sel = null; S.pb.real = null; S.pb.down = S.pb.type = S.pb.result = null; PS.playing = false; PS.key = null; };
+$('#pbPick').addEventListener('click', e => {
+  const b = e.target.closest('[data-v]'); if (!b) return;
+  pbReset(); S.pb.state = b.dataset.v;
+  if (S.pb.state === 'filtered') { const f = P.plays_filtered; S.pb.state = 'ok'; S.team = f.team; S.side = f.side; S.season = f.season; S.pb.week = f.week; S.pb.type = f.filters.type; S.pb.result = f.filters.result; S.pb.down = f.filters.down; }
+  if (S.pb.state === 'zero') { S.pb.state = 'ok'; S.pb.down = 4; S.pb.result = 'touchdown'; }
+  openPlays();
+});
+$('#libPick').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; S.pb.lib = b.dataset.v; S.pb.real = null; PS.key = null; openPlays(); });
+$('#motionPick').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; S.pb.motion = b.dataset.v; PS.playing = false; PS.key = null; openPlays(); });
+$('#teamPick').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; S.team = b.dataset.v; S.screen = 'team'; S.season = NEWEST; S.hist = false; pbReset(); syncMockbar(); render(); });
 $('#weekPick').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; S.weekKey = b.dataset.v; S.screen = 'week'; S.state = 'ok'; syncMockbar(); render(); });
 $('#updPick').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; S.upd = b.dataset.v; S.screen = 'week'; S.state = 'ok'; const cw = (P.weeks.weeks.find(w => w.is_current) || {}).week; if (cw && P.play_calls[`${P.weeks.season}_${cw}`]) S.weekKey = `${P.weeks.season}_${cw}`; syncMockbar(); render(); });
 $('#statePick').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; S.state = b.dataset.v; syncMockbar(); render(); });
@@ -290,10 +313,10 @@ function renderTabs() {
   nav.innerHTML = TABS.map(([k, l]) => `<button class="tab" data-tab="${k}" aria-current="${k === 'play-calls' ? 'page' : 'false'}" aria-selected="${k === 'play-calls'}">${l}</button>`).join('');
 }
 $('#tabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b || b.dataset.tab === 'play-calls') return; S.screen = 'other'; S.other = `The ${b.textContent} tab`; render(); });
-$('#top').addEventListener('change', e => { if (e.target.id === 'seasonSel') { S.season = Number(e.target.value); render(); } });
+$('#top').addEventListener('change', e => { if (e.target.id === 'seasonSel') { pbReset(); S.season = Number(e.target.value); render(); } });
 $('#top').addEventListener('click', e => {
-  const s = e.target.closest('[data-season]'); if (s) { S.season = Number(s.dataset.season); if (S.win === 'last_season' && S.season !== NEWEST) S.win = 'season'; render(); return; }
-  const d = e.target.closest('[data-side]'); if (d) { S.side = d.dataset.side; store.set('pc.side', S.side); render(); return; }
+  const s = e.target.closest('[data-season]'); if (s) { pbReset(); S.season = Number(s.dataset.season); if (S.win === 'last_season' && S.season !== NEWEST) S.win = 'season'; render(); return; }
+  const d = e.target.closest('[data-side]'); if (d) { pbReset(); S.side = d.dataset.side; store.set('pc.side', S.side); render(); return; }
   if (e.target.closest('[data-nav-grid]')) { S.screen = 'grid'; syncMockbar(); render(); return; }
   if (e.target.closest('[data-go-week]')) { goNextWeek(); }
 });
@@ -432,6 +455,7 @@ function teamView() {
     ${fieldCard(r)}
     ${weeklyCard(r)}
     ${recordCard(r)}
+    ${playsCard(r)}
     ${historyCard(r)}
     ${r.notes && r.notes.length ? `<div class="foot">${r.notes.map(esc).join('<br>')}</div>` : ''}`;
 }
@@ -1051,8 +1075,493 @@ function updConfirm() {
   scrim.querySelector('[data-upd-go]').focus();
 }
 
+/* ================================================================== PC03: the play browser and the diagram player
+   The shapes (web/src/api/types.ts, PC03 block): PlaycallPlaysResponse (a week's list), PlayDiagram
+   (one play's geometry: x yards from the offense's own goal line, y from its LEFT sideline; keys
+   [t, x, y], the ball [t, x, y, h]; interpolate linearly, hold the last key), RealClipResponse.
+   payloads: plays[S][TEAM][side][week | 'newest'], plays_filtered, diagrams['<game>/<play>'],
+   states.{not_built.plays, no_week, no_play}. The mockup filters a dumped week in the page; the app
+   asks the server (the same rules: playbrowser._matches_type / _matches_result). */
+const LIFT = 0.45; // how far a ball in the air is drawn above its shadow, per yard of height
+const MIN_SPAN = 50; // the narrowest x range drawn (a 32-yard view would be a tall sliver)
+const PB_TYPE = { run: 'Run', pass: 'Pass', sack: 'Sack', scramble: 'Scramble', aborted: 'Aborted', dropback: 'Dropback' };
+const PB_TAG = { play_action: 'PA', screen: 'Screen', rpo: 'RPO', deep_shot: 'Deep', motion: 'Motion', no_huddle: 'No huddle', trick_play: 'Trick', fake_kick: 'Fake kick', direct_snap: 'Direct snap' };
+const PB_TAG_TIP = { play_action: 'Play-action (FTN)', screen: 'Screen (FTN)', rpo: 'Run-pass option (FTN)', deep_shot: 'Deep shot: 20+ air yards', motion: 'Motion before the snap (FTN)', no_huddle: 'No huddle', trick_play: 'Trick play (FTN)', fake_kick: 'Fake punt or field goal', direct_snap: 'Direct snap' };
+// "See a real one": the concepts (playcalling/diagrams.py CONCEPTS), for the mockup's stand-in only
+const CONCEPTS = {
+  screen: ['Screen pass', 'a screen'], rpo: ['Run-pass option (RPO)', 'an RPO'], play_action_deep: ['Play-action deep shot', 'a play-action throw 20+ air yards'],
+  inside_zone: ['Inside zone run', 'a run inside the tackles'], outside_zone: ['Outside zone run', 'a run outside the tackles'],
+  cover_1: ['Cover 1', 'a dropback against Cover 1'], cover_3: ['Cover 3', 'a dropback against Cover 3'], '2_man': ['2-man', 'a dropback against 2-man'],
+};
+S.pb = { open: false, week: null, down: null, type: null, result: null, sel: null, state: 'ok', lib: 'off', real: null, motion: 'system' };
+const PS = { key: null, t: 0, playing: false, last: 0, raf: 0 }; // the player's clock (never re-renders the page)
+
+/* ---------- the geometry helpers (the React port's lib/playdiagram.ts) ---------- */
+function lerpKeys(keys, t) { // [t, ...values]: linear between keys, the first before, the last after
+  if (!keys.length) return null;
+  if (t <= keys[0][0]) return keys[0].slice(1);
+  for (let i = 0; i < keys.length - 1; i++) {
+    const a = keys[i], b = keys[i + 1];
+    if (t < b[0]) { const f = b[0] > a[0] ? (t - a[0]) / (b[0] - a[0]) : 1; return a.slice(1).map((v, j) => v + (b[j + 1] - v) * f); }
+  }
+  return keys[keys.length - 1].slice(1);
+}
+const posAt = (keys, t) => lerpKeys(keys, t); // [x, y]
+const ballAt = (ball, t) => lerpKeys(ball, t); // [x, y, h]
+const EPS = 1e-6;
+const phaseAt = (phases, t) => { let p = phases[0] || null; for (const ph of phases) if (ph.t <= t + EPS) p = ph; return p; };
+function stepTime(dg, t, dir) { // a phase at a time: the previous phase's start, or the next one's (the end after the last)
+  const ph = phaseAt(dg.phases, t); const i = dg.phases.indexOf(ph);
+  if (dir > 0) return i + 1 < dg.phases.length ? dg.phases[i + 1].t : dg.duration;
+  return i > 0 ? dg.phases[i - 1].t : 0;
+}
+const restT = dg => dg.phases.length ? dg.phases[dg.phases.length - 1].t : dg.duration; // reduced motion: the last phase, every path drawn
+const marksAt = (marks, t) => marks.filter(m => m.t <= t + EPS);
+function viewOf(f) { // the x range to draw: field.view, widened to MIN_SPAN, inside -10..110
+  let [a, b] = f.view; const span = Math.max(b - a, MIN_SPAN); const c = (a + b) / 2;
+  a = c - span / 2; b = c + span / 2;
+  if (a < -10) { b += -10 - a; a = -10; } if (b > 110) { a -= b - 110; b = 110; }
+  return [Math.max(-10, a), Math.min(110, b)];
+}
+function trailOf(keys, t) { const pts = keys.filter(k => k[0] < t).map(k => [k[1], k[2]]); const p = posAt(keys, t); return pts.concat([p]); }
+function pathLen(pts) { let s = 0; for (let i = 1; i < pts.length; i++) s += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); return s; }
+function partial(pts, frac) { // the first `frac` of a polyline, by length
+  if (frac >= 1 || pts.length < 2) return pts;
+  const want = pathLen(pts) * Math.max(0, frac); const out = [pts[0]]; let s = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    if (s + d >= want) { const f = d ? (want - s) / d : 0; out.push([pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * f, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * f]); return out; }
+    s += d; out.push(pts[i]);
+  }
+  return out;
+}
+const nextPhaseT = (dg, t0) => { const n = dg.phases.find(p => p.t > t0 + EPS); return n ? n.t : dg.duration; };
+const ptsAttr = pts => pts.map(p => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(' ');
+const yardNo = x => { const v = x <= 50 ? x : 100 - x; return Math.round(v); };
+function reducedMotion() {
+  if (S.pb.motion === 'reduced') return true;
+  try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
+}
+
+/* ---------- the payloads: a week's list (filtered in the page), a diagram, the stand-in clip ---------- */
+function matchType(p, k) {
+  if (k === 'run') return p.type === 'run';
+  if (k === 'pass') return ['pass', 'sack', 'scramble', 'dropback'].includes(p.type);
+  if (k === 'sack' || k === 'scramble') return p.type === k;
+  return p.tags.includes(k);
+}
+function matchResult(p, k) {
+  const r = p.result;
+  if (k === 'first_down') return r.first_down; if (k === 'touchdown') return r.touchdown; if (k === 'turnover') return r.turnover;
+  if (k === 'explosive') return p.explosive; if (k === 'negative') return r.yards != null && r.yards < 0;
+  if (k === 'incomplete') return r.kind === 'incomplete'; if (k === 'success') return p.epa != null && p.epa > 0; // nflverse success: EPA > 0
+  return false;
+}
+/** The list answer for the page's team, side and season and the browser's week and filters. */
+function playsAnswer() {
+  const st = S.pb.state;
+  if (st === 'not_built') return { ans: P.states.not_built.plays };
+  const byWeek = (((P.plays[String(S.season)] || {})[S.team] || {})[S.side]) || null;
+  const pf = P.plays_filtered;
+  if (!byWeek && !(pf && pf.team === S.team && pf.side === S.side && pf.season === S.season)) return { missing: `The dump has no ${S.season} play list for ${S.team}'s ${S.side}.` };
+  const newest = byWeek && (byWeek.newest || Object.values(byWeek)[0]);
+  if (st === 'no_plays') return { ans: Object.assign({}, newest, { status: 'no_plays', message: `No plays for ${S.team} in ${S.season}.`, weeks: [], week: null, game: null, plays: [], counts: { total: 0, shown: 0 } }), stand: true };
+  if (st === 'no_week') { const nw = P.states.no_week; return { ans: Object.assign({}, nw, { team: S.team, side: S.side, season: S.season, weeks: newest ? newest.weeks : nw.weeks, message: nw.team === S.team && nw.season === S.season ? nw.message : nw.message.replace(/^\w+ /, S.team + ' ') }) }; }
+  const f = { down: S.pb.down, type: S.pb.type, result: S.pb.result };
+  // the real filtered answer (KC's defense, week 2: passes that made a first down)
+  if (pf && pf.team === S.team && pf.side === S.side && pf.season === S.season && S.pb.week === pf.week && f.down === pf.filters.down && f.type === pf.filters.type && f.result === pf.filters.result) return { ans: lib(pf) };
+  const wk = S.pb.week == null ? (newest && newest.week) : S.pb.week;
+  const base = byWeek && (byWeek[String(wk)] || (newest && newest.week === wk ? newest : null));
+  if (!base) return { ans: Object.assign({}, newest || pf, { week: wk, game: ((newest || pf).weeks || []).find(w => w.week === wk) || null, plays: [], counts: { total: 0, shown: 0 } }), missing: `The dump has week ${wk}'s list only with the filters of the real filtered answer (Passes · First downs), or not at all: pick another week.` };
+  const plays = base.plays.filter(p => (f.down == null || p.down === f.down) && (f.type == null || matchType(p, f.type)) && (f.result == null || matchResult(p, f.result)));
+  return { ans: lib(Object.assign({}, base, { filters: f, plays, counts: { total: base.counts.total, shown: plays.length } })) };
+}
+const lib = a => S.pb.lib === 'off' ? a : Object.assign({}, a, { library: true });
+/** A play's diagram answer (or the 404), with the stand-in `real_example` when the library is on. */
+function diagramFor(key) {
+  if (S.pb.state === 'no_play') return { err: P.states.no_play };
+  const d = P.diagrams[key];
+  if (!d) return null;
+  if (d.http_status) return { err: d };
+  const dg = d.diagram;
+  if (S.pb.lib !== 'off' && dg.concept && CONCEPTS[dg.concept]) {
+    const c = CONCEPTS[dg.concept];
+    return { dg: Object.assign({}, dg, { real_example: { concept: dg.concept, name: c[0], match: c[1], count: standIns(dg.concept).length || 1 } }) };
+  }
+  return { dg };
+}
+function standIns(concept) { return Object.values(P.diagrams).filter(d => d.diagram && d.diagram.concept === concept && d.diagram.play.season === 2026).slice(0, 10).map(d => d.diagram); }
+/** The mockup's stand-in for a RealClipResponse: NO Big Data Bowl data. A reconstruction of the
+ * same concept, densified to 10 keys a second with the players drifting after the snap, so the
+ * player can be judged on dense keys; captioned as a stand-in wherever it shows. */
+function standInClip(concept, index) {
+  const c = CONCEPTS[concept];
+  const base = { concept, name: c[0], match: c[1], note: 'Mockup stand-in for the server\'s note (the Big Data Bowl source and its terms: non-commercial use, kept on this computer, never redistributed).' };
+  if (S.pb.lib === 'clip_nolib') return Object.assign(base, { status: 'no_library', message: 'The Big Data Bowl library isn\'t built on this computer (`uv run nfl playcalling library`, after the data is downloaded).', examples: [], index: null, diagram: null });
+  const all = standIns(concept);
+  if (S.pb.lib === 'clip_none' || !all.length) return Object.assign(base, { status: 'none', message: `No real example of ${c[0].toLowerCase()} in the library yet (stand-in message).`, examples: [], index: null, diagram: null });
+  const i = Math.max(0, Math.min(all.length - 1, index));
+  const src = all[i];
+  return Object.assign(base, {
+    status: 'ok', message: null, index: i,
+    examples: all.map((d, k) => ({ index: k, label: `Stand-in ${k + 1} · from ${d.play.game_label} · ${d.play.down_text || ''}` })),
+    diagram: densify(src, i),
+  });
+}
+function densify(dg, seed) {
+  const snap = (dg.phases.find(p => p.name === 'snap') || { t: 0.8 }).t;
+  const end = dg.duration - 0.6;
+  const steps = []; for (let t = 0; t <= end + 1e-9; t += 0.1) steps.push(Math.round(t * 10) / 10);
+  const players = dg.players.map((p, k) => {
+    const moving = p.track.length > 1;
+    const keys = steps.map(t => {
+      let [x, y] = posAt(p.track, t);
+      const after = Math.max(0, t - snap);
+      if (!moving && after > 0) { // the generic spots drift like real players would (synthetic)
+        const dir = p.side === 'offense' ? 1 : -0.6;
+        x += dir * Math.min(after, 2.4) * (p.role === 'receiver' ? 3.2 : 1.1);
+        y += Math.sin(after * 1.7 + k + seed) * 0.9;
+      }
+      const w = 0.12 * Math.sin(t * 5.3 + k * 1.9); // a tracked dot never sits perfectly still
+      return [t, +(x + w).toFixed(2), +(y + w * 0.7).toFixed(2)];
+    });
+    return Object.assign({}, p, { approx: false, track: keys });
+  });
+  const ball = steps.map(t => { const b = ballAt(dg.ball, t); return [t, +b[0].toFixed(2), +b[1].toFixed(2), +b[2].toFixed(2)]; });
+  return Object.assign({}, dg, {
+    kind: 'real', label: `Real play: 2023 week ${1 + seed}, Big Data Bowl data`, players, ball,
+    marks: dg.marks.map(m => Object.assign({}, m, { approx: false })),
+    known: ['Every player\'s position, 10 times a second (Big Data Bowl tracking)', 'The ball\'s path and the play\'s events (tracking)'],
+    approximate: [], unknown: ['Assignments: the dots are where the players were, not what they were asked to do'],
+    sources: ['NFL Big Data Bowl (Kaggle), on this computer only'], real_example: null,
+  });
+}
+
+/* ---------- the browser card (after Week by week, before History; it loads only once opened) ---------- */
+function playsCard(r) {
+  const sideNote = S.side === 'offense' ? `${S.team}'s plays, one game at a time` : `The plays run against ${S.team}'s defense, one game at a time`;
+  if (!S.pb.open) {
+    return `<div class="card pbcard" id="pbCard"><div class="card-h"><h2>Plays</h2><span class="muted">${esc(sideNote)}</span>
+      <div class="right"><button class="btn sm" id="pbBtn" aria-expanded="false">Show plays</button></div></div>
+      <div class="card-b muted" style="font-size:13px">Every play of a game, filtered by down, play type and result. Pick one to watch it drawn as a playbook card, <b>reconstructed from the charting data</b> (there's no public player tracking for these seasons). Opens on request.</div></div>`;
+  }
+  const head = inner => `<div class="card pbcard" id="pbCard"><div class="card-h"><h2>Plays</h2><span class="muted">${esc(sideNote)}</span>
+      <div class="right"><button class="btn sm" id="pbBtn" aria-expanded="true">Hide</button></div></div>${inner}</div>`;
+  const got = playsAnswer();
+  if (!got.ans) return head(`<div class="card-b">${mockOnly(esc(got.missing))}</div>`);
+  const a = got.ans;
+  const stand = got.stand ? mockOnly('The reader\'s no-plays answer, drawn with a stand-in message (the dump has none).') : '';
+  if (a.status === 'not_built' || a.status === 'no_plays') {
+    return head(`<div class="card-b">${stand}${emptyInline(a, a.status === 'not_built' ? `No play-by-play tables for ${a.season}` : 'No plays')}</div>`);
+  }
+  const weekBar = pbWeekBar(a);
+  if (a.status === 'no_week') {
+    return head(`<div class="card-b pbbody">${weekBar}${emptyInline(a, 'No plays that week')}</div>`);
+  }
+  const filters = pbFilters(a);
+  const list = pbList(a);
+  const sel = a.plays.find(p => `${p.game_id}/${p.play_id}` === S.pb.sel) ? S.pb.sel : (a.plays[0] ? `${a.plays[0].game_id}/${a.plays[0].play_id}` : null);
+  if (sel !== S.pb.sel) { S.pb.sel = sel; S.pb.real = null; }
+  const libLine = a.library ? '' : `<p class="pblib muted"><span class="ic" aria-hidden="true">○</span> Real examples ("See a real one") need the Big Data Bowl library on this computer.</p>`;
+  return head(`<div class="card-b pbbody">${got.missing ? mockOnly(esc(got.missing)) : ''}${weekBar}${filters}
+    <div class="pbgrid"><div class="pbleft">${list}${libLine}</div><div class="pbright" id="pbPlayer">${playerPanel(sel)}</div></div></div>`);
+}
+function emptyInline(meta, title) {
+  const msg = meta && meta.message;
+  const cmd = msg && (msg.match(/`([^`]+)`/) || [])[1];
+  return `<div class="empty pbempty"><div class="glyph">▶</div><h3>${esc(title)}</h3><p>${esc((msg || '').replace(/\s*\(`[^`]+`\)/, '').replace(/`([^`]+)`/g, '$1'))}</p>${cmd ? `<div class="cmd">${esc(cmd)}</div>` : ''}</div>`;
+}
+function pbWeekBar(a) {
+  const ws = a.weeks || [];
+  const i = ws.findIndex(w => w.week === a.week);
+  const prev = i > 0 ? ws[i - 1] : (i < 0 && ws.length ? null : null), next = i >= 0 && i < ws.length - 1 ? ws[i + 1] : null;
+  const opts = ws.map(w => `<option value="${w.week}"${w.week === a.week ? ' selected' : ''}>${esc(w.label)} · ${w.plays} plays</option>`).join('')
+    + (a.week == null && S.pb.state === 'no_week' ? `<option selected disabled>Week 5 · no game</option>` : '');
+  return `<div class="pbweek"><label class="sortsel"><span class="eyebrow">Game</span><select id="pbWeek" aria-label="Week">${opts}</select></label>
+    <span class="seg" role="group" aria-label="Step weeks"><button type="button" data-pb-week="${prev ? prev.week : ''}" ${prev ? '' : 'disabled'} aria-label="Previous week">‹</button><button type="button" data-pb-week="${next ? next.week : ''}" ${next ? '' : 'disabled'} aria-label="Next week">›</button></span>
+    ${a.counts && a.status === 'ok' ? `<span class="pbcount num" aria-live="polite">Showing <b>${a.counts.shown}</b> of ${a.counts.total} plays</span>` : ''}</div>`;
+}
+const ORD_D = { 1: '1st', 2: '2nd', 3: '3rd', 4: '4th' };
+function pbFilters(a) {
+  const f = a.filters || {};
+  const grp = (key, label, opts) => `<div class="pbfg" role="group" aria-label="${esc(label)}"><span class="eyebrow">${esc(label)}</span><span class="pbchips">${opts.map(([v, l]) => `<button type="button" class="pbchip" data-pb-f="${key}" data-v="${esc(v)}" aria-pressed="${String(f[key] != null && String(f[key]) === String(v))}">${esc(l)}</button>`).join('')}</span></div>`;
+  const any = f.down != null || f.type != null || f.result != null;
+  return `<div class="pbfilters">${grp('down', 'Down', a.options.down.map(d => [d, ORD_D[d] || d]))}${grp('type', 'Play type', a.options.type.map(o => [o.value, o.label]))}${grp('result', 'Result', a.options.result.map(o => [o.value, o.label]))}
+    ${any ? `<button type="button" class="linkbtn pbclear" data-pb-clear>Clear filters</button>` : ''}</div>`;
+}
+function playChips(p) {
+  const chips = [`<span class="chip flat pbt">${esc(PB_TYPE[p.type] || p.type)}</span>`]
+    .concat(p.tags.map(t => `<span class="chip ghost pbt" data-tip="${esc(PB_TAG_TIP[t] || t)}">${esc(PB_TAG[t] || t)}</span>`));
+  if (p.result.touchdown) chips.push('<span class="chip ok pbt">TD</span>');
+  if (p.result.turnover) chips.push('<span class="chip err pbt">Turnover</span>');
+  if (!p.charted) chips.push('<span class="chip warn pbt" data-tip="FTN hasn\'t charted this play: the hash, the box, the rushers and motion are not known, so the diagram draws more generic spots">not charted</span>');
+  return chips.join('');
+}
+const epaTxt = e => e == null ? '—' : signed(e, 2);
+function pbList(a) {
+  if (!a.plays.length) {
+    return `<div class="empty pbempty"><div class="glyph">∅</div><h3>No plays match these filters</h3><p>${a.counts.total} plays in ${esc(a.game ? a.game.label : 'this game')}; none is ${esc(filterWords(a))}.</p><button class="btn sm" data-pb-clear>Clear filters</button></div>`;
+  }
+  return `<ol class="plist" aria-label="Plays, ${esc(a.game ? a.game.label : '')}">${a.plays.map(p => {
+    const k = `${p.game_id}/${p.play_id}`;
+    const on = k === S.pb.sel;
+    return `<li><button type="button" class="prow${on ? ' on' : ''}${p.result.first_down ? ' fd' : ''}" data-pb-play="${esc(k)}" aria-pressed="${on}">
+      <span class="pr1"><span class="pq num">${esc(p.quarter_text || '')} ${esc(p.clock || '')}</span><b class="pdd">${esc(p.down_text || 'No down')}</b><span class="psp muted">${esc(p.spot || '')}</span>
+        <span class="pch">${playChips(p)}</span>
+        <span class="pres">${esc(p.result.text)}</span><span class="pepa num" data-tip="${esc('Expected points added: ' + epaTxt(p.epa))}">${esc(epaTxt(p.epa))}<small>EPA</small></span></span>
+      <span class="pr2">${esc(p.desc || '')}</span></button></li>`;
+  }).join('')}</ol>`;
+}
+function filterWords(a) {
+  const f = a.filters, out = [];
+  if (f.down != null) out.push(`on ${ORD_D[f.down]} down`);
+  if (f.type) out.push((a.options.type.find(o => o.value === f.type) || {}).label.toLowerCase());
+  if (f.result) out.push((a.options.result.find(o => o.value === f.result) || {}).label.toLowerCase());
+  return out.join(', ') || 'filtered';
+}
+
+/* ---------- the diagram player ---------- */
+function currentDiagram(key) { // what the player shows: the reconstruction, or the real clip
+  const got = diagramFor(key);
+  if (!got || got.err) return { got };
+  if (S.pb.real) { const clip = standInClip(S.pb.real.concept, S.pb.real.index); return { got, clip, dg: clip.diagram }; }
+  return { got, dg: got.dg };
+}
+function playerPanel(key) {
+  if (!key) return '';
+  const { got, clip, dg } = currentDiagram(key);
+  if (!got) return mockOnly(`The dump has no diagram for play ${esc(key)}: the mockup dumped every play of the newest week and week 3 (offense), the newest week on defense, and a few 2025 plays. Pick another play.`);
+  if (got.err) return `<div class="card pdcard">${emptyInline({ message: got.err.error ? got.err.error.message : 'No such play.' }, 'This play can\'t be drawn')}</div>`;
+  const rec = got.dg;
+  if (PS.key !== key + (clip ? '#real' + clip.index : '')) { PS.key = key + (clip ? '#real' + clip.index : ''); PS.playing = false; PS.t = reducedMotion() && dg ? restT(dg) : 0; }
+  const realBar = rec.real_example && !clip ? `<div class="pdreal"><button type="button" class="btn sm" data-pb-real="${esc(rec.real_example.concept)}"><span aria-hidden="true">▶</span> See a real one: ${esc(rec.real_example.name)}</button><span class="muted">matches ${esc(rec.real_example.match || 'this play')} · ${rec.real_example.count} real example${rec.real_example.count === 1 ? '' : 's'}</span></div>` : '';
+  if (clip && clip.status !== 'ok') {
+    return `<div class="card pdcard">${clipNav(clip)}${emptyInline(clip, clip.status === 'no_library' ? 'No Big Data Bowl library here' : `No real ${clip.name.toLowerCase()} yet`)}</div>`;
+  }
+  return `<div class="card pdcard${dg.kind === 'real' ? ' real' : ''}">
+    ${clip ? clipNav(clip) : realBar}
+    ${pdLabel(dg)}
+    <div class="pdfield">${fieldSvg(dg)}</div>
+    ${pdControls(dg)}
+    ${pdLegend(dg)}
+    ${clip ? `<p class="pdnote muted">${esc(clip.note)}</p>` : ''}
+    ${playInfo(dg)}</div>`;
+}
+function clipNav(clip) {
+  const n = clip.examples.length;
+  return `<div class="pdreal real"><button type="button" class="btn sm" data-pb-back><span aria-hidden="true">←</span> Back to the reconstruction</button>
+    <span class="grow"><b>${esc(clip.name)}</b>${clip.match ? `<span class="muted"> · ${esc(clip.match)}</span>` : ''}</span>
+    ${n ? `<span class="seg" role="group" aria-label="Real examples"><button type="button" data-pb-ex="${clip.index - 1}" ${clip.index > 0 ? '' : 'disabled'} aria-label="Previous example">‹</button><button type="button" disabled class="exn">${clip.index + 1} of ${n}</button><button type="button" data-pb-ex="${clip.index + 1}" ${clip.index < n - 1 ? '' : 'disabled'} aria-label="Next example">›</button></span>` : ''}</div>`;
+}
+/** The label: part of the player, always on, at every width. */
+function pdLabel(dg) {
+  const real = dg.kind === 'real';
+  return `<div class="pdlabel${real ? ' real' : ''}" role="note"><span class="ic" aria-hidden="true">${real ? '●' : '◇'}</span><b>${esc(dg.label)}</b>${real ? `<span class="standin">Illustrative stand-in: the app plays real Big Data Bowl tracking here</span>` : ''}</div>`;
+}
+function fieldSvg(dg) {
+  const f = dg.field, [x0, x1] = viewOf(f), W = f.width;
+  const top = -3.2, bot = W + 3.2;
+  let s = `<defs><marker id="pdA" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="pdah"/></marker>
+    <marker id="pdAs" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="pdahs"/></marker></defs>`;
+  s += `<rect x="${x0}" y="${top}" width="${x1 - x0}" height="${bot - top}" class="pdturf2"/><rect x="${x0}" y="0" width="${x1 - x0}" height="${W}" class="pdturf"/>`;
+  // the end zones, tinted
+  if (x0 < 0) s += `<rect x="${x0}" y="0" width="${Math.min(0, x1) - x0}" height="${W}" class="pdez"/>`;
+  if (x1 > 100) s += `<rect x="${Math.max(100, x0)}" y="0" width="${x1 - Math.max(100, x0)}" height="${W}" class="pdez"/>`;
+  // yard lines every 5, numbers every 10, hash and sideline ticks every yard
+  for (let x = Math.ceil(x0); x <= Math.floor(x1); x++) {
+    if (x < 0 || x > 100) continue;
+    if (x % 5 === 0) s += `<line x1="${x}" x2="${x}" y1="0" y2="${W}" class="pdyl${x === 0 || x === 100 ? ' goal' : ''}"/>`;
+    else s += `<line x1="${x}" x2="${x}" y1="0.4" y2="1.2" class="pdtk"/><line x1="${x}" x2="${x}" y1="${W - 1.2}" y2="${W - 0.4}" class="pdtk"/><line x1="${x}" x2="${x}" y1="23.08" y2="24.08" class="pdtk"/><line x1="${x}" x2="${x}" y1="${W - 24.08}" y2="${W - 23.08}" class="pdtk"/>`;
+    if (x % 10 === 0 && x > 0 && x < 100) { const n = yardNo(x); s += `<text x="${x}" y="8.6" class="pdno" text-anchor="middle">${n}</text><text x="${x}" y="${W - 6.6}" class="pdno" text-anchor="middle">${n}</text>`; }
+  }
+  s += `<line x1="${x0}" x2="${x1}" y1="0" y2="0" class="pdside"/><line x1="${x0}" x2="${x1}" y1="${W}" y2="${W}" class="pdside"/>`;
+  // the line of scrimmage and the line to gain (none on goal to go)
+  s += `<line x1="${f.los}" x2="${f.los}" y1="0" y2="${W}" class="pdlos"/><text x="${f.los}" y="${top + 2.3}" class="pdlt" text-anchor="middle">LOS</text>`;
+  if (f.first_down != null && f.first_down < 100) s += `<line x1="${f.first_down}" x2="${f.first_down}" y1="0" y2="${W}" class="pdfd"/><text x="${f.first_down}" y="${top + 2.3}" class="pdlt fd" text-anchor="middle">1ST DOWN</text>`;
+  else if (f.first_down == null) s += `<text x="${Math.min(x1 - 6, 104)}" y="${top + 2.3}" class="pdlt fd" text-anchor="middle">GOAL TO GO</text>`;
+  if (!f.hash) s += `<text x="${x1 - 0.8}" y="${W + 2.4}" class="pdlt" text-anchor="end">hash not charted: the ball is drawn in the middle</text>`;
+  const tag = dg.kind === 'real' ? 'REAL PLAY · TRACKING STAND-IN' : 'RECONSTRUCTED · NOT TRACKING';
+  s += `<text x="${x0 + 0.8}" y="${W + 2.4}" class="pdwm">${tag}</text>`;
+  const aria = `${dg.label}. ${dg.play.game_label || ''}: ${dg.play.down_text || ''} at ${dg.play.spot || ''}. ${dg.play.result.text}.`;
+  return `<svg viewBox="${x0} ${top} ${x1 - x0} ${bot - top}" role="img" aria-label="${esc(aria)}" preserveAspectRatio="xMidYMid meet">${s}<g id="pdDyn">${dynLayer(dg, PS.t)}</g></svg>`;
+}
+/** The carrier is ringed once he has the ball: after the snap, the ball on the ground at his spot
+ * (works for a reconstruction's phases and for a real clip's tracking events alike). */
+function snapT(dg) { const s = dg.phases.find(p => p.name === 'snap' || p.name === 'ball_snap'); return s ? s.t : 0; }
+function hasBall(dg, x, y, t) {
+  if (t <= snapT(dg) + 0.25) return false;
+  const b = ballAt(dg.ball, t); return !!b && b[2] < 2.2 && Math.hypot(b[0] - x, b[1] - y) < 1.6;
+}
+/** Everything that moves, at time t. */
+function dynLayer(dg, t) {
+  let s = '';
+  const vis = marksAt(dg.marks, t);
+  const endT = (() => { const e = dg.marks.find(m => ['end', 'incomplete', 'interception', 'sack'].includes(m.kind)); return e ? e.t : dg.duration; })();
+  // the trails: where each player has been (only the ones that moved a couple of yards)
+  for (const p of dg.players) {
+    if (p.track.length < 2) continue;
+    const tr = trailOf(p.track, t);
+    if (pathLen(tr) < 1.5) continue;
+    s += `<polyline points="${ptsAttr(tr)}" class="pdtr ${p.side === 'offense' ? 'o' : 'd'}${p.approx ? ' ap' : ''}"/>`;
+  }
+  for (const m of vis) {
+    const pts = m.points;
+    const prog = (a, b) => Math.max(0, Math.min(1, (t - a) / Math.max(0.05, b - a)));
+    if (m.kind === 'motion') s += `<polyline points="${ptsAttr(partial(pts, prog(m.t, nextPhaseT(dg, m.t))))}" class="pdmk motion" marker-end="url(#pdA)"/>`;
+    else if (m.kind === 'fake') { const pp = partial(pts, prog(m.t, nextPhaseT(dg, m.t))); s += `<polyline points="${ptsAttr(pp)}" class="pdmk fake" marker-end="url(#pdA)"/><text x="${pts[1][0] - 0.6}" y="${pts[1][1] + 2.6}" class="pdmt" text-anchor="end">fake</text>`; }
+    else if (m.kind === 'handoff') s += `<g class="pdho"><circle cx="${pts[0][0]}" cy="${pts[0][1]}" r="0.9"/></g>`;
+    else if (m.kind === 'lane') s += `<polyline points="${ptsAttr(pts)}" class="pdmk lane" marker-end="url(#pdAs)"/><text x="${pts[pts.length - 1][0] + 0.6}" y="${pts[pts.length - 1][1] - 2.4}" class="pdmt strong">${esc((m.text || '').replace(/^Run /, ''))}</text>`;
+    else if (m.kind === 'run') s += `<polyline points="${ptsAttr(partial(pts, prog(m.t, endT)))}" class="pdmk run${m.approx ? ' ap' : ''}" marker-end="url(#pdA)"/>`;
+    else if (m.kind === 'throw') s += throwArc(dg, m, t);
+    else if (m.kind === 'end') s += endTag(dg, pts[0], m.text, 'end');
+    else if (m.kind === 'incomplete' || m.kind === 'interception') s += `<g class="pdx"><path d="M${pts[0][0] - 0.9},${pts[0][1] - 0.9} l1.8,1.8 m0,-1.8 l-1.8,1.8"/></g>` + endTag(dg, pts[0], m.text, 'bad');
+    else if (m.kind === 'sack') s += `<g class="pdx"><path d="M${pts[0][0]},${pts[0][1] - 1.4} l0.45,0.95 1,-0.3 -0.45,0.95 0.9,0.6 -1,0.25 0.1,1 -0.95,-0.5 -0.55,0.85 -0.1,-1 -1,0.15 0.6,-0.85 -0.75,-0.65 1,-0.15z" class="burst"/></g>` + endTag(dg, pts[0], m.text, 'bad');
+  }
+  // the players: the defense under the offense, the target and the carrier on top
+  const order = [...dg.players].sort((a, b) => (a.side === 'defense' ? 0 : 1) - (b.side === 'defense' ? 0 : 1) || (a.target || a.carrier ? 1 : 0) - (b.target || b.carrier ? 1 : 0));
+  for (const p of order) {
+    const [x, y] = posAt(p.track, t);
+    const cls = `pdp ${p.side === 'offense' ? 'o' : 'd'}${p.approx ? ' ap' : ''}`;
+    let g = '';
+    if (p.rusher) g += `<circle cx="${x}" cy="${y}" r="1.75" class="pdrush"/>`;
+    if (p.target && !(p.carrier && t >= endT - EPS)) g += `<circle cx="${x}" cy="${y}" r="2.05" class="pdtgt"/>`;
+    if (p.carrier && hasBall(dg, x, y, t)) g += `<circle cx="${x}" cy="${y}" r="2.05" class="pdcar"/>`;
+    g += `<circle cx="${x}" cy="${y}" r="1.12" class="${cls}"/><text x="${x}" y="${y + 0.38}" class="pdpl ${p.side === 'offense' ? 'o' : 'd'}${p.approx ? ' ap' : ''}" text-anchor="middle">${esc(p.label)}</text>`;
+    s += `<g>${g}</g>`;
+  }
+  // the ball: its shadow on the ground, the ball lifted by its height
+  const b = ballAt(dg.ball, t);
+  if (b) {
+    const [bx, by, h] = b;
+    if (h > 1.2) s += `<ellipse cx="${bx}" cy="${by}" rx="0.55" ry="0.32" class="pdbs"/>`;
+    const sc = 1 + Math.max(0, h - 1) * 0.06;
+    s += `<ellipse cx="${bx}" cy="${by - Math.max(0, h - 1) * LIFT}" rx="${(0.62 * sc).toFixed(2)}" ry="${(0.4 * sc).toFixed(2)}" class="pdball"/>`;
+  }
+  return s;
+}
+function throwArc(dg, m, t) {
+  const [a, b] = m.points;
+  const keys = dg.ball.filter(k => k[0] >= m.t - EPS);
+  const catchK = keys.find(k => Math.abs(k[1] - b[0]) < 0.05 && Math.abs(k[2] - b[1]) < 0.05);
+  const tEnd = catchK ? catchK[0] : (keys.length ? keys[keys.length - 1][0] : m.t);
+  const lift = k => [k[1], k[2] - Math.max(0, k[3] - 1) * LIFT];
+  const pts = [[a[0], a[1]]].concat(keys.filter(k => k[0] <= Math.min(t, tEnd) + EPS).map(lift));
+  if (t < tEnd) { const bb = ballAt(dg.ball, t); pts.push([bb[0], bb[1] - Math.max(0, bb[2] - 1) * LIFT]); }
+  return `<polyline points="${ptsAttr(pts)}" class="pdmk throw"${t >= tEnd ? ' marker-end="url(#pdAs)"' : ''}/><line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" class="pdmk throwg"/>`;
+}
+function endTag(dg, p, text, tone) {
+  if (!text) return '';
+  const [, x1] = viewOf(dg.field);
+  const fs = 1.45, w = text.length * fs * 0.52 + 1.6, h = 2.6;
+  const left = p[0] + 2 + w > x1 - 0.5;
+  const tx = left ? p[0] - 2 - w : p[0] + 2;
+  const ty = Math.max(0.6, Math.min(dg.field.width - h - 0.6, p[1] - h - 0.8));
+  return `<g class="pdtag ${tone}"><line x1="${p[0]}" y1="${p[1]}" x2="${left ? tx + w : tx}" y2="${ty + h / 2}"/><rect x="${tx}" y="${ty}" width="${w}" height="${h}" rx="0.5"/><text x="${tx + 0.8}" y="${ty + 1.85}">${esc(text)}</text></g>`;
+}
+const ICO = {
+  restart: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 8a5 5 0 1 0 1.6-3.7M3 2.5v3h3"/></svg>',
+  back: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3 3h1.8v10H3zM13 3v10L5.6 8z"/></svg>',
+  fwd: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M11.2 3H13v10h-1.8zM3 3v10l7.4-5z"/></svg>',
+  play: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9.5-5.5z"/></svg>',
+  pause: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z"/></svg>',
+};
+function pdControls(dg) {
+  const rm = reducedMotion();
+  const ph = phaseAt(dg.phases, PS.t);
+  const idx = dg.phases.indexOf(ph);
+  const ticks = dg.phases.map((p, i) => `<button type="button" class="pdtick${p === ph ? ' on' : ''}" style="left:${(p.t / dg.duration * 100).toFixed(1)}%" data-pb-seek="${p.t}" aria-label="${esc(`Jump to ${i + 1}: ${p.text}`)}" data-tip="${esc(p.text)}"></button>`).join('');
+  return `<div class="pdctl">
+    <div class="pdbtns">
+      <button type="button" class="iconbtn" data-pb-ctl="restart" aria-label="Restart">${ICO.restart}</button>
+      <button type="button" class="iconbtn" data-pb-ctl="back" aria-label="Step back a phase">${ICO.back}</button>
+      ${rm ? '' : `<button type="button" class="iconbtn play" data-pb-ctl="play" id="pdPlay" aria-label="${PS.playing ? 'Pause' : 'Play'}">${PS.playing ? ICO.pause : ICO.play}</button>`}
+      <button type="button" class="iconbtn" data-pb-ctl="fwd" aria-label="Step forward a phase">${ICO.fwd}</button>
+    </div>
+    <div class="pdscrub"><input type="range" id="pdScrub" min="0" max="${dg.duration}" step="0.02" value="${PS.t.toFixed(2)}" aria-label="Time in the animation" aria-valuetext="${esc(ph ? ph.text : '')}"><span class="pdticks">${ticks}</span></div>
+    <span class="pdtime num" id="pdTime">${PS.t.toFixed(1)} / ${dg.duration.toFixed(1)} s</span>
+  </div>
+  <div class="pdphase" id="pdPhase" aria-live="polite"><span class="pdpn num">${idx + 1}/${dg.phases.length}</span><span>${esc(ph ? ph.text : '')}</span>${rm ? '<span class="chip ghost">reduced motion: step through the phases</span>' : ''}</div>`;
+}
+function pdLegend(dg) {
+  const real = dg.kind === 'real';
+  return `<div class="pdlegend" aria-label="Legend">
+    <span><i class="lg-dot o"></i>offense</span><span><i class="lg-dot d"></i>defense</span>
+    ${real ? '' : '<span><i class="lg-dot ap"></i>generic spot (approximate)</span>'}
+    <span><i class="lg-ring rush"></i>rusher</span><span><i class="lg-ring tgt"></i>target</span><span><i class="lg-ring car"></i>ball carrier</span>
+    <span><i class="lg-line los"></i>line of scrimmage</span><span><i class="lg-line fd"></i>line to gain</span>${real ? '' : '<span><i class="lg-line ap"></i>approximate path</span>'}
+  </div>`;
+}
+function playInfo(dg) {
+  const p = dg.play;
+  const li = (arr, cls) => arr && arr.length ? arr.map(x => `<li>${esc(x)}</li>`).join('') : `<li class="muted">${cls === 'ap' ? 'Nothing' : 'None'}</li>`;
+  return `<div class="pdinfo">
+    <div class="pdhead"><span class="eyebrow">${esc(p.game_label || '')}${p.season ? ` · ${p.season}` : ''}</span>
+      <div class="pdh1"><b class="num">${esc(p.quarter_text || '')} ${esc(p.clock || '')}</b><b>${esc(p.down_text || '')}</b><span class="muted">${esc(p.spot || '')}</span>${playChips(p)}</div>
+      <div class="pdh2"><b>${esc(p.result.text)}</b><span class="muted num">EPA ${esc(epaTxt(p.epa))}</span></div>
+      ${p.desc ? `<p class="pddesc">${esc(p.desc)}</p>` : ''}</div>
+    <div class="pdkau">
+      <section><h4><i class="kk kn"></i>Known</h4><ul>${li(dg.known)}</ul></section>
+      <section><h4><i class="kk ap"></i>Approximate <small>drawn at generic spots</small></h4><ul>${li(dg.approximate, 'ap')}</ul></section>
+      <section><h4><i class="kk un"></i>Not in the data <small>not drawn</small></h4><ul>${li(dg.unknown)}</ul></section>
+    </div>
+    <p class="pdsrc muted">Sources: ${esc((dg.sources || []).join(' · '))}</p></div>`;
+}
+/* ---------- the clock ---------- */
+function pdShown() { const k = S.pb.sel; if (!k) return null; const c = currentDiagram(k); return c.dg || null; }
+function pdDraw() {
+  const dg = pdShown(); const g = document.getElementById('pdDyn');
+  if (!dg || !g) { PS.playing = false; return; }
+  g.innerHTML = dynLayer(dg, PS.t);
+  const sc = document.getElementById('pdScrub'); const ph = phaseAt(dg.phases, PS.t);
+  if (sc) { sc.value = PS.t.toFixed(2); sc.setAttribute('aria-valuetext', ph ? ph.text : ''); }
+  const tm = document.getElementById('pdTime'); if (tm) tm.textContent = `${PS.t.toFixed(1)} / ${dg.duration.toFixed(1)} s`;
+  const pe = document.getElementById('pdPhase');
+  if (pe) { const span = pe.children[1]; const idx = dg.phases.indexOf(ph); pe.children[0].textContent = `${idx + 1}/${dg.phases.length}`; if (span && span.textContent !== (ph ? ph.text : '')) span.textContent = ph ? ph.text : ''; }
+  document.querySelectorAll('.pdtick').forEach((b, i) => b.classList.toggle('on', dg.phases[i] === ph));
+  const pb = document.getElementById('pdPlay'); if (pb) { pb.innerHTML = PS.playing ? ICO.pause : ICO.play; pb.setAttribute('aria-label', PS.playing ? 'Pause' : 'Play'); }
+}
+function pdFrame(now) {
+  if (!PS.playing) return;
+  const dg = pdShown(); if (!dg) { PS.playing = false; return; }
+  PS.t = Math.min(dg.duration, PS.t + Math.min(0.1, (now - PS.last) / 1000)); PS.last = now;
+  if (PS.t >= dg.duration) PS.playing = false;
+  pdDraw();
+  if (PS.playing) PS.raf = requestAnimationFrame(pdFrame);
+}
+function pdPlay() {
+  const dg = pdShown(); if (!dg || reducedMotion()) return;
+  if (PS.t >= dg.duration - 1e-3) PS.t = 0;
+  PS.playing = true; PS.last = performance.now(); cancelAnimationFrame(PS.raf); PS.raf = requestAnimationFrame(pdFrame); pdDraw();
+}
+function pdPause() { PS.playing = false; cancelAnimationFrame(PS.raf); pdDraw(); }
+function pdControl(what) {
+  const dg = pdShown(); if (!dg) return;
+  if (what === 'play') { PS.playing ? pdPause() : pdPlay(); return; }
+  pdPause();
+  if (what === 'restart') { PS.t = 0; if (!reducedMotion()) { pdPlay(); return; } }
+  else if (what === 'back') PS.t = stepTime(dg, PS.t, -1);
+  else if (what === 'fwd') PS.t = stepTime(dg, PS.t, 1);
+  pdDraw();
+}
+function pbSelect(key, auto) {
+  S.pb.sel = key; S.pb.real = null; PS.key = null;
+  render();
+  if (auto && !reducedMotion()) pdPlay();
+}
+function pbFocusPlayer() { const el = document.getElementById('pbPlayer'); if (el && innerWidth < 1100) el.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' }); }
+
 /* ------------------------------------------------------------------ interactions */
 $('#view').addEventListener('click', e => {
+  const pbb = e.target.closest('#pbBtn'); if (pbb) { S.pb.open = !S.pb.open; pdPause(); render(); return; }
+  const pw = e.target.closest('[data-pb-week]'); if (pw && pw.dataset.pbWeek) { S.pb.week = Number(pw.dataset.pbWeek); S.pb.sel = null; S.pb.real = null; if (S.pb.state === 'no_week') S.pb.state = 'ok'; pdPause(); render(); return; }
+  const pf = e.target.closest('[data-pb-f]'); if (pf) { const k = pf.dataset.pbF; const v = k === 'down' ? Number(pf.dataset.v) : pf.dataset.v; S.pb[k] = S.pb[k] === v ? null : v; pdPause(); render(); const again = document.querySelector(`[data-pb-f="${k}"][data-v="${CSS.escape(String(v))}"]`); if (again) again.focus(); return; }
+  if (e.target.closest('[data-pb-clear]')) { S.pb.down = S.pb.type = S.pb.result = null; pdPause(); render(); return; }
+  const pp = e.target.closest('[data-pb-play]'); if (pp) { pbSelect(pp.dataset.pbPlay, true); const again = document.querySelector(`[data-pb-play="${CSS.escape(pp.dataset.pbPlay)}"]`); if (again) again.focus({ preventScroll: true }); pbFocusPlayer(); return; }
+  const pc = e.target.closest('[data-pb-ctl]'); if (pc) { pdControl(pc.dataset.pbCtl); return; }
+  const sk = e.target.closest('[data-pb-seek]'); if (sk) { pdPause(); PS.t = Number(sk.dataset.pbSeek); pdDraw(); return; }
+  const rl = e.target.closest('[data-pb-real]'); if (rl) { pdPause(); S.pb.real = { concept: rl.dataset.pbReal, index: 0 }; PS.key = null; render(); if (!reducedMotion() && pdShown()) pdPlay(); return; }
+  const ex = e.target.closest('[data-pb-ex]'); if (ex) { pdPause(); S.pb.real = Object.assign({}, S.pb.real, { index: Number(ex.dataset.pbEx) }); PS.key = null; render(); if (!reducedMotion()) pdPlay(); return; }
+  if (e.target.closest('[data-pb-back]')) { pdPause(); S.pb.real = null; PS.key = null; render(); return; }
   if (e.target.closest('[data-nav-grid]')) { S.screen = 'grid'; syncMockbar(); render(); return; }
   const t = e.target.closest('[data-team]'); if (t) { S.team = t.dataset.team; S.screen = 'team'; S.hist = false; syncMockbar(); render(); window.scrollTo({ top: 0 }); return; }
   const ot = e.target.closest('[data-open-team]'); if (ot) { S.team = ot.dataset.openTeam; S.screen = 'team'; S.season = NEWEST; S.hist = false; syncMockbar(); render(); window.scrollTo({ top: 0 }); return; }
@@ -1067,8 +1576,21 @@ $('#view').addEventListener('click', e => {
   if (e.target.closest('[data-upd-hide]')) { S.upd = 'real'; syncMockbar(); render(); return; }
   if (e.target.closest('[data-go-week]')) goNextWeek();
 });
-$('#view').addEventListener('change', e => { if (e.target.id === 'sortSel') { const id = e.target.value; S.sort = { id, dir: id === 'team' ? 1 : -1 }; render(); } });
-$('#view').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr.teamrow')) { e.preventDefault(); e.target.click(); } });
+$('#view').addEventListener('change', e => {
+  if (e.target.id === 'sortSel') { const id = e.target.value; S.sort = { id, dir: id === 'team' ? 1 : -1 }; render(); return; }
+  if (e.target.id === 'pbWeek') { S.pb.week = Number(e.target.value); S.pb.sel = null; S.pb.real = null; if (S.pb.state === 'no_week') S.pb.state = 'ok'; pdPause(); render(); const w = document.getElementById('pbWeek'); if (w) w.focus(); }
+});
+$('#view').addEventListener('input', e => { if (e.target.id === 'pdScrub') { PS.playing = false; cancelAnimationFrame(PS.raf); PS.t = Number(e.target.value); pdDraw(); } });
+$('#view').addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr.teamrow')) { e.preventDefault(); e.target.click(); return; }
+  // the play list: up / down move through the plays (and play the one reached), Home / End jump
+  if (e.target.matches('.prow') && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
+    e.preventDefault();
+    const rows = $$('.prow'); const i = rows.indexOf(e.target);
+    const j = e.key === 'Home' ? 0 : e.key === 'End' ? rows.length - 1 : Math.max(0, Math.min(rows.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)));
+    if (j !== i) { const k = rows[j].dataset.pbPlay; pbSelect(k, true); const again = document.querySelector(`[data-pb-play="${CSS.escape(k)}"]`); if (again) again.focus(); }
+  }
+});
 
 const tip = $('#tip');
 function showTip(html, x, y) {
