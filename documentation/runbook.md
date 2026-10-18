@@ -323,6 +323,16 @@ Each team's play-calling rates in its next game, against that opponent (PROE, dr
 4. **After a season** (spring): add it to `playcalling.forecast.report_seasons` in `config/settings.yaml`, write the ship rule down, `uv run nfl playcalling backtest --promote` (W&B `playcall-backtest`), update the model card. Only shipped targets reach the pages.
 5. **If something's off:** `uv run nfl playcalling forecast --season 2026 --week <W> --no-wandb` re-makes a week's file (the newest replaces it; a past week becomes a backfill); `playcalling\2026\week<NN>\forecast.json` says when it was made, the model version and any games already kicked off.
 
+### Play diagrams and the Big Data Bowl library (PC03)
+
+The play browser (a team page in Explore → Play calling → **Plays**) needs nothing new: it reads the play-calling tables, so a week's plays appear after the Tuesday build (Monday night's game after Wednesday's). Guide: [play-calling.md §10](guides/play-calling.md#10-the-play-browser-and-play-diagrams-pc03).
+
+**"See a real one"** (real tracked plays of a concept) needs the Big Data Bowl library, built once:
+1. Rishi joins [BDB 2026 Analytics on Kaggle](https://www.kaggle.com/competitions/nfl-big-data-bowl-2026-analytics) (accept the rules) and sets `KAGGLE_API_TOKEN` (Kaggle → Settings → API → Create New Token; or the classic `KAGGLE_USERNAME` + `KAGGLE_KEY`) in the env file; `uv run nfl doctor` lists them as set. (BDB 2025, the first plan, is withdrawn from Kaggle: D134.)
+2. `uv run nfl playcalling library --list`: the competition's files and sizes (no writes).
+3. `uv run nfl playcalling library --download --weeks 1-18`: the play labels (`supplementary_data.csv`) and each week's two tracking files (`input_2023_wNN.csv`, `output_2023_wNN.csv`), ~0.86 GB for the season (all 18 weeks are on D: since 2026-10-17), into `bdb\2026\raw\` (with `manifest.json`: sizes and sha256), then the library into `playcalling\bdb_library\` (about 10 plays per concept, five pass concepts, spread over the season one week at a time). `uv run nfl playcalling library` alone rebuilds the library from the files on disk; `--weeks 1-4` limits it to some weeks.
+4. **The terms (D134):** non-commercial, not redistributed. Never copy these files (or the library, or screenshots of a real clip) into the repo, W&B or anything published.
+
 ## What each alert means
 
 Alerts are printed at the end of a run (`ALERT (level) title: text`), stored in `run_summary.json` → `alerts`, and sent as W&B alerts (W&B's own email or app notifications, set in your W&B user settings; `ops.wandb_alerts`). None of them changes anything automatically.
@@ -371,6 +381,7 @@ Every alert's full text (with the numbers) is in that week's `run_summary.json` 
 | The live bot's files (LD01): finished games' ESPN summaries, latency logs, the parity report | `live\summaries\<event>.json.gz`, `live\latency\<event>.jsonl`, `live\parity\` (all safe to delete; never curated) |
 | The live bot's models (LD00) | `models\live-decisions\<version>\`, the pointer `models\live-decisions\production.json` |
 | The play-calling tables (PC00) | `playcalling\<season>\`: `plays_enriched.parquet`, `team_game_tendencies.parquet`, `team_tendencies.parquet`, `league_tendencies.parquet`, `build.json`; a simulation in `playcalling\<season>\through_weekWW\` (all rebuildable: `nfl playcalling build`) |
+| The Big Data Bowl library (PC03) | `bdb\2026\raw\` (the downloaded BDB 2026 files + `manifest.json`), `playcalling\bdb_library\` (`index.json` + one JSON per real play, by concept); local only (D134) |
 | The play-calling forecast (PC02) | `playcalling\<season>\week<NN>\forecast.parquet` + `forecast.json` (a week's forecast), `playcalling\<season>\playcall_scoreboard.parquet` (the grades), backtests in `playcalling\backtests\<first>-<last>\`; the model `models\playcall\<version>\params.json` and the pointer `models\playcall\production.json` |
 | The decision reviews (LD03) | `live\<season>\week<NN>\decision_review.parquet` + `.json` (a week), `live\<season>\season_review.parquet` + `.json` (the season through the newest reviewed week); the control room's own copies in `cache\control-room\live\review\` (safe to delete) |
 

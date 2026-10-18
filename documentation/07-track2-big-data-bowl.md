@@ -4,6 +4,7 @@
 
 - **The 2027 Big Data Bowl had not been announced as of 2026-09-30**, so this track uses the **NFL Big Data Bowl 2026: Prediction** competition data on Kaggle.
 - Check again when the 2027 edition is announced (the 2026 edition opened in late September 2025). If it brings newer seasons or a related task, consider adding it. The pipeline should be reusable across editions.
+- **Update (PC03, 2026-10-11):** BDB 2027 was announced on 2026-10-07: a judged write-up linking NFL Scouting Combine tracking (2023–2025) to the same rookies' NFL performance, with in-game tracking of those players only. It isn't a movement-prediction task, so Track 2 stays on BDB 2026 (the [season operations guide](guides/season-operations.md) §9, D134). PC03 uses **BDB 2026** (2023 pass plays; BDB 2025 and 2024, the whole-play editions, are withdrawn from Kaggle as of 2026-10-17) for the play-calling pages' real example clips, stored as `{NFL_DATA_ROOT}/bdb/2026/raw/` (an edition folder, the layout T00 should follow: `bdb/<edition>/raw/`).
 - The competition itself is over. It's unclear whether late submissions still work. **Our evaluation doesn't depend on Kaggle:** we use our own week-based holdout.
 
 ## The task (confirm the details on download)

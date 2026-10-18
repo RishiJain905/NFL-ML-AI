@@ -1,8 +1,8 @@
 # Play calling guide: team tendencies
 
-**What this is:** a plain-language guide to the Play calling track's data: what play-calling tendencies are (pass rate over expected, play-action, screens, blitzes, coverage shells: a primer), which data covers what and when, the exact definitions, the tables `nfl playcalling build` writes and how to read them, how they refresh each week, and real numbers from 2025 and 2026 (PC00); then the control room's pages that draw them, Explore → Play calling and the Play calls week tab, how to read each chart and how they're wired (PC01, §8); then the forecast of each team's next-game rates against its opponent, how to read a forecast and its range, why the gains are small, and the stadium crews that chart run direction (PC02, §9). PC03 adds the play diagrams.
+**What this is:** a plain-language guide to the Play calling track's data: what play-calling tendencies are (pass rate over expected, play-action, screens, blitzes, coverage shells: a primer), which data covers what and when, the exact definitions, the tables `nfl playcalling build` writes and how to read them, how they refresh each week, and real numbers from 2025 and 2026 (PC00); then the control room's pages that draw them, Explore → Play calling and the Play calls week tab, how to read each chart and how they're wired (PC01, §8); then the forecast of each team's next-game rates against its opponent, how to read a forecast and its range, why the gains are small, and the stadium crews that chart run direction (PC02, §9); then the play browser, how each play is reconstructed from the charting data and what's known, approximate or missing on it, and the Big Data Bowl's real example clips (PC03, §10).
 
-**Related docs:** the spec is the [Play calling README](../play-calling/README.md) and the phase files ([PC00](../play-calling/PC00-tendency-data.md), [PC01](../play-calling/PC01-play-calling-pages.md), [PC02](../play-calling/PC02-tendency-forecast.md), [PC03](../play-calling/PC03-play-diagrams.md)). Decisions: D107 (the no-touch rule), D108 (where the pages go), D110 (diagrams), D122 (PC00 as built: the definitions, the tables, the refresh), D124 (PC01: the pages), D129 and D130 (PC02: the forecast and its ship decision) in the [decisions log](../10-decisions-log.md). The forecast's model card: [model_cards/playcall-forecast.md](../model_cards/playcall-forecast.md). The W&B side is in the [W&B guide §6.9 and §6.10](weights-and-biases.md). The weekly commands are in the [runbook → Play calling](../runbook.md). Agents use the `play-calling` skill.
+**Related docs:** the spec is the [Play calling README](../play-calling/README.md) and the phase files ([PC00](../play-calling/PC00-tendency-data.md), [PC01](../play-calling/PC01-play-calling-pages.md), [PC02](../play-calling/PC02-tendency-forecast.md), [PC03](../play-calling/PC03-play-diagrams.md)). Decisions: D107 (the no-touch rule), D108 (where the pages go), D110 (diagrams), D122 (PC00 as built: the definitions, the tables, the refresh), D124 (PC01: the pages), D129 and D130 (PC02: the forecast and its ship decision), D133 and D134 (PC03: the diagrams, the Big Data Bowl library and its terms) in the [decisions log](../10-decisions-log.md). The forecast's model card: [model_cards/playcall-forecast.md](../model_cards/playcall-forecast.md). The W&B side is in the [W&B guide §6.9 and §6.10](weights-and-biases.md). The weekly commands are in the [runbook → Play calling](../runbook.md). Agents use the `play-calling` skill.
 
 ---
 
@@ -338,7 +338,7 @@ League-wide, 32 teams: air yards per attempt, no-huddle and shotgun agree with S
 
 - Early in a season most situational cells are greyed (2026 as of week 5: 4th-down cells rest on 2–7 plays) and there's no Last 4 yet. The pages show the samples rather than hide them.
 - A defense's "allowed" rates mix the defense with its opponents: a defense that faced three run-heavy offenses "allows" a low PROE. PC02's forecast adjusts for the opponents; PC01 only says so.
-- The forecast and its grading came with PC02 (§9); no play diagrams or play browser yet (PC03).
+- The forecast and its grading came with PC02 (§9), the play browser and the diagrams with PC03 (§10).
 - **Run direction is charted by each stadium's crew** (§9.5): a team's run lanes include its own crew in its home games.
 
 ## 9. The forecast (PC02)
@@ -417,7 +417,122 @@ Run location (left end ... right end) in play-by-play is charted by the **home t
 - League trends (motion, play-action) make early forecasts run a little low (motion −0.75 points pooled).
 - No personnel, formation or coverage forecasts (no 2026 participation until February 2027), no single plays.
 
-## 10. How to change it safely
+## 10. The play browser and play diagrams (PC03)
+
+PC03 lets you **watch a play**: pick a team, a game and a play, and a playbook card animates it: the pre-snap picture, the snap, the rushers, the throw or the run, where it ended. There's no public player tracking for 2024–2026 games (D110), so every diagram is **rebuilt from the charting data** and says so on the player, always: "Reconstructed from charting data, not player tracking". For a few play concepts, **See a real one** plays a real tracked play of the same idea from the NFL Big Data Bowl (§10.5).
+
+### 10.1 Open it
+
+**Explore → Play calling → a team → Plays → Show plays** (it loads only when opened, like History). The browser follows the page's **Offense / Defense** switch (on defense it lists the plays run against the team) and its season.
+
+![MIN's plays, 2026 week 3 at TB: the week picker, the filters, the list, and the player on a play-action deep shot](img/playcalling-browser.png)
+
+- **Game:** one game at a time (the picker or ‹ ›), the newest by default. A bye week or a week not played yet says so.
+- **Filters:** down (1st–4th), play type (runs, passes, sacks, scrambles, play-action, screens, RPOs, deep shots, motion), result (first downs, touchdowns, turnovers, explosive, lost yards, incomplete, successful). One value each; "Showing N of M plays".
+- **The list:** quarter and clock, down and distance, the spot, the type and tags, the result ("Complete, +22 (22 air yards), first down"), EPA, and the play-by-play text. ↑ / ↓ move through it and play the next one.
+- **The player:** play / pause, step back / forward through the play's **phases** (before the snap, motion, the snap, the fake, the handoff or the throw, the catch, the end), restart, and a scrubber with a tick per phase; the phase's text under it. A play runs 3–4 seconds. With **reduced motion** set on the computer there's no autoplay: the player rests on the last phase with every path drawn, and the step buttons still work.
+- **Under the field:** the play (game, quarter and clock, down and distance, the result, the tags, the play-by-play text) and three lists: **Known**, **Approximate** (drawn at generic spots) and **Not in the data** (not drawn), with the sources.
+
+![The player on a pass: the label on top, the line of scrimmage and the line to gain, dashed (approximate) players, the 3 rushers ringed, the throw's arc to the target](img/playcalling-diagram-pass.png)
+
+![A run: the lane at the line (left guard), the carrier's path, then the end tag](img/playcalling-diagram-run.png)
+
+![At phone width: the field scales, the label stays](img/playcalling-diagram-phone.png)
+
+**How to read the drawing:** offense left to right in the team's colour series (`--s1`), defense in `--s2`; a **filled** dot is a place the data puts a player (the linemen, the QB by his alignment), a **hollow dashed** one is a generic spot; rushers are ringed, the target has a dashed ring, the ball carrier a solid one; dashed paths are approximate, solid ones come from the data (the lane at the line, the throw). "RECONSTRUCTED · NOT TRACKING" is also written in the field's bottom margin, so a cropped picture still says it.
+
+### 10.2 What's known, what's drawn generically, what isn't drawn
+
+| Element | 2026 (play-by-play + FTN) | 2023–2025 (+ participation) | 2022 | 2016–2021 |
+|---|---|---|---|---|
+| Line of scrimmage, line to gain, down, distance, clock | known | known | known | known |
+| The hash | known (FTN) | known | known | **not charted**: the ball drawn in the middle |
+| QB under center / shotgun / pistol | known (FTN) | known | known | under center / shotgun from play-by-play (pistol counts as shotgun) |
+| Backs, box defenders, pass rushers (counts) | known (FTN) | known | known | box and rushers from participation; backs from the personnel |
+| Motion, play-action, screen, RPO | known (FTN) | known | known | **not charted** |
+| Personnel (backs, tight ends, a 6th lineman) | **not yet** (2026's participation comes ~February 2027) | known (research data) | known | known |
+| Coverage shell, man / zone | not yet | known on most dropbacks | ~54% of plays | from 2018 |
+| The target's route, time to throw | not yet | known | known (NGS names) | known |
+| Throw: depth and third of the field; run: the lane at the line; the gain | known (play-by-play) | known | known | known |
+| Who was targeted / carried it (WR, TE, RB, QB) | known (play-by-play + rosters) | known | known | known |
+| **Where** receivers, backs and every defender stand | approximate | approximate (the shell places the safeties) | approximate | approximate |
+| The catch spot within its third, the path to it, the run after the line or catch, the QB's drop | approximate | approximate (the route's name shapes the path) | approximate | approximate |
+| Other receivers' routes, who covered whom, blocking, defenders after the snap (beyond the rushers) | not in the data | not in the data | not in the data | not in the data |
+
+So a 2026 play shows more than it might seem (FTN charts a lot pre-snap), but every position on it except the line and the QB is a generic spot; a 2025 play adds personnel, the coverage shell and the target's route.
+
+### 10.3 How a diagram is built
+
+`src/nflengine/playcalling/diagrams.py`, one play in, JSON out (~0.2 ms and ~7 KB a play):
+
+- **Coordinates:** yards; x from the offense's own goal line (0) to the opponent's (100), end zones to −10 and 110, the offense always moving to the right; y from the offense's **left** sideline (0) to its right (53.3). The hash marks sit 23.6 yards from each sideline (FTN's left / middle / right, read from the offense's side).
+- **The offense:** five linemen 1.3 yards apart (six when participation says so; only the center over a charted ball counts as a measured spot), the QB 1.5 or 5 yards deep (under center; shotgun or pistol), the backs by count and alignment (a lone shotgun back 5 deep and 2.5 to the boundary side of the QB, a single back under center or in the pistol 7.5 deep, an offset fullback 4.3 deep, wing backs 2.7 deep and about 4 wide), then the receivers: tight ends inline (when personnel knows them), the rest wide (10.5 yards from the sideline) and in the slots (16 and 20), the wide side of the field first. These spots are the medians of real 2023 tracking (§10.4).
+- **The defense:** the box count split into linemen (up to 4; 5–6 in a goal-line box; 0.7 yards off the ball) and linebackers (4.4); outside the box, corners over the widest receivers (5 yards off), then the safeties (11 deep: one for Cover 1 / 3, two for Cover 2 / 4 / 6 / 2-man, none for Cover 0, two as a generic shell when the coverage isn't known), then nickel / overhang players over the slots (5).
+- **The timeline** (seconds, not the game clock: a real dropback takes 2.5 s from the snap to the throw from the shotgun, 3.1 s from under center, and the animation is shorter): motion 0.15–0.7, the snap at 0.8, the drop (to 8.3 yards deep from under center, 7.8 from the shotgun, 7.5 from the pistol; after a play-action fake when FTN charts one), the release, the ball's arc (its height drawn, longer throws higher), the catch, the run after the catch; on runs, the handoff, the lane at the line (middle; over a guard, a tackle, or outside: 1.3, 2.6, 5.5 yards from the ball), the carrier's straight path to where the play ended (a loss stops behind the line). The rushers (the count) leave from the line toward the QB and stop two yards short of him.
+- **The target and the carrier:** the throw lands at the line + its air yards, in its third of the field (left / middle / right: 10.5, 26.7 or 42.8 yards from the left sideline; a throw behind the line goes to the flat). The targeted player is the receiver of the **right type** (the rosters say whether the targeted player was a wide receiver, tight end or back) nearest that spot; on runs, a receiver's carry (a jet sweep) starts from the man who went in motion. The route's name, when participation has it, shapes the path (a go goes straight, a post stems then breaks inside, an out breaks at the catch depth, a hitch comes back).
+- **What only the play-by-play text says:** nflverse's `touchdown` flag is also 1 for the defense's touchdowns, so a pick-six or a fumble returned for a score isn't the offense's touchdown; a lost fumble is read from "RECOVERED by XXX" (old team codes like OAK compared as LV); a fumbled snap the QB picked up and threw is drawn as that pass; fake punts and field goals ("(Punt formation)") and direct snaps are tagged and the kicking formation is drawn as a standard offense (a fumbled snap from punt formation is said to be that, not called a fake).
+- **Checked on every play:** all 2016, 2019, 2022, 2025 and 2026 plays (~144,000) build with 11 players a side, keyframes in strictly ascending time, everything inside the field, a throw for every pass with a direction and a carrier for every run.
+
+### 10.4 Checked against real 2023 tracking
+
+The Big Data Bowl 2026 data (§10.6) has real tracking of every 2023 targeted pass. Joined to our 2023 play-by-play and FTN by game and play id (14,107 plays), it shows where the reconstruction's generic spots stand against the real ones (in the diagram's frame; medians, the middle half in brackets):
+
+| What | The diagram (before → after the check) | Real 2023 |
+|---|---|---|
+| The ball by FTN's hash (the QB's spot at the snap), yards from the left sideline | left 23.6, middle 26.7, right 29.8 (unchanged) | 23.6 [23.5–23.8], 26.6 [26.2–27.1], 29.6 [29.4–29.8]: **FTN's hash is read from the offense's side**, as assumed |
+| Where a throw lands across the field by the gamebook's direction | left 10.5, middle 26.7, right 42.8 (unchanged) | 10.3 [5.6–15.8], 26.8 [22.9–30.3], 42.7 [37.5–47.7] |
+| The landing depth vs play-by-play's air yards | the line + air yards | 0.9 yards shorter (the catch point is past where the ball comes down) |
+| The QB's depth at the snap | under center 1.0 → **1.5**; shotgun 5.0; pistol 4.0 → **5.0** | 1.6, 5.0, 5.1 |
+| The QB's depth when he throws | 7.0 / 6.5 / 6.0 → **8.3 / 7.8 / 7.5** | 8.3, 7.8, 7.5 |
+| A lone shotgun back | 5.0 deep, 1.6 beside the QB → **2.5** | 5.1 deep, 2.5 beside |
+| The back under center / in the pistol | 7.0 → **7.5** | 7.5, 7.6 |
+| An offset fullback under center | 4.5 → **4.3** deep, 2.1 over | 4.3 deep, 2.1 over |
+| The widest receiver from its sideline | 7.0 → **10.5** | 10.7 [9.2–14.7] |
+| Every wide receiver or tight end from its sideline | slots 15, 20 → **16**, 20 | 17.4 [13.9–19.8] |
+| Defensive linemen / linebackers / corners / safeties, off the ball | 1.0 / 4.5 / 6.0 / 12.0 → **0.7 / 4.4 / 5.0 / 11.0** | 0.6 / 4.3–4.4 / 4.8 / SS 10.2, FS 11.5 |
+| Deep safeties at the snap by the coverage | 1 for Cover 1 / 3, 2 for Cover 2 / 4 / 6 / 2-man | 1.3–1.4 vs 1.7–1.8 on average: defenses disguise the shell before the snap, so the drawing shows the coverage's shell, not a snapshot |
+| The ball's time in the air | 0.35 + distance / 45 s (kept: the animation is compressed) | about 0.8 s at 10–20 yards, 1.2 s at 20–30, 2.3 s at 40–50 |
+
+So the reconstruction's generic spots now sit where 2023's real players stood on average; any single play still differs (the middle half of real widest receivers spans 9–15 yards from the sideline).
+
+### 10.5 How it's wired
+
+| Endpoint | Answers with | Reads |
+|---|---|---|
+| `GET /api/playcalling/teams/{team}/plays?season=&side=&week=&down=&type=&result=` | a team's plays in one week (or the plays run against it on defense), the weeks it played, the filter options, the counts | `playcalling/<S>/plays_enriched.parquet` (one filtered read) |
+| `GET /api/playcalling/plays/{game_id}/{play_id}/diagram` | one play's diagram; a game or play that doesn't exist is a 404 that repeats nothing | the game's rows of `plays_enriched`, curated `players` (the target's and carrier's positions) |
+| `GET /api/playcalling/concepts/{concept}?example=N` | "See a real one": a real Big Data Bowl play of the concept, in the same shape (`kind: "real"`) | `playcalling/bdb_library/` (§10.5) |
+
+The reader is `src/nflengine/app/readers/playbrowser.py` (read-only; every text in its answers goes through the app's `clean()`, team codes through the 32-team list). The web side: `web/src/pages/explore/PlayBrowser.tsx` (the section), `web/src/charts/PlayDiagram.tsx` (the field, drawn from a diagram and a time) and `PlayDiagramPlayer.tsx` (the label, the controls, the legend), `web/src/lib/playdiagram.ts` (interpolation, phases, the view). The browser draws, it never works out football: every position and time comes from the server. The mockup (v10 of the [Play Calling Mockup](https://claude.ai/artifact/KFwYaMJnxjpPdXEz7MsxPQ), **Plays & diagram** in its control strip) is the visual spec.
+
+### 10.6 See a real one: the Big Data Bowl concept library
+
+The **NFL Big Data Bowl** is the league's yearly analytics competition on Kaggle; its data includes **player tracking**: players' positions 10 times a second. The library uses the **2026 edition: 2023 weeks 1–18, targeted passes** (all 18 weeks are on D:, 829 MB; its label file also lists 2024 weeks 14–18, Kaggle's held-out plays, which have no tracking, so only tracked plays are picked; the examples are spread over the season, one per week in turn, weeks 1–10 for 10 examples). For each play it has the passer, every route runner and the coverage defenders until the throw, then the targeted receiver and the defenders near the ball until it lands, where it landed, and the play's labels (the target's route, play-action, the pass length, the coverage, EPA). A diagram whose play matches one of five passing concepts gets a **See a real one** button that plays real examples in the same player, labelled "Real play: 2023 week N, Big Data Bowl data":
+
+| Concept | A play matches when | Real examples are |
+|---|---|---|
+| Screen | FTN charts a screen | targeted throws on a screen route |
+| Play-action deep shot | play-action and 20+ air yards | play-action throws of 20+ yards past the line |
+| Cover 1 / Cover 3 / 2-man | a dropback with that coverage (participation, 2018–2025) | throws against that coverage |
+
+**What a real clip shows and doesn't:** every tracked player is where he really was (no approximate dots), the throw goes to where the ball really landed after its real time in the air. The linemen and the pass rushers aren't tracked in this edition, the ball isn't tracked before the throw (it's drawn with the passer), only the target and the nearby defenders are tracked after the throw (the others stay where they were), and the clip ends when the ball lands. The player's lists say so for every clip.
+
+**Runs and RPOs have no real example.** The 2025 edition (2022, whole plays including runs, with PFF's run concepts and RPOs) was the plan, but on 2026-10-17 Kaggle serves only a README for it and for 2024; BDB 2023 (2021 pass plays) stops at the throw; the older editions lack linemen or whole plays; BDB 2027 tracks only Combine rookies (D134). Their diagrams show no button.
+
+**The terms (D134):** the competition's rules make the data CC BY-NC 4.0, for "non-commercial purposes only, including ... academic research and education", and forbid passing it to anyone who hasn't accepted the rules. So the files stay **on this computer**: `bdb/2026/raw/` (the download, with `manifest.json`: sizes and sha256) and `playcalling/bdb_library/` (about 10 plays per concept, one JSON each, `index.json`). Never in git (the repository is public), W&B, the published mockup (it plays a labelled stand-in made from a reconstruction) or a screenshot in the docs.
+
+**Building it** (once; runbook → Play diagrams): Rishi joins **BDB 2026 Analytics** on Kaggle (accept its rules) and sets `KAGGLE_API_TOKEN` (Kaggle → Settings → API → Create New Token; or the classic `KAGGLE_USERNAME` + `KAGGLE_KEY`); `uv run nfl playcalling library --list` shows the files and sizes; `uv run nfl playcalling library --download --weeks 1-18` (as a list: `--weeks 1,2,...,18`) downloads the labels and the weeks' tracking files (~58 MB for week 1, ~0.86 GB for all 18) and builds the library. The examples are clean plays (no penalty), spread over the week's games, plays that gained expected points first. Without the library the browser says "Real examples need the Big Data Bowl library on this computer" and shows no button.
+
+**Big Data Bowl 2027** (announced 2026-10-07) pairs NFL Combine tracking with the same rookies' in-game tracking: only those players on each snap, so it can't show whole plays ([season operations guide §9](season-operations.md#9-big-data-bowl-2027)).
+
+### 10.7 Limits
+
+- A reconstruction is a picture of the charting, not of the play: the receivers' spots, their routes (other than the target's), the coverage and the blocking are generic or missing, and the timing is a 3–4 second animation, not the play's real clock.
+- 2026 has no personnel or coverage until its participation file lands (about February 2027); then 2026's diagrams gain them on the next `nfl playcalling build --history all`.
+- The third of the field a throw went to is the gamebook's; the spot inside it is generic.
+- Monday night's plays appear after Wednesday's FTN refresh with their FTN details; before that they're drawn from play-by-play alone (the hash in the middle, generic counts).
+
+## 11. How to change it safely
 
 - **A new metric:** add a `Metric` to `labels.py` (a `den` expression saying which plays count, a `num` saying what each counts as, a `unit`, a `source`, `situational=True` if it should come by situation, `first_season` / `last_season` if its data has an era). If it needs a new play label, add the column in `build.enrich_plays`. Rebuild; the tables pick it up. Add a test with a hand-counted value.
 - **A new situation:** add a `Situation` to `labels.SITUATIONS` (a family and an expression over the enriched columns).
@@ -426,10 +541,10 @@ Run location (left end ... right end) in play-by-play is charted by the **home t
 - **A forecast target or a model change (PC02):** add a `Target` to `forecast.TARGETS` (its metrics, situation, unit, source, `script`, `context` opponent / venue), run `uv run nfl playcalling backtest` (W&B `playcall-backtest`), write the ship rule down first, update the model card, then `--promote` and re-forecast the open week. A target the rule rejects stays off the pages (`shipped` false). The pages need nothing else: the reader sends whatever is shipped.
 - **The no-touch rule (D107):** nothing here may change the production models, their features, settings, artifacts, the digest, the weekly graph or the weekly run. `tests/test_production_untouched.py` checks it.
 
-## 11. Limits and what's next
+## 12. Limits and what's next
 
 - **Small samples early in a season:** a team has ~140 neutral plays after four games; the `n` and `games` columns are there to show it, and PC02's forecast blends in last season.
 - **FTN lags 2 days** and revises; **PFR** about a week; **participation** a whole season. The as-of tables model the first two (§4: FTN 48 hours, PFR a week); FTN's real lag in 2022–2025 isn't recorded, so the 48-hour rule is FTN's own target, checked on 2026's snapshots (35–51 hours).
 - **Charting is human:** FTN's and PFR's blitz counts disagree (r 0.69 per game); coverage labels changed in 2023.
 - **The league's PROE drifts** below 0 (§3): compare teams with `diff`, not with 0.
-- **Next:** PC03 draws the plays (the play browser hangs off the team page). The pages' own limits are in §8.7, the forecast's in §9.6.
+- **The track is complete** with PC03 (the play browser and diagrams, §10). The pages' own limits are in §8.7, the forecast's in §9.6, the diagrams' in §10.7.
