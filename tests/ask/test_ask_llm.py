@@ -577,11 +577,26 @@ class TestParse:
         assert llm.calls[0].ok and llm.calls[0].error is None
 
     def test_an_unparseable_reply_is_recorded_as_a_failed_call(self, env):
-        llm = make(Wire(text_reply("I cannot do that")))
+        # asked once more, then given up: both attempts recorded (both cost)
+        llm = make(Wire(text_reply("I cannot do that"), text_reply("Still no")))
         with pytest.raises(AskLLMError, match="no JSON object"):
             llm.chat_json("route", "s", "u")
-        call = llm.calls[0]
-        assert not call.ok and call.error == "no JSON object in the reply"
+        assert len(llm.calls) == 2
+        assert all(not c.ok and c.error == "no JSON object in the reply" for c in llm.calls)
+
+    def test_an_empty_reply_is_asked_for_once_more(self, env):
+        # DeepSeek V4.1 Flash 1017 at "max" sometimes spends its whole budget thinking
+        wire = Wire(text_reply(""), text_reply('{"action": "template"}'))
+        llm = make(wire)
+        assert llm.chat_json("route", "s", "u") == {"action": "template"}
+        assert len(wire.requests) == 2 and len(llm.calls) == 2
+        assert not llm.calls[0].ok and llm.calls[0].error == "empty reply" and llm.calls[1].ok
+
+    def test_out_of_credits_is_never_asked_again(self, env):
+        llm = make(Wire(httpx.Response(402, json={"error": {"message": "no credits"}})))
+        with pytest.raises(OutOfCredits):
+            llm.chat_json("route", "s", "u")
+        assert len(llm.calls) == 1
 
     @pytest.mark.parametrize(
         "reply",
@@ -595,7 +610,8 @@ class TestParse:
         ],
     )
     def test_odd_bodies_are_an_error_not_a_crash(self, env, reply):
-        llm = make(Wire(reply))
+        again = httpx.Response(reply.status_code, content=reply.content, headers=reply.headers)
+        llm = make(Wire(reply, again))  # an unusable reply is asked for once more
         with pytest.raises(AskLLMError):
             llm.chat_json("p", "s", "u")
         assert llm.calls[0].ok is False
@@ -694,6 +710,25 @@ class TestCalls:
         llm = AskLLM(cfg, client=Wire(ok()).client())
         llm.chat_json("p", "s", "u")
         assert llm.calls[0].cost is None
+
+
+class TestOneItemListReplies:
+    """OpenRouter's Parasail endpoint for DeepSeek V4.1 Flash 1017 wrapped single values in a list
+    ({"action": ["template"]}), so every router reply was "no valid action" (2026-10-18)."""
+
+    def test_a_top_level_one_item_list_is_its_value(self):
+        out = parse_object(
+            '{"action": ["template"], "template": "season_leaders", "params": {"limit": 1}}'
+        )
+        assert out == {"action": "template", "template": "season_leaders", "params": {"limit": 1}}
+        assert parse_object('{"accept": [true]}') == {"accept": True}
+        assert parse_object('{"query": ["SELECT 1"]}') == {"query": "SELECT 1"}
+
+    def test_longer_lists_and_nested_values_are_kept(self):
+        assert parse_object('{"choices": ["a", "b"]}') == {"choices": ["a", "b"]}
+        assert parse_object('{"params": {"teams": ["KC"]}}') == {"params": {"teams": ["KC"]}}
+        assert parse_object('{"x": [{"a": 1}]}') == {"x": [{"a": 1}]}
+        assert parse_object('{"x": []}') == {"x": []}
 
 
 # ---- make_llm ---------------------------------------------------------------------------------

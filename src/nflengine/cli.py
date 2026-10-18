@@ -2523,6 +2523,14 @@ def ask_pick(
         raise typer.Exit(2)
     effort = escape(str(best["reasoning_effort"]))
     console.print(f"[green]pick: {escape(str(best['model']))} (effort {effort})[/]")
+    from nflengine.ask.config import ask_config
+
+    llm = ask_config().llm
+    same = llm.model == best["model"] and str(llm.reasoning_effort) == str(best["reasoning_effort"])
+    console.print(
+        f"in ask.llm: {escape(str(llm.model))} (effort {escape(str(llm.reasoning_effort))})"
+        + ("" if same else " - set by hand, not by the rule (see the decisions log)")
+    )
 
 
 PLACEHOLDERS: dict[str, tuple[str, str]] = {}

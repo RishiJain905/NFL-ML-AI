@@ -1662,13 +1662,16 @@ class TestRunEvalConfig:
         assert json.loads(out["file"].read_text(encoding="utf-8"))["wandb_run_id"] is None
 
     def test_max_tokens_overrides_the_config_for_the_model_and_the_record(self, harness):
-        out = run(harness, self.engine(), max_tokens=16000)
+        from nflengine.ask.config import ask_config
+
+        out = run(harness, self.engine(), max_tokens=9000)
         cfg = json.loads(out["file"].read_text(encoding="utf-8"))["config"]
-        assert cfg["max_output"] == 16000
-        assert harness.cfgs[0].max_tokens == 16000
+        assert cfg["max_output"] == 9000
+        assert harness.cfgs[0].max_tokens == 9000
         out = run(harness, self.engine())
         data = json.loads(out["file"].read_text(encoding="utf-8"))
-        assert data["config"]["max_output"] == 2000
+        # without the option, the run records ask.llm's own cap (whatever settings.yaml says)
+        assert data["config"]["max_output"] == ask_config().llm.max_tokens != 9000
 
     def test_the_run_config_passes_the_wandb_secret_check(self, harness):
         # every eval run died at wandb.init on "max_tokens" (a "token" key) after the bake-off

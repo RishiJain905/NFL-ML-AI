@@ -89,7 +89,7 @@ Everything Ask needs, testable from the terminal before any UI:
   - cost per question;
   - a table of every question.
 - [x] 🧑 **Bake-off:** Rishi runs (or delegates) `nfl ask eval` for each candidate and compares in W&B. **Delegated** ("agent runs, rule decides"); run 2026-10-18 by the agent with Rishi's changes to the candidates and efforts along the way, then again on the audited setup, every model at its highest effort, on the main and the held-out set (D138, D140; W&B group `ask-the-engine`).
-- [x] ✋ **Pick the model**, by a rule fixed before the runs: ~~the highest execution accuracy among models with p95 latency ≤ 8 s and cost ≤ $0.002 a question; ties go to the faster~~ → Rishi's rule, asked before the runs it decided: **"Best accuracy, cost breaks ties"** (within 2 points, the cheaper), and the cheap model stays the default over a frontier one. **The pick: GPT-6 Luna at "low"** (~92% main over three runs, ~90% held-out over two, ~$0.0003 a question), in `settings.yaml` → `ask.llm`; logged as D138.
+- [x] ✋ **Pick the model**, by a rule fixed before the runs: ~~the highest execution accuracy among models with p95 latency ≤ 8 s and cost ≤ $0.002 a question; ties go to the faster~~ → Rishi's rule, asked before the runs it decided: **"Best accuracy, cost breaks ties"** (within 2 points, the cheaper), and the cheap model stays the default over a frontier one. **The rule's pick: GPT-6 Luna at "low"** (~92% main over three runs, ~90% held-out over two, ~$0.0003 a question; D138); **then Rishi chose DeepSeek V4.1 Flash 1017 at "max"** (95.2% main over two runs, 88.2% held-out, ~$0.0015 a question; D141), in `settings.yaml` → `ask.llm`.
 
 ### Docs and close
 - [x] 🤖 Guide `documentation/guides/ask-the-engine.md`:

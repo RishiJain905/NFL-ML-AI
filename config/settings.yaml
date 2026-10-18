@@ -205,10 +205,10 @@ playcalling:              # play calling (PC00+; documentation/play-calling/, D1
 ask:                      # Ask the Engine (AE00+; documentation/ask-the-engine/, D107, D111, D136)
   llm:                    # Ask's own LLM: the digest's llm: block above is never read here
     provider: openrouter  # openrouter | openai_compatible (LLM_BASE_URL + LLM_API_KEY: a local server)
-    model: openai/gpt-6-luna  # AE00's pick (D138): ~92% main / ~90% held-out (3 / 2 runs), ~$0.0003 a question
-    reasoning_effort: low # OpenRouter reasoning.effort (none | low | high | xhigh | max); its text excluded
-    max_tokens: 2000      # a template pick, a query or a 3-sentence answer: never long
-    timeout_s: 30
+    model: deepseek/deepseek-v4.1-flash-1017  # Rishi's choice (D141): ~95% main (2 runs) / 88% held-out, ~$0.0015 a question
+    reasoning_effort: max # OpenRouter reasoning.effort (none | low | high | xhigh | max); its text excluded
+    max_tokens: 16000     # max effort needs room: OpenRouter sizes the reasoning budget from it
+    timeout_s: 120        # per LLM call: a max-effort generation can take 30 s or more
     retries: 1            # extra attempts on timeouts, 429 and 5xx
     temperature: 0.0
     openrouter: {sort: latency, allow_fallbacks: true}   # the fastest endpoint first

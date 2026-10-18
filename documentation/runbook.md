@@ -338,7 +338,7 @@ The play browser (a team page in Explore → Play calling → **Plays**) needs n
 `uv run nfl ask "Which receivers have the most 100-yard games against Dallas since 2020?"` answers from the curated tables or the weekly graph (read-only), with the rows, the route and the cost; add `--show-query` for the query, `--source sql|graph` to force a source. Guide: [ask-the-engine.md](guides/ask-the-engine.md).
 - It needs nothing scheduled: it reads whatever the last weekly run built. **While a weekly run (or the injury update, or Update play calling) holds the lock, it refuses** ("the weekly data refresh is running"): ask again when it's done.
 - After changing a prompt, a schema note, a template or the model: `uv run nfl ask eval --model <id> --effort <e>` (the golden set, ~8 minutes and ~$0.04 with the default model, a W&B `ask-eval` run), then `uv run nfl ask eval ... --set holdout` (the 40 held-out questions: the honest check) and `uv run nfl ask pick` to see it beside the comparison. Exit 3 = out of OpenRouter credits: refill, then re-run.
-- The model is `ask.llm.model` in `config/settings.yaml`: GPT-6 Luna at reasoning effort "low" (D138: ~92% of the main set over three runs, ~90% held-out over two, ~$0.0003 a question); the digest's `llm:` block is separate.
+- The model is `ask.llm.model` in `config/settings.yaml`: DeepSeek V4.1 Flash 1017 at reasoning effort "max" (D141, Rishi's choice: ~95% of the main set over two runs, 88% held-out, ~$0.0015 a question, p95 up to ~40 s; the rule's cheaper pick was GPT-6 Luna at "low", D138). Ask and the digest share the OpenRouter key: when its credits run out, both stop (Ask exits 3); the digest's `llm:` block is separate.
 
 ## What each alert means
 

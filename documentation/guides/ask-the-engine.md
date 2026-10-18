@@ -244,8 +244,8 @@ Rishi asked to try the highest reasoning effort ("Low or none I think can be deg
 
 | Model | Effort | Main set | Held-out set | $ a question | p95 (main) | W&B (main / held-out) |
 |---|---|---|---|---|---|---|
-| **GPT-6 Luna** | **low** | **95.2%** (92.1% over 3 runs) | **88.2%** (89.7% over 2) | **$0.00034** | **11.0 s** | [`5xe7wf5h`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/5xe7wf5h) / [`su29uxna`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/su29uxna) |
-| DeepSeek V4.1 Flash 1017 | max | 94.0% | 88.2% | $0.00108 | 27.0 s | [`01fa26yj`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/01fa26yj) / [`bz4w3w0r`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/bz4w3w0r) |
+| GPT-6 Luna (the rule's pick) | low | 95.2% (92.1% over 3 runs) | 88.2% (89.7% over 2) | $0.00034 | 11.0 s | [`5xe7wf5h`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/5xe7wf5h) / [`su29uxna`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/su29uxna) |
+| **DeepSeek V4.1 Flash 1017** (in use, D141) | **max** | 94.0%, then 96.4% (mean 95.2%) | 88.2% | $0.00108-0.00179 | 27.0-38.5 s | [`01fa26yj`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/01fa26yj), [`yvefej2p`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/yvefej2p) / [`bz4w3w0r`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/bz4w3w0r) |
 | Claude Haiku 5.5 | max | 94.0% | 88.2% | $0.00398 | 81.5 s | [`i6ml8nyo`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/i6ml8nyo) / [`9io2690j`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/9io2690j) |
 | GPT-6 Luna | max | 92.9% | 85.3% | $0.00094 | 61.0 s | [`0ujoyxne`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/0ujoyxne) / [`u40ieanj`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/u40ieanj) |
 
@@ -253,9 +253,13 @@ Rishi asked to try the highest reasoning effort ("Low or none I think can be deg
 
 GPT-6.1 Sol at "max" was measured on 5 questions ([`tnkh0zbn`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/tnkh0zbn)): $0.042 a question and about 73 s each, roughly 120 times Luna's cost. Both sets would have cost about $5.90 with $2.84 of the $5 budget left, so Rishi skipped it, and decided the cheap model stays the default even if a frontier model scored higher.
 
-### 8.5 The pick: GPT-6 Luna at "low"
+### 8.5 The model in use: DeepSeek V4.1 Flash 1017 at "max"
 
-The rule (Rishi's, D138): the best execution accuracy whatever it costs; results within 2 points (one question of 84) count as a tie, and a tie goes to the cheapest, then the fastest. Luna at "low" is the best on the main set; DeepSeek and Haiku at "max" are within a question of it at 3 and 12 times the cost, the held-out set agrees (three of them tie at 88.2%), and with ±3 points of run-to-run noise nothing separates the four but cost and speed. So `ask.llm` is `openai/gpt-6-luna` at reasoning effort `low`.
+**The rule's pick** (Rishi's rule, D138): the best execution accuracy whatever it costs; results within 2 points (one question of 84) count as a tie, and a tie goes to the cheapest, then the fastest. With ±3 points of run-to-run noise nothing separates the four, so the rule picks the cheapest: Luna at "low".
+
+**Rishi's choice** (D141): DeepSeek V4.1 Flash 1017 at "max", because at "low" a small model barely reasons, and a stronger reasoner is the safer bet for questions that need real database work. On the numbers it's at least as good: **94.0% and 96.4% on two runs of the main set (mean 95.2%)** against Luna's 92.1%, and 88.2% held-out against Luna's 89.7% (a second held-out run is pending: it stopped when OpenRouter ran out of credits). It costs $0.0011-0.0018 a question (3-5 times Luna's, about $1-2 per thousand questions); a typical question takes about as long (p50 5-7 s), slow ones longer (p95 27-39 s against 11-13 s). So `ask.llm` is `deepseek/deepseek-v4.1-flash-1017` at `max`, with a 16,000-token reply cap and a 120 s timeout per call. `nfl ask pick` still prints the rule's pick and says when `ask.llm` was set by hand.
+
+**Two endpoint quirks** came up while switching. OpenRouter sends a request to the model's fastest endpoint at that moment, and endpoints of the same model don't all behave alike: one (Parasail) wrapped single values in a list (`{"action": ["template"]}`), which made every routing step fail until the reply parser learned to unwrap it; and at "max" an endpoint now and then sends an empty reply (all its budget spent on thinking), which is now asked for once more. Both are in `llm.py`, with tests.
 
 **What we learned about effort:** on the first setup "max" bought Luna one question; on the fixed setup it bought nothing and cost three times as much and five times the wait. Once the instructions were right, every model landed within about one question of the others. The accuracy was in the setup.
 
@@ -282,7 +286,9 @@ uv run nfl ask "Which receivers have the most 100-yard games against Dallas sinc
 
 ## 10. Switching the model
 
-The model is `ask.llm.model` in `config/settings.yaml` (with `reasoning_effort`); the digest's `llm:` block is a different block and isn't touched.
+The model is `ask.llm.model` in `config/settings.yaml` (with `reasoning_effort`, and for a high effort `max_tokens` 16000 and `timeout_s` 120); the digest's `llm:` block is a different block and isn't touched. Today: DeepSeek V4.1 Flash 1017 at "max" (§8.5).
+
+- **When a model that worked starts failing:** look at the `provider` of its calls (`nfl ask "..." --json`). OpenRouter routes to the fastest endpoint of the moment, and endpoints differ (§8.5); `ask.llm.openrouter` takes OpenRouter's provider options (`order`, `ignore`, `allow_fallbacks`) to pin or skip one.
 
 - **Another OpenRouter model:** put its id in `ask.llm.model` (any id from openrouter.ai/models), then run `nfl ask eval --model <id>` (and `--set holdout`) and compare it with §8.4 in W&B (`nfl ask pick` includes it). Prices and latencies change: re-run the eval before switching.
 - **A local model** (AE04, or any server that speaks the OpenAI chat API: vLLM, llama.cpp's server, Ollama ...): set `ask.llm.provider: openai_compatible`, put the server's address in the env file as `LLM_BASE_URL` (it must be `https://`, or `http://localhost` / `127.0.0.1`) and, if it wants one, `LLM_API_KEY` (Rishi edits the env file; `nfl doctor` shows whether they're set). Set `ask.llm.model` to the server's model name, and `price_in_per_m` / `price_out_per_m` if you want costs logged. Then `nfl ask eval --model <name>`.

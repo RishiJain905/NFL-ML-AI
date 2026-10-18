@@ -531,6 +531,19 @@ class TestPick:
         assert "no run has an execution accuracy to compare" in r.output
         assert "Rishi decides" in r.output and "pick:" not in r.output
 
+    def test_the_configured_model_is_shown_and_a_hand_override_is_flagged(
+        self, summaries, monkeypatch
+    ):
+        cfg = AskConfig(llm=AskLLMConfig(model="other/m", reasoning_effort="max"))
+        monkeypatch.setattr("nflengine.ask.config.ask_config", lambda data=None: cfg)
+        summaries.rows = [summ("a/m", 0.9)]
+        r = invoke("pick")
+        assert "pick: a/m (effort low)" in r.output
+        assert "in ask.llm: other/m (effort max) - set by hand, not by the rule" in r.output
+        cfg.llm = AskLLMConfig(model="a/m", reasoning_effort="low")
+        r = invoke("pick")
+        assert "in ask.llm: a/m (effort low)" in r.output and "set by hand" not in r.output
+
     def test_no_runs_exits_one(self, summaries):
         r = invoke("pick")
         assert r.exit_code == 1 and "no eval runs yet" in r.output

@@ -47,6 +47,10 @@ class OutOfCredits(AskLLMError):
     """OpenRouter said 402: the account is out of credits (the bake-off pauses on it)."""
 
 
+class UnusableReply(AskLLMError):
+    """The reply came back but was empty or held no usable JSON object (asked once more)."""
+
+
 @dataclass
 class LLMCall:
     purpose: str  # route | generate | fix | answer
@@ -79,7 +83,15 @@ def parse_object(text: str) -> dict[str, Any]:
         raise AskLLMError(f"reply is not valid JSON ({e.msg})") from None
     if not isinstance(data, dict):
         raise AskLLMError("reply JSON is not an object")
-    return data
+    # some endpoints wrap a single value in a list (OpenRouter's Parasail for DeepSeek V4.1 Flash
+    # 1017 sent {"action": ["template"]}, 2026-10-18): a top-level one-item list of a string,
+    # number or bool is that value. Nested values (a template's params) are left as they are.
+    return {
+        k: v[0]
+        if isinstance(v, list) and len(v) == 1 and isinstance(v[0], str | int | float | bool)
+        else v
+        for k, v in data.items()
+    }
 
 
 def _base_url(raw: str | None) -> str:
@@ -205,6 +217,19 @@ class AskLLM:
     def chat_json(
         self, purpose: str, system: str, user: str, extra: list[dict] | None = None
     ) -> dict:
+        """The reply's JSON object. A reply that's empty or holds no usable JSON object is asked
+        for once more (at a high reasoning effort an endpoint can spend the whole budget
+        thinking and send nothing: DeepSeek V4.1 Flash 1017 at "max", 2026-10-18); transport
+        errors are retried in `_post`, and out of credits never is. Every attempt is recorded
+        (its cost counts)."""
+        try:
+            return self._chat_json_once(purpose, system, user, extra)
+        except UnusableReply:
+            return self._chat_json_once(purpose, system, user, extra)
+
+    def _chat_json_once(
+        self, purpose: str, system: str, user: str, extra: list[dict] | None = None
+    ) -> dict:
         """One call; the reply's JSON object. Records the call either way."""
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         messages += list(extra or [])
@@ -234,7 +259,7 @@ class AskLLM:
             obj = parse_object(text)
         except AskLLMError as e:
             call.error = str(e)
-            raise
+            raise UnusableReply(str(e)) from None
         call.ok = True
         return obj
 
