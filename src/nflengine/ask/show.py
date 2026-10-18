@@ -24,7 +24,7 @@ def _cell(v: Any) -> str:
 
 def print_result(console: Console, res: Any, show_query: bool = False) -> None:
     """The answer, the rows (first 15), how it was answered, and the query on request."""
-    from nflengine.ops.summary import scrub
+    from nflengine.safetext import scrub_bounded as scrub
 
     style = {"answered": "green", "empty": "yellow", "refused": "yellow", "clarify": "cyan"}.get(
         res.status, "red"

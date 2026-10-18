@@ -20,7 +20,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from nflengine.app.jsonsafe import dumps
-from nflengine.ops.summary import scrub
+from nflengine.safetext import scrub_bounded
 
 log = logging.getLogger("nflengine.app")
 
@@ -104,7 +104,9 @@ class LocalOnlyMiddleware:
             # Handled here, inside the boundary: the 500 keeps the security headers, the log
             # line is scrubbed (an exception message could carry a credential), and nothing
             # reaches Starlette's / uvicorn's raw traceback printers (Sol review, CR00).
-            log.error("control room request failed: %s", scrub(f"{type(e).__name__}: {e}", 300))
+            log.error(
+                "control room request failed: %s", scrub_bounded(f"{type(e).__name__}: {e}", 300)
+            )
             if not started:
                 await _reject(
                     send, 500, "server_error", f"{type(e).__name__} (see the app's console)"

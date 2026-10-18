@@ -12,6 +12,7 @@ from typing import Any
 import polars as pl
 from fastapi.testclient import TestClient
 
+from nflengine.app.ask_service import AskService
 from nflengine.app.health import SystemChecks
 from nflengine.app.server import AppSettings, create_app
 from nflengine.app.status import ServiceStatus
@@ -88,6 +89,8 @@ def make_client(
     # CR03: never the real W&B or the doctor's network checks in a test
     extra.setdefault("wandb", offline_wandb())
     extra.setdefault("system_checks", fake_checks())
+    # AE01: no engine is built unless a test injects one (conftest refuses the real one)
+    extra.setdefault("ask", AskService(background=False))
     settings = AppSettings(
         port=8765,
         token=TOKEN,

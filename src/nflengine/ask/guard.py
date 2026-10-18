@@ -65,6 +65,16 @@ if TYPE_CHECKING:
 
 MAX_QUERY_CHARS = 8000  # without comments
 MAX_RAW_CHARS = 4 * MAX_QUERY_CHARS
+# Result size (AE01, Sol): a query can return one row holding a 10-million-item list
+# (`list(i) FROM range(10000000)`) or a megabyte of text; the timer stops the query, not the
+# Python work after it. Bounded per cell and per result, refused with `result.size`.
+MAX_CELL_ITEMS = 1000  # items in one list cell, every level counted
+MAX_CELL_CHARS = (
+    20_000  # characters in one text cell (a list cell: its text form; 1,000 numbers fit)
+)
+MAX_RESULT_COLUMNS = 100
+MAX_RESULT_CHARS = 5_000_000  # all the cells' text together, about
+_TOO_BIG = "ask: result too big"  # our own error() text inside the wrapped SQL
 
 RULES: dict[str, str] = {
     # Cypher
@@ -103,6 +113,11 @@ RULES: dict[str, str] = {
     "sql.columns": "The query names too many columns of one table: name only those it needs.",
     "source.busy": "The weekly data refresh is running (it rebuilds the tables and the graph): "
     "ask again when it's done.",
+    "source.down": "The weekly graph (Neo4j) isn't answering right now: questions about the "
+    "tables still work.",
+    "result.size": f"The result is too big to show (a list over {MAX_CELL_ITEMS:,} items, a "
+    f"text over {MAX_CELL_CHARS:,} characters, more than {MAX_RESULT_COLUMNS} columns, or too "
+    "much in all): aggregate, filter or return fewer columns.",
     # both
     "source.off": "That source is switched off in settings.yaml (ask.sources).",
 }
@@ -179,7 +194,7 @@ def _ident(text: Any) -> str | None:
 def _hint(e: BaseException) -> str:
     """The database's message for a correction prompt only: data-root paths made relative,
     secret-shaped text scrubbed, capped at 400 characters."""
-    from nflengine.ops.summary import scrub
+    from nflengine.safetext import scrub_bounded
 
     s = str(e)
     try:
@@ -188,7 +203,7 @@ def _hint(e: BaseException) -> str:
         s = relative_paths(s, ensure_data_root(create_dirs=False).root)
     except Exception:  # no data root: scrub alone
         pass
-    return scrub(s, 400)
+    return scrub_bounded(s, 400)
 
 
 def _scalar(v: Any, rule: str, maps: bool = False) -> Any:
@@ -217,6 +232,45 @@ def _scalar(v: Any, rule: str, maps: bool = False) -> Any:
 
 def _columns(names: Iterable[Any]) -> list[str]:
     return [str(n) for n in names]
+
+
+def _cell_size(v: Any) -> int:
+    """About how many characters a cell takes; raises `Refused("result.size")` as soon as one
+    cell is over a bound (checked before the cell is converted, so a huge list costs little)."""
+    if isinstance(v, str):
+        if len(v) > MAX_CELL_CHARS:
+            raise Refused("result.size")
+        return len(v)
+    if isinstance(v, list | tuple | dict):
+        items, chars, stack = 0, 0, [v]
+        while stack:
+            x = stack.pop()
+            seq = x.values() if isinstance(x, dict) else x
+            if items + len(seq) > MAX_CELL_ITEMS:
+                raise Refused("result.size")
+            items += len(seq)
+            for y in seq:
+                if isinstance(y, list | tuple | dict):
+                    stack.append(y)
+                else:
+                    chars += len(y) if isinstance(y, str) else 8
+                    if chars > MAX_CELL_CHARS:
+                        raise Refused("result.size")
+        return chars
+    return 8
+
+
+class _Budget:
+    """The whole result's size so far (`MAX_RESULT_CHARS`)."""
+
+    def __init__(self) -> None:
+        self.chars = 0
+
+    def add(self, row: Iterable[Any]) -> None:
+        for v in row:
+            self.chars += _cell_size(v)
+        if self.chars > MAX_RESULT_CHARS:
+            raise Refused("result.size")
 
 
 # ---- Cypher ---------------------------------------------------------------------------------
@@ -383,6 +437,15 @@ def _plan_operators(plan: Any) -> list[str]:
     return [str(name).split("@")[0], *(op for c in children for op in _plan_operators(c))]
 
 
+_UNREACHABLE = frozenset({"ServiceUnavailable", "SessionExpired"})
+
+
+def _unreachable(e: BaseException) -> bool:
+    """The driver couldn't reach Neo4j (down, restarting, no route): the graph is down,
+    which no corrected query can fix (AE01: the question stops with `source.down`)."""
+    return type(e).__name__ in _UNREACHABLE or isinstance(e, OSError)
+
+
 def _neo4j_failed(e: BaseException) -> QueryFailed:
     code = getattr(e, "code", None)
     code = code if isinstance(code, str) and code.startswith("Neo.") else None
@@ -423,6 +486,8 @@ def explain_cypher(
         with _read_session(driver, database) as s:
             summary = s.run(Query("EXPLAIN " + query, timeout=timeout_s), params or {}).consume()
     except Exception as e:
+        if _unreachable(e):
+            raise Refused("source.down") from None
         raise _neo4j_failed(e) from None
     if summary.query_type != "r":
         raise Refused("cypher.plan_not_read", _ident(summary.query_type))
@@ -458,11 +523,16 @@ def run_cypher(
     def work(tx):
         result = tx.run(text, params)
         keys = list(result.keys())
+        if len(keys) > MAX_RESULT_COLUMNS:
+            raise Refused("result.size")
         rows: list[list[Any]] = []
+        budget = _Budget()
         for rec in result:
             if len(rows) > cap:
                 break
-            rows.append([_scalar(v, "cypher.values", allow_maps) for v in rec.values()])
+            values = rec.values()
+            budget.add(values)  # before converting: a huge list is refused cheaply
+            rows.append([_scalar(v, "cypher.values", allow_maps) for v in values])
         return keys, rows
 
     try:
@@ -471,6 +541,8 @@ def run_cypher(
     except Refused:
         raise
     except Exception as e:
+        if _unreachable(e):
+            raise Refused("source.down") from None
         raise _neo4j_failed(e) from None
     t2 = time.monotonic()
     return QueryResult(
@@ -906,6 +978,90 @@ def _needed_columns(sandbox: SqlSandbox, table: str, plan: SqlPlan) -> list[str]
     return cols or names[:1]  # count(*) alone still needs the rows
 
 
+def _quote(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+# result column types the guard returns (DuckDB type ids): plain values. Anything else (struct,
+# map, union, blob, bit, variant, uuid, a type added later) is refused before it's fetched
+SCALAR_TYPE_IDS = frozenset(
+    {
+        "boolean", "tinyint", "smallint", "integer", "bigint", "hugeint", "utinyint",
+        "usmallint", "uinteger", "ubigint", "uhugeint", "float", "double", "decimal", "varchar",
+        "enum", "date", "time", "time with time zone", "timestamp", "timestamp with time zone",
+        "timestamp_s", "timestamp_ms", "timestamp_ns", "interval",
+    }
+)  # fmt: skip
+
+
+def _shape(t: Any) -> tuple[list[str], Any]:
+    """(the nesting levels, outermost first: "list" / "array", the leaf type) of a column's
+    DuckDB type, read from its structured form (`.id`, `.children`), never its display text: an
+    ENUM label may hold "STRUCT(" or "[]" (Sol)."""
+    levels: list[str] = []
+    while t.id in ("list", "array"):
+        kids = dict(t.children)
+        if t.id == "array" and int(kids.get("size") or 0) > MAX_CELL_ITEMS:
+            raise Refused("result.size")
+        levels.append(t.id)
+        t = kids["child"]
+    return levels, t
+
+
+def _sized_columns(described: list[Any]) -> str:
+    """The SELECT list of the wrapped query: each column as it is, except that a list or a text
+    cell over its bound raises our own error inside DuckDB (before anything is fetched into
+    Python), and a column of any type but plain values (and lists of them) is refused at once.
+    A list counts its items at every level (4,000 empty lists are 4,000 items; Sol). Columns are
+    taken by position (`#n`): a result may repeat a column name."""
+    if len(described) > MAX_RESULT_COLUMNS:
+        raise Refused("result.size")
+    big = f"error('{_TOO_BIG}')"
+    out = []
+    for i, d in enumerate(described, start=1):
+        ref, name = f"#{i}", _quote(str(d[0]))
+        levels, leaf = _shape(d[1])
+        if leaf.id not in SCALAR_TYPE_IDS:
+            raise Refused("sql.values")
+        if not levels:
+            if leaf.id == "varchar":
+                check = f"length({ref}) > {MAX_CELL_CHARS}"
+                out.append(f"CASE WHEN {check} THEN {big} ELSE {ref} END AS {name}")
+            else:
+                out.append(f"{ref} AS {name}")
+            continue
+        if "array" in levels:  # fixed sizes, each checked in `_shape`: their product is static
+            if "list" in levels:
+                raise Refused("sql.values")  # a list inside an array (or the reverse): not needed
+            total = 1
+            for lv in _array_sizes(d[1]):
+                total *= lv
+            if total > MAX_CELL_ITEMS:
+                raise Refused("result.size")
+            count = "0"
+        else:
+            parts, flat = [], ref
+            for _ in levels:  # the items of every level: len(c) + len(flatten(c)) + ...
+                parts.append(f"coalesce(len({flat}), 0)")
+                flat = f"flatten({flat})"
+            count = " + ".join(parts)
+        out.append(
+            f"CASE WHEN {count} > {MAX_CELL_ITEMS} THEN {big} "
+            f"WHEN length(CAST({ref} AS VARCHAR)) > {MAX_CELL_CHARS} THEN {big} "
+            f"ELSE {ref} END AS {name}"
+        )
+    return ", ".join(out) or "*"
+
+
+def _array_sizes(t: Any) -> list[int]:
+    sizes = []
+    while t.id == "array":
+        kids = dict(t.children)
+        sizes.append(int(kids.get("size") or 0))
+        t = kids["child"]
+    return sizes
+
+
 def run_sql(
     sandbox: SqlSandbox,
     sql: str,
@@ -929,19 +1085,37 @@ def run_sql(
             cols = _needed_columns(sandbox, table, plan)
             con.register(table, sandbox.load(table, cols, deadline=deadline))
         # the newline before ")" keeps a trailing "-- comment" from swallowing it
-        wrapped = f"SELECT * FROM (\n{plan.text}\n) AS ask_capped LIMIT {int(cap) + 1}"
+        inner = f"(\n{plan.text}\n) AS ask_capped"
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise QueryFailed("timeout", "deadline")
         timer = threading.Timer(remaining, con.interrupt)
         timer.start()
+        raw: list[Any] = []
         try:
+            # the result's columns and types, no rows. A query without parameters (every one the
+            # model writes) is only bound, never run (`con.sql` is lazy; a `LIMIT 0` run can
+            # still compute a projection: `range(10000000)::VARIANT` took the whole budget); a
+            # template's query has parameters, which `con.sql` would run, so it gets the LIMIT 0
+            if params:
+                cur = con.execute(f"SELECT * FROM {inner} LIMIT 0", params)
+                described = [(d[0], d[1]) for d in cur.description or []]
+            else:
+                rel = con.sql(f"SELECT * FROM {inner}")
+                described = list(zip(rel.columns, rel.types, strict=True))
+            columns = _columns(d[0] for d in described)
+            wrapped = f"SELECT {_sized_columns(described)} FROM {inner} LIMIT {int(cap) + 1}"
             cur = con.execute(wrapped, params) if params else con.execute(wrapped)
-            columns = _columns(d[0] for d in cur.description or [])
-            raw = cur.fetchall()
+            budget = _Budget()
+            while chunk := cur.fetchmany(64):
+                for r in chunk:
+                    budget.add(r)
+                raw += chunk
         except duckdb.InterruptException:
             raise QueryFailed("timeout", "InterruptException") from None
         except duckdb.Error as e:
+            if _TOO_BIG in str(e):
+                raise Refused("result.size") from None
             kind = "syntax" if isinstance(e, duckdb.ParserException) else "error"
             raise QueryFailed(kind, type(e).__name__, _hint(e)) from None
         finally:
@@ -973,6 +1147,9 @@ class Sources:
     cap: int = 500
     enabled: dict[str, bool] = field(default_factory=dict)
     lock_file: Path | None = None  # the weekly run's lock (ops.lock): held = data being rebuilt
+    # AE01: the control room's Neo4j check (`ServiceStatus`, every 30 s); False = down, so a
+    # graph question stops at once instead of waiting on the driver's connection timeout
+    graph_up: Callable[[], bool] | None = None
 
     def busy(self) -> bool:
         """Is a weekly run (or an injury update, or Update play calling) holding the weekly
@@ -980,10 +1157,13 @@ class Sources:
         Ask doesn't read either (D136). Checked the way the control room checks it."""
         if self.lock_file is None:
             return False
-        from nflengine.ops.lock import is_locked
+        from nflengine.ops.lock import is_locked, read_holder
 
+        # the note first (`app.readers.meta.lock_dict`'s rule): probing takes the lock for an
+        # instant, and a weekly run starting in that instant would stop with exit 4. A run writes
+        # its note right after taking the lock and empties it when it lets go; no note = free
         try:
-            return is_locked(self.lock_file)
+            return bool(read_holder(self.lock_file)) and is_locked(self.lock_file)
         except OSError:
             return False
 
@@ -1036,6 +1216,8 @@ class Sources:
         if source == "graph":
             if self.driver is None:
                 raise Refused("source.off", "graph")
+            if self.graph_up is not None and not self.graph_up():
+                raise Refused("source.down")
             return run_cypher(
                 self.driver,
                 query,

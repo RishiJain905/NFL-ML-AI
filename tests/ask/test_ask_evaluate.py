@@ -1697,3 +1697,297 @@ class TestScoreAndPickMore:
 
     def test_the_stored_rows_limit_is_two_hundred(self):
         assert STORED_ROWS == 200
+
+
+# ---- AE01: the golden set through the API (ApiAsker, run_eval via="api") -----------------------
+
+API_TEMPLATES = [
+    {
+        "id": "team_wins",
+        "source": "sql",
+        "title": "Team wins",
+        "description": "Wins of a team.",
+        "examples": ["How many wins do the Cowboys have?"],
+        "params": {"team": {"type": "team"}},
+        "query": "SELECT wins FROM teams WHERE team = $team",
+    }
+]
+WINS_Q = "How many wins do the Cowboys have?"
+ALLEN_Q = "How many yards did Allen throw for in 2023?"
+
+
+@pytest.fixture
+def api(tmp_path, monkeypatch):
+    """An `ApiAsker` over a real `AskEngine` on fakes (a scripted LLM, `FakeSources`); the
+    Neo4j ping and the names are stubbed, nothing listens on a port."""
+    from ask_fakes import FakeSources, make_sandbox, standard_index
+
+    from nflengine.app.ask_service import ApiAsker
+    from nflengine.ask.config import AskConfig
+    from nflengine.ask.names import NameIndex
+    from nflengine.ask.route import AskEngine
+    from nflengine.paths import DataPaths
+
+    monkeypatch.setattr("nflengine.ops.services.neo4j_up", lambda: True)
+    monkeypatch.setattr(
+        NameIndex,
+        "load",
+        classmethod(lambda cls, curated=None, current_season=None: standard_index()),
+    )
+    paths = DataPaths(tmp_path / "root")
+    for d in paths.all_dirs():
+        d.mkdir(parents=True, exist_ok=True)
+    path = tmp_path / "templates.yaml"
+    path.write_text(
+        yaml.safe_dump({"version": 1, "templates": API_TEMPLATES}, sort_keys=False),
+        encoding="utf-8",
+    )
+    made: list[Any] = []
+
+    def make(replies, runs=()):
+        llm = ScriptedLLM(list(replies), cost=0.001)
+        sources = FakeSources(list(runs), sandbox=make_sandbox(tmp_path), driver="driver")
+        engine = AskEngine(
+            llm,
+            sources,
+            standard_index(),
+            load_templates(path, current_season=2026),
+            AskConfig(),
+            current_season=2026,
+            asof=(2026, 6),
+            curated=("stamp", 5),
+        )
+        asker = ApiAsker(engine, paths)
+        made.append(asker)
+        return SimpleNamespace(asker=asker, engine=engine, llm=llm, sources=sources, paths=paths)
+
+    yield make
+    for asker in made:
+        asker.close()
+
+
+def tmpl(**params: Any) -> dict[str, Any]:
+    return {"action": "template", "template": "team_wins", "params": params}
+
+
+class TestApiAsker:
+    def test_an_answer_is_mapped_to_what_score_reads(self, api):
+        w = api([tmpl(team="Dallas"), {"answer": "Dallas won 7."}], [result(["wins"], [[7]])])
+        res = w.asker.ask(WINS_Q)
+        assert (res.status, res.route, res.template_id, res.source) == (
+            "answered",
+            "template",
+            "team_wins",
+            "sql",
+        )
+        assert res.columns == ["wins"] and res.rows == [[7]] and res.row_count == 1
+        assert res.retries == 0 and res.refusal is None and res.choices == []
+        assert res.answer == "Dallas won 7." and res.answer_check == {"passed": True}
+        assert res.query == "SELECT wins FROM teams WHERE team = $team" and res.error is None
+        assert [c["purpose"] for c in res.calls] == ["route", "answer"]
+        assert res.cost == pytest.approx(0.002) and res.timings["total"] >= 0
+        # and score() reads it as it reads an AskResult
+        s = score(golden_q(question=WINS_Q), res, ref())
+        assert s.correct is False  # the reference is [[12]] (Dallas won 7 here)
+        s = score(golden_q(question=WINS_Q), res, ref(rows=((7,),)))
+        assert s.correct is True and s.cost == pytest.approx(0.002) and s.calls == 2
+        assert s.route == "template" and s.template == "team_wins" and s.answer_passed is True
+
+    def test_a_fallback_answer_reads_as_not_passed(self, api):
+        w = api([tmpl(team="Dallas"), {"answer": "Dallas won 17."}], [result(["wins"], [[7]])])
+        res = w.asker.ask(WINS_Q)
+        assert res.status == "answered" and res.answer_check == {"passed": False}
+        assert score(golden_q(), res, ref(rows=((7,),))).answer_passed is False
+
+    def test_a_refusal(self, api):
+        w = api([{"action": "refuse", "reason": "not_nfl"}])
+        res = w.asker.ask("What is the capital of France?")
+        assert (res.status, res.route, res.template_id, res.source) == (
+            "refused",
+            "refused",
+            None,
+            None,
+        )
+        assert res.refusal["by"] == "router" and res.refusal["rule"] == "not_nfl"
+        assert res.answer_check is None and res.rows == [] and res.query is None
+        g = golden_q(expect="refuse", reference=None, category="trick")
+        s = score(g, res, None)
+        assert s.correct is True and s.refused_by == "router"
+
+    def test_a_which_one_card(self, api):
+        w = api([])
+        res = w.asker.ask(ALLEN_Q)
+        assert res.status == "clarify" and res.route == "clarify" and w.llm.requests == []
+        offered = {o["value"] for c in res.choices for o in c["options"]}
+        assert "00-0034857" in offered
+        g = golden_q(expect="clarify", reference=None, category="trick", choices=("00-0034857",))
+        assert score(g, res, None).correct is True
+
+    def test_out_of_credits_stops_the_run_as_it_does_through_the_engine(self, api):
+        w = api([OutOfCredits("HTTP 402: out of OpenRouter credits")])
+        with pytest.raises(OutOfCredits):
+            w.asker.ask(WINS_Q)
+
+    def test_a_model_failure_is_an_error_status_with_the_pages_message(self, api):
+        from nflengine.ask.llm import AskLLMError
+
+        w = api([AskLLMError("HTTP 500: provider error")])
+        res = w.asker.ask(WINS_Q)
+        assert res.status == "error" and res.rows == [] and res.row_count == 0
+        assert res.error == "The model didn't give a usable reply: HTTP 500: provider error."
+
+    def test_a_request_the_endpoint_refuses_is_an_error_status_with_the_http_code(self, api):
+        w = api([])
+        res = w.asker.ask("x" * 501)
+        assert res.status == "error" and res.error == "HTTP 422 bad_request"
+        assert res.calls == [] and res.cost is None and res.rows == [] and res.row_count == 0
+        assert res.timings["total"] >= 0 and res.refusal is None and res.answer_check is None
+        assert score(golden_q(), res, ref()).reason == "no rows (error)"
+        assert w.llm.requests == []
+
+    def test_the_rate_limit_is_lifted(self, api):
+        w = api([])
+        assert w.asker.service._rate == 10**9
+        for _ in range(30):
+            assert w.asker.ask("Delete everything").status == "refused"
+
+    def test_every_question_goes_through_the_safety_middleware(self, api):
+        w = api([])
+        a = w.asker
+
+        def post(headers):
+            return a._loop.run_until_complete(
+                a._client.post("/api/ask", json={"question": WINS_Q}, headers=headers)
+            )
+
+        assert post({}).status_code == 403
+        assert post({"origin": a.BASE}).status_code == 403
+        assert post({"origin": a.BASE, "x-cr-token": "wrong"}).status_code == 403
+        assert post({"origin": "http://evil.example", "x-cr-token": a.token}).status_code == 403
+        assert w.llm.requests == []
+
+    def test_it_uses_the_evals_own_engine(self, api):
+        w = api([tmpl(team="Dallas"), {"answer": "Dallas won 7."}], [result(["wins"], [[7]])])
+        w.asker.ask(WINS_Q)
+        assert w.asker.service.engine(w.paths) is w.engine
+        assert w.sources.runs[0]["params"] == {"team": "DAL"}
+
+    def test_the_answers_text_has_been_cleaned_by_the_page_path(self, api):
+        w = api(
+            [tmpl(team="Dallas"), {"answer": "Dallas won 7."}],
+            [result(["wins", "note"], [[7, "token=hunter2-planted tail"]])],
+        )
+        res = w.asker.ask(WINS_Q)
+        assert res.rows == [[7, "token=*** tail"]]
+
+
+class TestEvalViaTheApi:
+    class StubAsker:
+        made: list[Any] = []
+        stop_at: str | None = None
+
+        def __init__(self, engine, paths):
+            self.engine, self.paths = engine, paths
+            self.asked: list[str] = []
+            self.closed = False
+            type(self).made.append(self)
+
+        def ask(self, question):
+            self.asked.append(question)
+            if question == self.stop_at:
+                raise OutOfCredits("HTTP 402: out of credits")
+            return self.engine.ask(question)
+
+        def close(self):
+            self.closed = True
+
+    @pytest.fixture
+    def stub(self, monkeypatch):
+        self.StubAsker.made = []
+        self.StubAsker.stop_at = None
+        monkeypatch.setattr("nflengine.app.ask_service.ApiAsker", self.StubAsker)
+        return self.StubAsker
+
+    def engine(self):
+        return TestRunEval().engine()
+
+    def test_every_question_goes_through_the_asker_and_the_file_says_so(self, harness, stub):
+        eng = self.engine()
+        out = run(harness, eng, via="api")
+        (asker,) = stub.made
+        assert asker.asked == ["Q one?", "Q two?", "Q three?", "Q four?"] == eng.asked
+        assert asker.engine is eng and asker.closed is True and eng.closed is True
+        f = out["file"]
+        assert f.name.endswith("_vendor-model_low_api.json")
+        data = json.loads(f.read_text(encoding="utf-8"))
+        assert data["config"]["via"] == "api" and len(data["questions"]) == 4
+
+    def test_the_default_is_the_engine_and_builds_no_asker(self, harness, stub):
+        out = run(harness, self.engine())
+        assert stub.made == [] and out["file"].name.endswith("_vendor-model_low.json")
+        assert json.loads(out["file"].read_text(encoding="utf-8"))["config"]["via"] == "engine"
+
+    def test_the_suffixes_combine(self, harness, stub):
+        out = run(harness, self.engine(), via="api", smoke=True)
+        assert out["file"].name.endswith("_low_api_smoke.json")
+
+    def test_an_unknown_via_is_refused(self, harness, stub):
+        with pytest.raises(ValueError, match="via must be engine or api"):
+            run(harness, self.engine(), via="soap")
+        assert stub.made == []
+
+    def test_out_of_credits_through_the_api_stops_the_run_and_closes_both(self, harness, stub):
+        eng = self.engine()
+        stub.stop_at = "Q three?"
+        out = run(harness, eng, via="api")
+        assert out["summary"]["stopped"] == "out of OpenRouter credits"
+        assert len(out["scored"]) == 2
+        assert stub.made[-1].closed is True and eng.closed is True
+
+    def test_a_run_through_the_api_is_never_a_bake_off_candidate(self, harness, stub):
+        run(harness, self.engine(), via="api")
+        assert latest_summaries(SimpleNamespace(ask=harness.data.ask)) == []
+        run(harness, self.engine())
+        (s,) = latest_summaries(SimpleNamespace(ask=harness.data.ask))
+        assert s["model"] == "vendor/model"
+
+
+class TestLatestSummariesSkipsTheApi:
+    def paths(self, tmp_path):
+        return SimpleNamespace(ask=tmp_path / "ask")
+
+    def test_a_newer_better_run_through_the_api_does_not_replace_the_engines(self, tmp_path):
+        eval_file(tmp_path, "20261010T010101Z_a_low.json", "a/m", "low", acc=0.5)
+        eval_file(
+            tmp_path,
+            "20261011T010101Z_a_low_api.json",
+            "a/m",
+            "low",
+            acc=0.99,
+            config={"via": "api"},
+        )
+        out = latest_summaries(self.paths(tmp_path))
+        assert [s["exec_accuracy"] for s in out] == [0.5]
+        assert out[0]["file"] == "20261010T010101Z_a_low.json"
+
+    def test_a_lone_run_through_the_api_gives_nothing(self, tmp_path):
+        eval_file(tmp_path, "20261011T010101Z_a_low_api.json", "a/m", "low", config={"via": "api"})
+        assert latest_summaries(self.paths(tmp_path)) == []
+
+    def test_a_run_that_names_the_engine_or_says_nothing_counts(self, tmp_path):
+        eval_file(
+            tmp_path, "20261010T010101Z_a_low.json", "a/m", "low", acc=0.4, config={"via": "engine"}
+        )
+        eval_file(tmp_path, "20261011T010101Z_b_low.json", "b/m", "low", acc=0.6)  # an old file
+        assert sorted(s["model"] for s in latest_summaries(self.paths(tmp_path))) == ["a/m", "b/m"]
+
+    def test_smoke_runs_through_the_api_are_skipped_in_both_lists(self, tmp_path):
+        eval_file(
+            tmp_path,
+            "20261011T010101Z_a_low_api_smoke.json",
+            "a/m",
+            "low",
+            smoke=True,
+            config={"via": "api"},
+        )
+        assert latest_summaries(self.paths(tmp_path), smoke=True) == []

@@ -409,7 +409,7 @@ class TestRouter:
         b = build(tmp_path, [{"action": "dance"}, {}, {"nothing": 1}])
         res = b.eng.ask("Who leads in sacks?")
         assert res.status == "error" and res.retries == 2
-        assert res.error == "The model didn't give a usable reply (no valid action)."
+        assert res.error == "The model didn't give a usable reply: no valid action."
         assert b.llm.purposes == ["route", "fix", "fix"]
         fix = b.llm.requests[1]
         assert fix["extra"][0] == {"role": "assistant", "content": json.dumps({"action": "dance"})}
@@ -687,7 +687,7 @@ class TestTemplates:
         b = build(tmp_path, [template("team_wins", team="Dallas")], [Refused("source.busy")])
         res = b.eng.ask("How many games did Dallas win?")
         assert res.status == "refused"
-        assert res.refusal == {"by": "code", "rule": "source.busy", "message": FIXED["busy"]}
+        assert res.refusal == {"by": "source", "rule": "source.busy", "message": FIXED["busy"]}
         assert b.llm.purposes == ["route"] and res.retries == 0
 
 
@@ -851,7 +851,7 @@ class TestGenerate:
     def test_busy_in_the_middle_of_generation_stops_there(self, tmp_path):
         b = build(tmp_path, [generate("sql"), {"query": "SELECT 1"}], [Refused("source.busy")])
         res = b.eng.ask("Which team has the best record?")
-        assert res.refusal == {"by": "code", "rule": "source.busy", "message": FIXED["busy"]}
+        assert res.refusal == {"by": "source", "rule": "source.busy", "message": FIXED["busy"]}
         assert b.llm.purposes == ["route", "generate"]
 
     @pytest.mark.parametrize(
@@ -993,7 +993,7 @@ class TestErrorsAndCost:
         b = build(tmp_path, [AskLLMError("HTTP 500: provider error")])
         res = b.eng.ask("Who leads in sacks?")
         assert res.status == "error" and res.route == "none"
-        assert res.error == "The model didn't give a usable reply (HTTP 500: provider error)."
+        assert res.error == "The model didn't give a usable reply: HTTP 500: provider error."
         assert [c["purpose"] for c in res.calls] == ["route"] and res.calls[0]["ok"] is False
         assert b.llm.calls == [] and res.timings["total"] >= 0
 

@@ -1,8 +1,8 @@
 # Ask the Engine guide: questions in plain English
 
-**What this is:** a plain-language guide to Ask the Engine's query layer (AE00): how a question typed in English becomes a query against the weekly knowledge graph or the curated tables, why that goes wrong in general and what this project does about it (templates first, a guard that only lets safe reads through), how the answer's numbers are checked, the golden question set that measures it (and the held-out set that checks it), the model comparison that picked the LLM, the audit that took accuracy from 72% to 95% (88% on new questions), and how to switch models (a local one included). The page in the control room comes in AE01; the history graph in AE02.
+**What this is:** a plain-language guide to Ask the Engine's query layer (AE00): how a question typed in English becomes a query against the weekly knowledge graph or the curated tables, why that goes wrong in general and what this project does about it (templates first, a guard that only lets safe reads through), how the answer's numbers are checked, the golden question set that measures it (and the held-out set that checks it), the model comparison that picked the LLM, the audit that took accuracy from 72% to 95% (88% on new questions), and how to switch models (a local one included); since AE01, the control room's **Explore → Ask the Engine** page (§9). The history graph comes in AE02.
 
-**Related docs:** the spec is the [Ask the Engine README](../ask-the-engine/README.md) and the phase file [AE00](../ask-the-engine/AE00-query-layer.md). Decisions: D107 (the no-touch rule), D111 (the model and the safety rules), D136 (the guard as built), D137 (the bake-off rule), D138 (the pick), D139 (the review fixes), D140 (the accuracy audit) in the [decisions log](../10-decisions-log.md). The W&B side is in the [W&B guide §6.11](weights-and-biases.md). Agents use the `ask-the-engine` skill.
+**Related docs:** the spec is the [Ask the Engine README](../ask-the-engine/README.md) and the phase files [AE00](../ask-the-engine/AE00-query-layer.md) and [AE01](../ask-the-engine/AE01-ask-tab.md) (the page; its mockup: [Ask the Engine Mockup](https://claude.ai/artifact/9vCLeQ3eZ6czTeU1dki2TU)); the control room's side is [control-room.md §2g](control-room.md). Decisions: D107 (the no-touch rule), D111 (the model and the safety rules), D136 (the guard as built), D137 (the bake-off rule), D138 (the pick), D139 (the review fixes), D140 (the accuracy audit), D141 (the model in use), D142 (the page) in the [decisions log](../10-decisions-log.md). The W&B side is in the [W&B guide §6.11](weights-and-biases.md). Agents use the `ask-the-engine` skill.
 
 ---
 
@@ -54,7 +54,7 @@ The code lives in `src/nflengine/ask/`:
 | `templates.py` | loads `config/ask_templates.yaml`, checks values, renders a template (§4) |
 | `schema.py` | the schema text the generation prompt shows, filtered to the question |
 | `guard.py` | the checks, the DuckDB sandbox, timeouts and row caps (§3) |
-| `llm.py` | the Ask LLM provider (OpenRouter or a local server), separate from the digest's (§10) |
+| `llm.py` | the Ask LLM provider (OpenRouter or a local server), separate from the digest's (§11) |
 | `answer.py` | the short answer and its number check (§6) |
 | `evaluate.py` | the golden and held-out sets, scoring, the pick rule (§7, §8) |
 | `prompts/*.md` | the three prompts (router, generator, answer) |
@@ -159,7 +159,7 @@ The answer step gets the question, the query's description, the columns and up t
 
 ## 7. The golden set, and how to add a question
 
-`config/ask_golden.yaml`: 99 questions: 34 a template answers, 26 needing free-form SQL, 24 graph relationships, and 15 trick ones (ambiguous names, requests to change data, seasons outside the data, data we don't have). 84 expect an answer, 11 a refusal, 4 a "which one?". Each answerable question has a **reference query**: hand-written, checked on the real data, and **run again at every eval**, so the expected answer is always the day's (the set doesn't go stale when a new week lands).
+`config/ask_golden.yaml`: 99 questions in AE00 (100 since AE01 added g116, a tie for the lead): 34 (now 35) a template answers, 26 needing free-form SQL, 24 graph relationships, and 15 trick ones (ambiguous names, requests to change data, seasons outside the data, data we don't have). 84 expect an answer, 11 a refusal, 4 a "which one?". Each answerable question has a **reference query**: hand-written, checked on the real data, and **run again at every eval**, so the expected answer is always the day's (the set doesn't go stale when a new week lands).
 
 ```yaml
 - id: g001
@@ -271,7 +271,63 @@ On the main set, the four misses are the model's: "which defense blitzed most of
 
 `nfl ask eval --candidates` runs every configuration in `ask.candidates` (the four above) on the main set, `nfl ask eval --candidates --set holdout` on the held-out set, and `nfl ask pick` applies the rule to the main set (it compares only runs made with today's prompts, schema text, templates and golden set: g055 was reworded after Sol's second review, so today it lists the Luna repeat runs only; re-run the other three to see them again). Prices and models change: re-run before switching, and compare held-out numbers only with each other. AE00's OpenRouter spend, everything included: about $2.16.
 
-## 9. Commands
+## 9. The page: Explore → Ask the Engine (AE01)
+
+`uv run nfl app`, then **Explore → Ask the Engine** in the sidebar (`/explore/ask`). The same engine as `nfl ask`, with the answer, the rows and the query side by side. The visual spec is the [Ask the Engine Mockup](https://claude.ai/artifact/9vCLeQ3eZ6czTeU1dki2TU) (source `documentation/ask-the-engine/mockup/`, built from the real API's answers).
+
+### 9.1 A walk through the page
+
+- **The status line** under the title: each source and how fresh it is ("weekly graph as of 2026 week 6 · Neo4j up", "curated data through 2026 week 5"), and the model with its effort (hover or focus any of them for the details and the limits). A **banner** says when Neo4j is down (graph questions can't be answered; table questions still work) or when the weekly refresh holds the lock (every question waits for it to end).
+- **The question box:** type a question (up to 500 characters; the counter turns amber near the limit, red past it), **Enter** asks, **Shift+Enter** starts a new line. **Source:** Auto (the engine picks), Weekly graph or Tables. **Try one:** eight example chips from the template library (a chip fills the box and puts the cursor at the end, so you can change a name or a season before asking; it never asks on its own); **More examples** lists every template's example, graph and tables.
+- **While it runs:** the question, the seconds so far, and **Cancel** (or **Esc**). Cancel only stops the page waiting: the server finishes the question (and its cost is spent). Ask again too soon and the page says the server is still finishing the last one (409).
+- **The answer card:**
+  - the answer, 2-3 sentences; under it **"Every number checked against the rows"** when the model's sentences passed the number check (§6). When they didn't, a note says so and a fixed line points to the table instead: a wrong number never reaches the page;
+  - **chips:** the **source** ("weekly graph as of 2026 week 6"), the **route** ("template: qb_receivers", or "free-form, 1 retry" when the model wrote the query and needed a correction round), the **time** (hover: route / write the query / run it / write the answer) and the **cost** (hover: each model call, its endpoint, seconds and cost; "no model call" when none was needed);
+  - **the rows:** the table behind the answer (click a header to sort; numbers right-aligned; lists as small chips; up to 500 rows, and a line says when more existed);
+  - **the query:** closed by default; open it to see the exact Cypher or SQL that ran, the **bound values** (`$player = 00-0033873`), and **Copy** (paste it into Neo4j Browser or DuckDB to check it yourself).
+- **Not answered:** a refusal card says why and who refused ("refused before any model call" for a request to change data; by the router for a question that isn't about NFL data or is outside the seasons; stopped by the source when the graph is down or the refresh started; by the guard with its rule). **"Which Michael Thomas?"**: when a name matches more than one person, one button per person (position, team, seasons); a click asks the same question again with that person (the engine only accepts one of the choices it offered). **No rows** shows the query and the columns it would have shown. **An error** says what failed (the model didn't answer, with the step, the endpoint and the model; OpenRouter out of credits; a query that kept failing after its corrections).
+- **This session:** every question you ask, newest first, with a coloured dot for its outcome; click one to see its answer again. Kept in this browser only (`localStorage`), nothing on the server; **Clear session** empties it. The page works without storage too (a private window).
+
+![Explore → Ask the Engine: the status line, the question box and its chips, a graph template's answer with its query open, and this session's questions](img/ask-page.png)
+
+![A free-form answer: the model wrote the SQL (route "free-form"), 18 s, $0.0026](img/ask-freeform.png)
+
+!["Which Michael Thomas?": one button per player](img/ask-clarify.png)
+
+### 9.2 Good questions to ask
+
+The engine answers best what a template covers (§4): the chips and **More examples** are a list of exactly those. Questions that work well:
+- **This week's graph:** "Who is facing his former team this week?", "Which teams are starting a backup quarterback this week?", "Which referee crews call the most penalties this week?", "Who do you pick to win this week?"
+- **Players and teams over seasons:** "Who led the NFL in rushing yards in 2024?", "Show me Derrick Henry's rushing stats by season", "How has Travis Kelce done against the Raiders?", "What's the Bills' record against the Chiefs since 2018?"
+- **Connections:** "Who has worked under Kyle Shanahan?", "Were Davante Adams and Aaron Rodgers ever teammates?", "Who has Patrick Mahomes thrown to the most this season?"
+- **Play calling and situations:** "How does Detroit's play-action do on 3rd down?", "Which team goes for it on fourth down the most this season?"
+- **Anything else the curated tables hold** (play-by-play since 2010, box scores, Next Gen Stats, injuries, snaps): the model writes the query. "Which kickers made the most field goals of 50 or more yards in 2024?" → a free-form SQL query (Brandon Aubrey, 14), checked by the guard, in about 19 s.
+
+Say the season ("in 2024", "since 2020"), the season type if it matters ("regular season": playoffs count otherwise), and full names. Open the query when an answer surprises you.
+
+### 9.3 What it can't do
+
+- **Change anything.** It only reads; a request to change data is refused before any model call.
+- **Remember the conversation.** Each question stands alone: "and in 2023?" doesn't know what "and" refers to. Ask the whole question again.
+- **Play-level connections** (who was on the field together, six degrees between players): the history graph, AE02 / AE03.
+- **Opinions, predictions beyond the engine's own, betting or fantasy advice.** It answers from the data, and the weekly graph's predictions are the only forward-looking numbers it has.
+- **Guarantee a free-form query is right.** Templates are tested; a query the model writes can be wrong but plausible (§1). That's why the query is always one click away.
+- **Answer while the weekly refresh runs** (the tables are being replaced) or **graph questions while Neo4j is down**.
+- **Show a huge result:** a list over 1,000 items in one cell, a text over 20,000 characters, more than 100 columns or about 5 million characters in all is refused ("the result is too big to show"): ask for an aggregate, a filter or fewer columns.
+
+### 9.4 How it's wired
+
+`POST /api/ask` (the launch token and the page's own `Origin`, like every POST; a body of at most 16 KB that must arrive within 10 s; a question of at most 500 characters; one question at a time per app, 409 otherwise; at most 10 a minute, 429 with a wait otherwise) runs the same `AskEngine.ask` as `nfl ask` (`src/nflengine/app/ask_service.py`). The engine is built once (about 4 s: the name index), in the background when the page opens, and refreshed before each question (today's date, the graph's week, the curated dates, the names), because the app runs for days and the weekly run moves them. `GET /api/ask/examples` gives the chips, every template's example, the sources' freshness, the model and the limits. Every string in an answer goes through the control room's `clean()` (the data drive's path made relative, anything key-shaped masked; in bounded time, `nflengine.safetext`); rows carry only plain cells; errors are fixed text. The guard bounds a result's size before Python touches it (each list or text column is checked inside DuckDB, so a 10-million-item list is refused in under a second). While the weekly run holds the lock, nothing is built, refreshed or read: the question gets the "refresh is running" sentence at once. Nothing is written anywhere.
+
+**Accuracy through the page** (the golden set sent through `POST /api/ask` in-process, `nfl ask eval --via api`, scored from the JSON the page gets): the main set **94.0%** of the 84 answer questions (AE00's two engine runs: 94.0% and 96.4%), every refusal and every "which one?" right, p50 6.3 s, p95 20.5 s, $0.093 for the 99 questions ([614qn7zq](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/614qn7zq)); the held-out set **91.2%** of 34 (AE00: 88.2%), $0.054 ([44axjuzp](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/44axjuzp)). The misses are the ones AE00's runs had (a blitz count instead of a rate, "the coldest game" refused, "faces the team that drafted him") plus routing variance between runs; the page layer changes no answer. Same accuracy.
+
+**The own-question round** (AE01's stand-in for Rishi's 10-20 questions): 18 fresh questions in Rishi's style, written before any was asked (sacks and touchdown leaders, a head-to-head record, a coordinator, this week's QB changes, 150-yard games, the longest field goal, Super Bowl coaches, a player against his old team, a coach's record, points allowed, a request to change data, an ambiguous name and its follow-up, a season before the data), through the API, every answer checked by hand against the curated data: **16 right** (templates 3-12 s, free-form 9-34 s), **2 misses, both fixed**: "which quarterback threw the most touchdown passes in the 2024 playoffs" is a three-way tie (Jalen Hurts, Jayden Daniels, Patrick Mahomes, 5 each) and the template's `LIMIT 1` named only Hurts (the five SQL leader templates now keep every row tied at the cut; golden question g116), and "which running backs had the most 150-yard games" showed only the fallback line because the model repeated the prompt's own "first 40 of 54 rows" and the number check refused 40 (it now allows the number of rows the model was shown). Rishi's own round is still to come (PROGRESS → Next step); his misses become golden questions or templates the same way.
+
+### 9.5 When it's slow
+
+Most questions take 3-8 s (a template: one routing call, the query, one answer call). A free-form query takes 10-35 s: the model writes it at reasoning effort "max". Rarely, much longer: at "max" the model can spend its whole reply budget thinking and send nothing back; the engine asks once more, so a question can take up to about four minutes and cost a couple of cents before it says "the model didn't give a usable reply" (held-out question g216: 182 s, $0.022). Cancel stops the page waiting; ask again once the server has finished (it says so with a 409 until then). A cheaper, faster setting is GPT-6 Luna at "low" (§8: p95 11 s, ~92% / ~90%, D138), switched as §11 says.
+
+## 10. Commands
 
 ```bash
 uv run nfl ask "Which receivers have the most 100-yard games against Dallas since 2020?"
@@ -281,10 +337,11 @@ uv run nfl ask "Which receivers have the most 100-yard games against Dallas sinc
 |---|---|
 | `nfl ask "<question>" [--source graph\|sql\|auto] [--show-query] [--model <id>] [--json]` | One question: the answer, the rows (first 15), the source and its date, the route (template or generated), corrections, time, cost; the query with `--show-query`. Exit 0, 2 on an error, 3 out of OpenRouter credits |
 | `nfl ask eval --model <id> [--effort none\|low\|xhigh\|max] [--max-tokens N] [--llm-timeout S] [--set main\|holdout] [--n N] [--ids g001,g002] [--no-wandb] [--smoke]` | The golden set (or, with `--set holdout`, the held-out set) with one model: one line per question, the summary, a file in `ask/evals/` and a W&B `ask-eval` run. A high effort needs `--max-tokens 16000 --llm-timeout 120` (OpenRouter sizes the reasoning budget from the reply cap). Exit 3 when OpenRouter runs out of credits (refill, then run it again) |
+| `nfl ask eval --via api [--set holdout] [--ids ...]` (AE01) | The same, but every question goes through the control room's `POST /api/ask` in-process (the safety middleware, the request model, the service, the cleaning) and is scored from the JSON the page gets: the check that the page answers as well as the engine. The file gets an `_api` suffix, the W&B run a `via:api` tag and an `-api` name; `nfl ask pick` leaves these runs out. Nothing listens on a port and the 10-a-minute limit is lifted for the run |
 | `nfl ask eval --candidates [--effort low]` | Every candidate in `settings.yaml` (`ask.candidates`), at each of its efforts, with its own `max_tokens` / `timeout_s` if it has them, one after the other |
 | `nfl ask pick [--rescore]` | The comparison table from the newest complete run of each model and effort (made with today's prompts, golden set and templates), and the pick by Rishi's rule (D138: the best execution accuracy; within 2 points, the cheaper, then the faster). `--rescore` first re-scores runs saved by an older scorer from their stored tables |
 
-## 10. Switching the model
+## 11. Switching the model
 
 The model is `ask.llm.model` in `config/settings.yaml` (with `reasoning_effort`, and for a high effort `max_tokens` 16000 and `timeout_s` 120); the digest's `llm:` block is a different block and isn't touched. Today: DeepSeek V4.1 Flash 1017 at "max" (§8.5).
 
@@ -293,27 +350,31 @@ The model is `ask.llm.model` in `config/settings.yaml` (with `reasoning_effort`,
 - **Another OpenRouter model:** put its id in `ask.llm.model` (any id from openrouter.ai/models), then run `nfl ask eval --model <id>` (and `--set holdout`) and compare it with §8.4 in W&B (`nfl ask pick` includes it). Prices and latencies change: re-run the eval before switching.
 - **A local model** (AE04, or any server that speaks the OpenAI chat API: vLLM, llama.cpp's server, Ollama ...): set `ask.llm.provider: openai_compatible`, put the server's address in the env file as `LLM_BASE_URL` (it must be `https://`, or `http://localhost` / `127.0.0.1`) and, if it wants one, `LLM_API_KEY` (Rishi edits the env file; `nfl doctor` shows whether they're set). Set `ask.llm.model` to the server's model name, and `price_in_per_m` / `price_out_per_m` if you want costs logged. Then `nfl ask eval --model <name>`.
 
-## 11. Files
+## 12. Files
 
 | What | Where |
 |---|---|
-| Code | `src/nflengine/ask/` (+ the `nfl ask` group at the end of `src/nflengine/cli.py`) |
+| Code | `src/nflengine/ask/` (+ the `nfl ask` group at the end of `src/nflengine/cli.py`); the page's backend `src/nflengine/app/ask_service.py` (+ the AE01 routes in `server.py`); the bounded scrub `src/nflengine/safetext.py` |
+| The page | `web/src/pages/explore/AskPage.tsx`, `web/src/pages/explore/ask/` (AskBox, AnswerCard, RowsTable, QueryBlock, SessionList, session.ts), `ask.css`, `web/src/lib/ask.ts`; the mockup's source `documentation/ask-the-engine/mockup/` |
 | Prompts | `src/nflengine/ask/prompts/route.md`, `generate.md`, `answer.md` (their hash is logged with every eval) |
 | Templates | `config/ask_templates.yaml` |
-| Golden set | `config/ask_golden.yaml` |
+| Golden set | `config/ask_golden.yaml` (100 since AE01: g116 added), held-out `config/ask_holdout.yaml` |
 | Settings | `config/settings.yaml` → `ask:` |
-| Eval results | `{NFL_DATA_ROOT}/ask/evals/<UTC stamp>_<model>_<effort>.json` (every question's route, outcome, time, cost, query and answer; no keys) |
-| Tests | `tests/ask/test_ask_*.py` (the live probes: `uv run pytest -m integration tests/ask`) |
+| Eval results | `{NFL_DATA_ROOT}/ask/evals/<UTC stamp>_<model>_<effort>[_holdout][_api].json` (every question's route, outcome, time, cost, query and answer; no keys) |
+| Tests | `tests/ask/test_ask_*.py` (the live probes: `uv run pytest -m integration tests/ask`); the page's endpoint `tests/app/test_app_ask.py`, its red team `tests/app/test_app_ask_redteam.py`, `tests/test_safetext.py`; the page `web/src/pages/explore/AskPage.test.tsx` |
 
-## 12. Changing it safely
+## 13. Changing it safely
 
-- **A prompt:** edit the `.md` file, run `uv run pytest tests/ask`, then `nfl ask eval` with the chosen model: the new prompt hash shows in the run's config, so W&B tells the runs apart.
+- **A prompt:** edit the `.md` file, run `uv run pytest tests/ask`, then `nfl ask eval` with the chosen model: the new prompt hash shows in the run's config, so W&B tells the runs apart (AE01 added one rule to `answer.md`: answer as to a fan, never describe "the rows").
+- **A template's limit:** a leader template keeps rows tied at its cut (`QUALIFY rank() OVER (ORDER BY <measure> DESC) <= $limit`, then `ORDER BY`), so "who led" names every tied leader.
 - **The guard:** never loosen a rule without a red-team test for what it now lets through; the live probes (`-m integration`) must still pass.
 - **The weekly graph:** Ask only reads it (D107). Never add an index or node for Ask; resolve names in Python.
 
-## 13. Limits and what's next
+## 14. Limits and what's next
 
 - A generated query can be **wrong but plausible** (§1): the query and rows are always shown for that reason, and the golden set measures how often.
 - The weekly graph is a **snapshot as of one week** (results before week W): questions about older seasons' multi-hop details work only from 2018, and "this week" means the graph's week.
 - Play-level relationships (who was on the field together) need the **history graph** (AE02); six-degrees connections come in AE03; a local fine-tuned model is AE04's experiment.
-- **AE01** puts this behind Explore → Ask the Engine in the control room, with its own safety review of the free-text endpoint.
+- **Each question stands alone** on the page (§9.3): no follow-ups that lean on the previous answer.
+- The leaders' **Cypher templates** (`qb_receivers`, `passing_hubs`, `power_ratings_this_week`) still cut ties with `LIMIT`; the five SQL leader templates keep them (AE01).
+- `ops.summary.scrub` (the pipeline's own) is still quadratic on a very long word; the page and `nfl ask` use `safetext.scrub_bounded` (§9.4, D142), and the fix to the original waits for Rishi's OK (the no-touch rule, D107).

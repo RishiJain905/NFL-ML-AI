@@ -7,6 +7,7 @@ build exists) the React app from `web/dist/`. Everything the readers need comes 
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import datetime as dt
 import logging
@@ -22,12 +23,17 @@ from typing import Any
 from fastapi import FastAPI, Query, Request
 from fastapi import Path as PathParam
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import StreamingResponse
 from starlette.staticfiles import StaticFiles
 
 from nflengine.app import wandb_api
+from nflengine.app.ask_service import BODY_SECONDS as ASK_BODY_SECONDS
+from nflengine.app.ask_service import ERRORS as ASK_ERRORS
+from nflengine.app.ask_service import MAX_BODY as ASK_MAX_BODY
+from nflengine.app.ask_service import AskRefused, AskService
 from nflengine.app.health import SystemChecks, get_health
 from nflengine.app.jsonsafe import SafeJSONResponse
 from nflengine.app.preflight import get_preflight, rehearsal_target
@@ -107,6 +113,25 @@ class RunBody(BaseModel):
     expect_week: int = Field(ge=1, le=22)
 
 
+class AskPick(BaseModel):
+    """An answer to a "which one?" card: the name as the card showed it, its kind, and the
+    chosen value (the engine keeps it only if it's one of the choices it offered)."""
+
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(min_length=1, max_length=120)
+    kind: str = Field(pattern="^(team|player|coach)$")
+    value: str = Field(min_length=1, max_length=80)
+
+
+class AskBody(BaseModel):
+    """`POST /api/ask` (AE01): a question, which source to use, and any picks."""
+
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(min_length=1, max_length=500)
+    source: str = Field("auto", pattern="^(auto|graph|sql)$")
+    picks: list[AskPick] = Field(default_factory=list, max_length=5)
+
+
 @dataclass
 class AppSettings:
     port: int = 8765
@@ -134,6 +159,9 @@ class AppSettings:
     # `nfl app --live-replay` the feed serves a finished week as if live.
     live: LiveService | None = None
     live_replay: Any = None
+    # AE01: Ask the Engine (the free-text endpoint). Tests inject a service whose engine runs
+    # on a scripted LLM and fake sources; the default builds the real engine on first use.
+    ask: AskService | None = None
 
 
 class _Context:
@@ -148,6 +176,7 @@ class _Context:
         self.wandb = settings.wandb or WandbReader(cache_dir=self._wandb_cache)
         self.checks = settings.system_checks or SystemChecks()
         self.live = settings.live or LiveService(now=settings.now, replay=settings.live_replay)
+        self.ask = settings.ask or AskService(now=settings.now)
         self._sched: tuple[float, Any] | None = None
         self._lock = threading.Lock()
 
@@ -227,6 +256,7 @@ def create_app(settings: AppSettings) -> FastAPI:
         finally:
             ctx.services.stop()
             ctx.live.close()
+            ctx.ask.close()
 
     app = FastAPI(
         title="NFL Control Room",
@@ -744,6 +774,53 @@ def create_app(settings: AppSettings) -> FastAPI:
         if body is None:
             return _error(404, "not_found", "No such concept in the Big Data Bowl library.")
         return week_json(paths, body)
+
+    # ---- AE01: Explore -> Ask the Engine (documentation/ask-the-engine/). The app's first
+    # free-text endpoint: the launch token and Origin (security.py), a 16 KB body, a 500-character
+    # question, one question at a time, ~10 a minute (ask_service.py). Every string in the answer
+    # is cleaned; rows are scalar cells; errors are fixed text. Ask never writes.
+
+    @app.get("/api/ask/examples")
+    def ask_examples_route() -> SafeJSONResponse:
+        paths = ctx.paths()
+        return week_json(paths, ctx.ask.examples(paths, ctx.services.snapshot()))
+
+    @app.post("/api/ask")
+    async def ask_route(request: Request) -> SafeJSONResponse:
+        declared = request.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > ASK_MAX_BODY:
+            return _error(413, "too_big", ASK_ERRORS["too_big"])
+
+        async def read_body() -> bytearray | None:
+            raw = bytearray()
+            async for chunk in request.stream():
+                raw += chunk
+                if len(raw) > ASK_MAX_BODY:
+                    return None
+            return raw
+
+        try:  # an upload left unfinished is cut off (Sol, AE01): it never reaches the service
+            raw = await asyncio.wait_for(read_body(), timeout=ASK_BODY_SECONDS)
+        except TimeoutError:
+            return _error(408, "body_timeout", ASK_ERRORS["body_timeout"])
+        if raw is None:
+            return _error(413, "too_big", ASK_ERRORS["too_big"])
+        try:
+            body = AskBody.model_validate_json(bytes(raw))
+        except ValidationError:  # fixed text: the details echo the request's values back
+            return _error(422, "bad_request", ASK_ERRORS["bad_request"])
+        paths = ctx.paths()
+        picks = [p.model_dump() for p in body.picks]
+        try:
+            answer = await run_in_threadpool(
+                ctx.ask.ask, paths, body.question, body.source, picks, ctx.services.snapshot()
+            )
+        except AskRefused as e:
+            resp = _error(e.status, e.code, e.message)
+            if e.retry_after:
+                resp.headers["retry-after"] = str(e.retry_after)
+            return resp
+        return week_json(paths, answer)
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def api_not_found(rest: str) -> SafeJSONResponse:

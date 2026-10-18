@@ -36,6 +36,21 @@ def _no_real_runner_process(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_ask_engine(request, monkeypatch):
+    """AE01: the control room's Ask service never builds the real engine in a unit test (it
+    would open a Neo4j driver and call OpenRouter). Tests give `AskService` an
+    `engine_factory`; anything that reaches the default fails loudly instead."""
+    if request.node.get_closest_marker("integration") is not None:
+        return
+    import nflengine.app.ask_service as A
+
+    def refuse(paths):
+        raise AssertionError("a test tried to build the real Ask engine")
+
+    monkeypatch.setattr(A, "_default_factory", refuse)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_schedule_refresh(monkeypatch):
     """`weekly.refresh_schedule` would run a real nflverse ingest on the data root (P07).
     Returns the seasons it was asked to refresh."""

@@ -846,7 +846,6 @@ class TestFailures:
             CypherSyntaxError("Neo.ClientError.Statement.SyntaxError", self.SECRET_MSG),
             ClientError("Neo.ClientError.Statement.ArithmeticError", self.SECRET_MSG),
             ValueError(self.SECRET_MSG),
-            ServiceUnavailable(self.SECRET_MSG),
             ClientError("Neo.ClientError.Transaction.TransactionTimedOut", self.SECRET_MSG),
         ):
             e = self.failed(exc)
@@ -855,10 +854,18 @@ class TestFailures:
             assert "boom" not in outside
             assert "hunter2" not in e.hint and "sk-or-v1" not in e.hint
 
-    def test_a_dead_server_is_an_error_with_a_fixed_code_and_no_hint(self):
-        e = self.failed(ServiceUnavailable(self.SECRET_MSG))
-        assert e.kind == "error" and e.hint == ""
-        assert e.code == "ServiceUnavailable: Neo4j unreachable"
+    @pytest.mark.parametrize("stage", ["run", "explain"])
+    def test_a_dead_server_stops_the_question_as_source_down(self, stage):
+        # AE01 (D142): an unreachable graph isn't the query's fault, so no correction round
+        # can fix it; the fixed refusal carries none of the driver's message
+        kw = {
+            "run_error" if stage == "run" else "explain_error": ServiceUnavailable(self.SECRET_MSG)
+        }
+        with pytest.raises(Refused) as e:
+            run_cypher(FakeDriver(**kw), "MATCH (n) RETURN n.x")
+        assert e.value.rule == "source.down"
+        outside = " ".join([str(e.value), repr(e.value), *map(str, e.value.args)])
+        assert "hunter2" not in outside and "sk-or-v1" not in outside and "boom" not in outside
 
     def test_an_unknown_exception_is_only_its_type(self):
         e = self.failed(KeyError("secret-key-name"))

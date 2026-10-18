@@ -2379,7 +2379,7 @@ def ask_question(
     from nflengine.ask.llm import AskLLMError, OutOfCredits, make_llm
     from nflengine.ask.route import AskEngine
     from nflengine.ask.show import print_result
-    from nflengine.ops.summary import scrub
+    from nflengine.safetext import scrub_bounded as scrub
 
     if source not in ("graph", "sql", "auto"):
         raise typer.BadParameter("--source must be graph, sql or auto")
@@ -2433,6 +2433,12 @@ def ask_eval(
         help="main (config/ask_golden.yaml) or holdout (config/ask_holdout.yaml: never tuned "
         "on, reported on its own).",
     ),
+    via: str = typer.Option(
+        "engine",
+        "--via",
+        help="engine (the query layer directly) or api (each question through the control "
+        "room's POST /api/ask, in-process, scored from the JSON the page gets; AE01).",
+    ),
     launched_by: str | None = LAUNCHED_BY,
 ) -> None:
     """Run the golden set (config/ask_golden.yaml) and log a W&B `ask-eval` run."""
@@ -2443,6 +2449,8 @@ def ask_eval(
 
     if golden_set not in ("main", "holdout"):
         raise typer.BadParameter("--set must be main or holdout")
+    if via not in ("engine", "api"):
+        raise typer.BadParameter("--via must be engine or api")
     count = None if n == "all" else int(n)
     id_list = _csv(ids)
     if candidates:
@@ -2470,6 +2478,7 @@ def ask_eval(
             golden_set=golden_set,
             launched_by=launched_by,
             log=lambda s: console.print(s),
+            via=via,
         )
         s = out["summary"]
         if s.get("questions"):

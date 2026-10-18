@@ -463,6 +463,22 @@ questions:
       RETURN qb.name AS qb, r.name AS receiver
     notes: re-derives q6 (40+ career targets, the receiver active on the opponent)
 
+  - id: g116
+    question: "Which quarterback threw the most touchdown passes in the 2024 playoffs?"
+    category: template
+    source: sql
+    template: season_leaders
+    reference: |
+      WITH t AS (
+        SELECT player_id, any_value(player_display_name) AS player, sum(passing_tds) AS tds
+        FROM player_games WHERE season = 2024 AND season_type = 'POST' GROUP BY player_id
+      )
+      SELECT player, tds FROM t WHERE tds = (SELECT max(tds) FROM t)
+    notes: >-
+      AE01's own-question round: a three-way tie (Jalen Hurts, Jayden Daniels, Patrick Mahomes,
+      5 each), so every tied leader is the answer; LIMIT 1 named only Hurts until season_leaders
+      kept the rows tied at the cut (QUALIFY rank())
+
   # ==== sql: free-form SQL (no template fits) ==============================================
   - id: g040
     question: "Which quarterback had the highest completion percentage in the 2024 regular season, minimum 300 attempts?"

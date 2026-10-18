@@ -49,6 +49,9 @@ SCANNED_GETS = [
     "/api/playcalling/teams/KC/plays?season=2026&side=defense&week=4&type=pass&down=3",
     "/api/playcalling/plays/2026_04_KC_DEN/1234/diagram",
     "/api/playcalling/concepts/inside_zone",
+    # AE01: Ask the Engine's examples and status (the POST answers are scanned with planted
+    # key-shaped text, the root's path and sentinel secrets in test_app_ask.py)
+    "/api/ask/examples",
 ]
 
 

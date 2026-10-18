@@ -339,6 +339,18 @@ class TestWriteAnswer:
         assert not check.passed and check.unmatched == ["5300"] and from_llm is False
         assert len(llm.requests) == 1 and llm.replies == []
 
+    def test_the_number_of_rows_shown_is_allowed_when_only_some_are_shown(self):
+        # AE01's own-question round: the prompt says "These are the first 40 of 54 rows", the
+        # model repeated "40", and the check refused its own prompt's number
+        rows = [[f"Back {i}", 100 + i, 0.5] for i in range(54)]
+        _, (text, check, from_llm) = run(
+            {"answer": "Back 0 leads; these are the first 40 of 54 backs."}, rows=rows, max_rows=40
+        )
+        assert check.passed and from_llm is True and "first 40 of 54" in text
+        # not when every row was shown: then "40" is a made-up number
+        _, (_, check, _) = run({"answer": "The first 40 backs."}, rows=rows[:30], max_rows=40)
+        assert not check.passed and check.unmatched == ["40"]
+
     def test_the_fixed_sentence_marks_a_truncated_result(self):
         _, (text, _, _) = run({"answer": "999 rows!"}, truncated=True)
         assert "(the first part of a longer result)" in text

@@ -11,8 +11,8 @@ Readers only read (documentation/control-room/README.md §4-§5):
 Every free text passes through `clean()`: the data root's path becomes a relative path
 (`D:\\nfl-ml-data\\runs\\2026\\week04\\x.parquet` -> `runs/2026/week04/x.parquet`: the root is
 NFL_DATA_ROOT's value, an environment value the browser must not see), W&B run URLs are
-pulled out by `wandb_urls()` first where a reader wants them, and `ops.summary.scrub` masks
-anything shaped like a credential.
+pulled out by `wandb_urls()` first where a reader wants them, and `ops.summary.scrub`'s rules
+(through `safetext.scrub_bounded`, D142) mask anything shaped like a credential.
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ from typing import Any
 
 import polars as pl
 
-from nflengine.ops.summary import scrub
 from nflengine.paths import DataPaths, relative_paths, root_pattern, strip_partial_root
+from nflengine.safetext import scrub_bounded
 
 WANDB_RUN = re.compile(r"https://wandb\.ai/[\w.-]+/[\w.-]+/runs/([A-Za-z0-9]+)")
 STEP_NAMES = ("ingest", "ready", "curate", "ratings", "game", "graph", "player", "digest")
@@ -139,7 +139,9 @@ def clean(text: Any, paths: DataPaths | None, limit: int = 400) -> str | None:
     root = paths.root if paths is not None else _DATA_ROOT
     if root is not None:
         s = relative_paths(s, root)
-    return scrub(s, limit)
+    # bounded (D142): `ops.summary.scrub` is quadratic on a long word, and an Ask cell can be
+    # megabytes; same masks, the input capped before scrubbing (nflengine.safetext)
+    return scrub_bounded(s, limit)
 
 
 def wandb_urls(text: str | None) -> list[str]:

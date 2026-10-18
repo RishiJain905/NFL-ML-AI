@@ -754,7 +754,9 @@ class TestFailures:
 
     def test_a_missing_parameter_is_a_failure(self, sb):
         e = failed(sb, "SELECT $a")
-        assert e.kind == "error" and e.code == "InvalidInputException"
+        # AE01: a query without parameters is bound (not run) to read its result's types, so
+        # the missing value now shows at binding (BinderException) rather than at the run
+        assert e.kind == "error" and e.code in ("InvalidInputException", "BinderException")
         e = failed(sb, "SELECT $a", {"a": 1, "extra": 2})
         assert e.kind == "error"
 

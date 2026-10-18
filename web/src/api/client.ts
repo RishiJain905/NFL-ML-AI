@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AlertsResponse,
   ApiErrorBody,
+  AskExamplesResponse,
+  AskRequest,
+  AskResponse,
   DigestResponse,
   GamesResponse,
   GraphResponse,
@@ -142,7 +145,8 @@ export const usePlayCalls = (season: number, week: number) =>
 // ---- CR02: run control. The server builds the command; the browser sends a kind and its
 // expected week (a cross-check). POSTs carry the launch token (security.py).
 
-export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+/** `signal` (AE01): the Ask page's Cancel stops waiting for the answer (the server finishes it). */
+export async function apiPost<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     const token = await launchToken(attempt > 0);
     const res = await fetch(path, {
@@ -153,6 +157,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
         'x-cr-token': token,
       },
       body: JSON.stringify(body),
+      signal,
     });
     const data: unknown = await res.json().catch(() => null);
     if (res.ok) return data as T;
@@ -525,4 +530,23 @@ export function usePlaycallHistory(team: string, side: PlaycallSide, enabled = t
     staleTime: Infinity,
     refetchOnWindowFocus: false,
   });
+}
+
+// ---- AE01: Explore -> Ask the Engine. The examples and the sources' status are refetched every
+// minute (the graph's week and Neo4j's state change); a question is a POST (`askQuestion`) whose
+// answer the page keeps in its session list (localStorage), never in the query cache.
+
+export function useAskExamples() {
+  return useQuery({
+    queryKey: ['ask', 'examples'],
+    queryFn: () => apiGet<AskExamplesResponse>('/api/ask/examples'),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+}
+
+/** One question. Rejects with `ApiError` (409 busy, 429 rate_limited, 422 bad_request, 503
+ *  ask_unavailable, ...) or an `AbortError` when `signal` aborts (Cancel). */
+export function askQuestion(req: AskRequest, signal?: AbortSignal): Promise<AskResponse> {
+  return apiPost<AskResponse>('/api/ask', req, signal);
 }

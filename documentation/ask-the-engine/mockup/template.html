@@ -1,0 +1,35 @@
+<meta charset="utf-8">
+<title>Ask the Engine Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+{{CSS}}
+</style>
+<style>
+{{ASKCSS}}
+</style>
+
+<div class="mockbar" id="mockbar" aria-label="Mockup controls">
+  <span class="tag">MOCKUP CONTROLS · not part of the app</span>
+  <div class="grp"><span class="lbl">Answer card</span><span class="seg wrap" id="cardPick"></span></div>
+  <div class="grp"><span class="lbl">Request refused</span><span class="seg" id="errPick"></span></div>
+  <div class="grp"><span class="lbl">Status</span><span class="seg" id="statusPick"><button type="button" data-v="normal">Normal</button><button type="button" data-v="graph_down">Graph down</button><button type="button" data-v="busy">Weekly refresh running *</button></span></div>
+  <div class="grp"><span class="lbl">Session</span><span class="seg" id="sessPick"><button type="button" data-v="full">This session's questions</button><button type="button" data-v="empty">Empty</button></span></div>
+  <span class="hint">* mockup-only, made from a real answer and labelled on the page. Everything else is a real answer from the app's API. Theme and mode: the gear by "Control Room".</span>
+</div>
+
+<div class="app">
+  <aside class="side" id="side"></aside>
+  <main>
+    <header class="top" id="top"></header>
+    <section class="view" id="view"></section>
+  </main>
+</div>
+
+<div id="tip" role="tooltip" hidden></div>
+
+<script id="data" type="application/json">{{DATA}}</script>
+<script>
+{{JS}}
+</script>

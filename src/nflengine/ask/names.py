@@ -221,11 +221,15 @@ class NameIndex:
             if key in cls._cache:
                 return cls._cache[key]
 
+        # never memory-mapped (D100): the control room holds this index for days and the weekly
+        # curate replaces these files in place, which Windows refuses while a file is mapped
         players_df = pl.read_parquet(
-            files[0], columns=["gsis_id", "display_name", "position", "latest_team"]
+            files[0],
+            columns=["gsis_id", "display_name", "position", "latest_team"],
+            memory_map=False,
         )
         pg = (
-            pl.read_parquet(files[1], columns=["player_id", "season", "team"])
+            pl.read_parquet(files[1], columns=["player_id", "season", "team"], memory_map=False)
             .filter(pl.col("player_id").is_not_null())
             .group_by("player_id")
             .agg(
@@ -263,7 +267,7 @@ class NameIndex:
             c.roles.add(role)
 
         cols = ["season", "home_team", "away_team", "home_coach", "away_coach"]
-        games = pl.read_parquet(files[2], columns=cols).sort("season")
+        games = pl.read_parquet(files[2], columns=cols, memory_map=False).sort("season")
         for r in games.iter_rows(named=True):
             add_coach(r["home_coach"], r["home_team"], r["season"], "HC")
             add_coach(r["away_coach"], r["away_team"], r["season"], "HC")
@@ -292,7 +296,7 @@ class NameIndex:
         codes = {c: c for c in TEAMS}
         alias_path = curated / "team_aliases.parquet"
         if alias_path.exists():
-            for r in pl.read_parquet(alias_path).iter_rows(named=True):
+            for r in pl.read_parquet(alias_path, memory_map=False).iter_rows(named=True):
                 if r["alias"] and r["team"] in TEAMS:
                     codes[str(r["alias"]).upper()] = r["team"]
         idx = cls(players, list(coaches.values()), team_names, codes, team_labels, current_season)

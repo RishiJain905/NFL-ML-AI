@@ -1415,6 +1415,124 @@ export interface LiveSeasonReviewResponse {
   computed_at: string | null;
 }
 
+// ---------------------------------------------------------------- AE01: Ask the Engine
+// (The AE01 block sits before PC01's: the PC01 and PC03 contract tests read their own blocks
+// to the next PC header or the end of the file.)
+// Explore -> Ask the Engine (documentation/ask-the-engine/AE01-ask-tab.md, D142). The app's first
+// free-text endpoint: POST /api/ask (launch token + Origin, a 500-character question, one at a
+// time, ~10 a minute) and GET /api/ask/examples. Every string is cleaned on the server; rows are
+// scalar cells (numbers, text, dates as text, lists of them; a library template's map arrives as
+// one line of text). The session's questions are kept in the browser only (localStorage).
+
+export type AskSource = 'auto' | 'graph' | 'sql';
+export type AskStatus = 'answered' | 'empty' | 'refused' | 'clarify' | 'error';
+export type AskRoute = 'template' | 'generated' | 'refused' | 'clarify' | 'none';
+export type AskCell = string | number | boolean | null | AskCell[];
+
+export interface AskPick {
+  text: string; // the name as the "which one?" card showed it
+  kind: 'team' | 'player' | 'coach';
+  value: string; // one of the card's option values
+}
+export interface AskRequest {
+  question: string; // 1-500 characters
+  source?: AskSource; // default auto
+  picks?: AskPick[]; // up to 5
+}
+
+export interface AskSourceInfo {
+  kind: 'graph' | 'sql';
+  season: number | null;
+  week: number | null; // graph: the week it's built as of; sql: the newest week with a final game
+  rebuilt?: string | null; // sql: the curated tables' rebuild date (YYYY-MM-DD)
+  label: string; // "weekly graph as of 2026 week 6" | "curated data through 2026 week 5"
+}
+export interface AskChoice {
+  text: string; // "Michael Thomas"
+  kind: 'team' | 'player' | 'coach';
+  options: { value: string; label: string }[]; // label "Michael Thomas (WR, NO, 2016-2023)"
+}
+export interface AskLLMCall {
+  purpose: 'route' | 'generate' | 'fix' | 'answer' | string;
+  provider: string | null; // the endpoint OpenRouter used ("InferenceNet")
+  seconds: number | null;
+  cost: number | null; // $; null = not reported
+  ok: boolean;
+}
+export interface AskResponse {
+  question: string;
+  asked_at: string; // ISO time on the server
+  status: AskStatus;
+  answer: string | null; // the sentences (model or fixed); null only for an error
+  // model: the model's sentences passed the number check; fallback: they didn't (or the model
+  // failed), so a fixed sentence points to the table; fixed: a refusal, a choice, no rows, an error
+  answer_kind: 'model' | 'fallback' | 'fixed';
+  columns: string[];
+  rows: AskCell[][]; // up to 500 rows
+  row_count: number;
+  truncated: boolean; // more rows existed than the cap
+  query: string | null; // the exact query that ran (or the last one tried)
+  language: 'cypher' | 'sql' | null;
+  params: { name: string; value: AskCell }[]; // the values bound to the query's $names
+  source: AskSourceInfo | null;
+  route: AskRoute;
+  route_label: string | null; // "template: qb_receivers" | "free-form, 1 retry" | "refused" | "needs a choice"
+  template: { id: string; title: string | null } | null;
+  retries: number; // correction rounds used
+  refusal: { by: 'code' | 'source' | 'router' | 'generator' | 'guard' | string; rule: string; message: string } | null;
+  choices: AskChoice[]; // status clarify
+  error: {
+    code: 'llm' | 'query_failed' | 'out_of_credits' | 'failed' | string;
+    message: string; // fixed text
+    stage: string | null; // the model call that failed (route / generate / fix / answer)
+    provider: string | null;
+    model: string | null;
+  } | null;
+  timing: {
+    total_s: number | null;
+    route_s: number | null;
+    generate_s: number | null;
+    run_s: number | null;
+    answer_s: number | null;
+  };
+  cost: number | null; // $ for the question's model calls; 0 = no call; null = a call didn't report one
+  llm: { model: string | null; calls: AskLLMCall[]; providers: string[] };
+}
+
+export interface AskExample {
+  question: string;
+  template: string;
+  title: string;
+  source: 'graph' | 'sql';
+  this_week: boolean; // a weekly-graph template read as of the graph's week
+}
+export interface AskStatusInfo {
+  sources: {
+    graph: {
+      on: boolean;
+      status: 'up' | 'down' | 'checking' | 'config_problem' | 'none' | 'off'; // none: no graph build found
+      season: number | null;
+      week: number | null;
+      label: string | null;
+    };
+    sql: {
+      on: boolean;
+      status: 'up' | 'off';
+      season: number | null;
+      week: number | null;
+      rebuilt: string | null;
+      label: string | null;
+    };
+  };
+  model: { name: string | null; label: string | null; effort: string | null; provider: string; timeout_s: number };
+  limits: { question_chars: number; per_minute: number; rows: number; query_timeout_s: number; corrections: number };
+  busy: boolean; // the weekly lock is held: questions are refused until the refresh ends
+}
+export interface AskExamplesResponse extends AskStatusInfo {
+  featured: AskExample[]; // the chips
+  groups: { source: 'graph' | 'sql'; label: string; examples: AskExample[] }[];
+}
+
 // ---- PC01: Play calling (documentation/play-calling/PC01-play-calling-pages.md) ------------
 // GET /api/playcalling/teams?season=, /api/playcalling/teams/{team}?season=&side=,
 // /api/playcalling/teams/{team}/history?side= and /api/weeks/{season}/{week}/play-calls.

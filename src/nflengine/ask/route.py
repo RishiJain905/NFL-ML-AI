@@ -19,6 +19,12 @@
 Everything is recorded in `AskResult` (route, template, query, rows, retries, every LLM call
 with its cost, timings). Database error text goes only into a correction prompt, scrubbed
 (`guard.QueryFailed.hint`); the result keeps the error's type and code.
+
+AE01 (the control room's page, D142): `ask(..., picks=)` answers a "which one?" card (the
+choice must be one the engine offered, or a value that resolves to exactly one entity); a
+graph that doesn't answer (`source.down`) stops the question at once with a fixed sentence,
+like the weekly lock; `refresh(paths)` re-reads today's date, the graph's week, the curated
+dates and the names for a process that holds the engine for days.
 """
 
 from __future__ import annotations
@@ -28,7 +34,7 @@ import hashlib
 import json
 import re
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -36,7 +42,7 @@ from nflengine.ask import answer as answer_mod
 from nflengine.ask.config import AskConfig, ask_config
 from nflengine.ask.guard import QueryFailed, QueryResult, Refused, Sources
 from nflengine.ask.llm import AskLLM, AskLLMError, OutOfCredits
-from nflengine.ask.names import Mention, NameIndex, ambiguous
+from nflengine.ask.names import Match, Mention, NameIndex, Resolution, ambiguous, norm
 from nflengine.ask.schema import graph_schema, sql_schema
 from nflengine.ask.templates import Rendered, Template, TemplateError, load_templates, render
 
@@ -61,10 +67,16 @@ FIXED = {
     "clarify": 'More than one {kind} matches "{text}": which one?',
     "empty_result": "No rows matched.",
     "failed": "The query still failed after {n} corrections ({code}).",
-    "llm": "The model didn't give a usable reply ({error}).",
+    "llm": "The model didn't give a usable reply: {error}.",
     "source_off": "That source is switched off in settings.yaml.",
     "busy": "The weekly data refresh is running: ask again when it's done.",
+    "graph_down": "The weekly graph (Neo4j) isn't answering right now, and this question needs "
+    "it. Questions about the tables still work.",
 }
+# guard rules that stop a question at once, whatever round it's in: the data is being rebuilt
+# (the weekly lock) or the graph doesn't answer (Neo4j down); neither is the query's fault
+_STOP_RULES = {"source.busy": "busy", "source.down": "graph_down"}
+PICK_KINDS = ("team", "player", "coach")
 
 
 @dataclass
@@ -91,6 +103,7 @@ class AskResult:
     calls: list[dict[str, Any]] = field(default_factory=list)
     timings: dict[str, float] = field(default_factory=dict)
     error: str | None = None  # fixed text
+    error_code: str | None = None  # llm | query_failed (AE01: the page's error card)
     context: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -158,9 +171,9 @@ def curated_through(paths, season: int) -> tuple[str | None, int | None]:
     if games.exists():
         import polars as pl
 
-        df = pl.read_parquet(games, columns=["season", "week", "completed"]).filter(
-            (pl.col("season") == season) & pl.col("completed").fill_null(False)
-        )
+        df = pl.read_parquet(
+            games, columns=["season", "week", "completed"], memory_map=False
+        ).filter((pl.col("season") == season) & pl.col("completed").fill_null(False))
         week = int(df["week"].max()) if df.height else None
     return run_at, week
 
@@ -190,6 +203,9 @@ class AskEngine:
         self.asof = asof
         self.curated = curated
         self.today = today or dt.date.today()
+        # the last question's model calls, also when it raised (OutOfCredits): the app's error
+        # card shows what was spent before the failure (AE01, the test worker)
+        self.last_calls: list[dict[str, Any]] = []
 
     @classmethod
     def build(cls, llm: AskLLM, cfg: AskConfig | None = None, paths=None) -> AskEngine:
@@ -212,6 +228,16 @@ class AskEngine:
 
     def close(self) -> None:
         self.sources.close()
+
+    def refresh(self, paths) -> None:
+        """Re-read what changes while a process holds the engine (the control room runs for
+        days): today's date, the weekly graph's week, the curated tables' dates, and the names
+        (`NameIndex.load` is cached by the files' modification times, so an unchanged week
+        costs nothing). Called before each question by the app; never by the CLI or an eval."""
+        self.today = dt.date.today()
+        self.asof = graph_asof(paths, self.current)
+        self.curated = curated_through(paths, self.current)
+        self.names = NameIndex.load(paths.curated, self.current)
 
     # ---- context ------------------------------------------------------------------------------
 
@@ -311,18 +337,24 @@ class AskEngine:
 
     # ---- the flow -----------------------------------------------------------------------------
 
-    def ask(self, question: str, source: str = "auto") -> AskResult:
+    def ask(
+        self, question: str, source: str = "auto", picks: list[dict[str, str]] | None = None
+    ) -> AskResult:
+        """`picks`: answers to an earlier "which one?" (`{"text", "kind", "value"}` each), from
+        the control room's clarify card."""
         t0 = time.monotonic()
         q = " ".join((question or "").split())
         res = AskResult(question=q, context=self.context())
         try:
-            self._ask(res, q, source)
+            self._ask(res, q, source, picks or [])
         except OutOfCredits:
             raise
         except AskLLMError as e:
             res.status, res.error = "error", FIXED["llm"].format(error=str(e))
+            res.error_code = "llm"
         finally:
             res.calls = [c.to_dict() for c in self.llm.take_calls()]
+            self.last_calls = res.calls
             res.timings["total"] = round(time.monotonic() - t0, 3)
         return res
 
@@ -331,7 +363,55 @@ class AskEngine:
         res.refusal = {"by": by, "rule": rule, "message": message}
         res.answer = message
 
-    def _ask(self, res: AskResult, q: str, source: str) -> None:
+    def _resolve_pick(self, kind: str, value: str) -> Resolution | None:
+        """A pick that isn't one of the question's ambiguous names (a name only a template's
+        value revealed): kept only when the value names exactly one entity of that kind."""
+        if kind == "player":
+            r = self.names.player(value)
+            return r if r.status == "unique" and r.value == value else None
+        if kind == "team":
+            code = self.names.team(value)
+            if code is None or code != value:
+                return None
+            return Resolution("team", "unique", (Match(code, self.names.team_label(code)),))
+        if kind == "coach":
+            r = self.names.coach(value)
+            return r if r.status == "unique" else None
+        return None
+
+    def _apply_picks(self, mentions: list[Mention], picks: list[dict[str, str]]) -> list[Mention]:
+        """The question's names with each picked "which one?" settled. A pick counts only
+        when its value is one of the choices the engine offered for that name (or names one
+        entity on its own); anything else is ignored, so the card simply comes back."""
+        chosen: dict[str, dict[str, str]] = {}
+        for p in picks[:5]:
+            # whitespace collapsed like the question's: a pick can't add lines to a prompt
+            text, kind, value = (
+                " ".join(str(p.get(k) or "").split()) for k in ("text", "kind", "value")
+            )
+            if text and value and kind in PICK_KINDS:
+                chosen[norm(text)] = {"text": text[:80], "kind": kind, "value": value[:80]}
+        if not chosen:
+            return mentions
+        out, used = [], set()
+        for m in mentions:
+            p = chosen.get(norm(m.text))
+            if p and m.resolution.status == "ambiguous" and p["kind"] == m.kind:
+                match = next((x for x in m.resolution.matches if x.value == p["value"]), None)
+                if match is not None:
+                    out.append(replace(m, resolution=Resolution(m.kind, "unique", (match,))))
+                    used.add(norm(m.text))
+                    continue
+            out.append(m)
+        for key, p in chosen.items():
+            if key in used or any(norm(m.text) == key for m in mentions):
+                continue
+            r = self._resolve_pick(p["kind"], p["value"])
+            if r is not None:
+                out.append(Mention(p["text"], -1, -1, r))
+        return out
+
+    def _ask(self, res: AskResult, q: str, source: str, picks: list[dict[str, str]]) -> None:
         limit = self.cfg.limits.question_chars
         if not q:
             return self._refuse(res, "code", "question.empty", FIXED["empty"])
@@ -346,8 +426,15 @@ class AskEngine:
             return self._refuse(res, "code", "source.busy", FIXED["busy"])
 
         t = time.monotonic()
-        mentions = self.names.mentions(q)
+        mentions = self._apply_picks(self.names.mentions(q), picks)
         res.mentions = [m.prompt_line() for m in mentions]
+        # (kind, name) -> the picked value, for template values that repeat the name
+        picked = {
+            (m.kind, norm(m.text)): m.resolution.value
+            for m in mentions
+            if m.resolution.status == "unique"
+            and any(norm(p.get("text") or "") == norm(m.text) for p in picks)
+        }
         res.timings["names"] = round(time.monotonic() - t, 3)
         amb = ambiguous(mentions)
         if amb:
@@ -380,7 +467,7 @@ class AskEngine:
                 reason = reason if reason in REFUSE_REASONS else "no_data"
                 return self._refuse(res, "router", reason, FIXED[reason])
             if action == "template":
-                outcome = self._try_template(res, q, decision, allowed)
+                outcome = self._try_template(res, q, decision, allowed, picked)
                 if outcome == "done":
                     return None
                 if res.retries >= rounds:
@@ -401,6 +488,7 @@ class AskEngine:
             # an unknown action: one more router round, then give up
             if res.retries >= rounds:
                 res.status, res.error = "error", FIXED["llm"].format(error="no valid action")
+                res.error_code = "llm"
                 return None
             res.retries += 1
             history += [
@@ -419,7 +507,7 @@ class AskEngine:
             res.status = "empty"
             res.answer = FIXED["empty_result"]
             return
-        res.status = "error"
+        res.status, res.error_code = "error", "query_failed"
         res.error = FIXED["failed"].format(n=rounds, code=last.get("code") or last.get("outcome"))
 
     def _run(
@@ -445,7 +533,14 @@ class AskEngine:
             }
         )
 
-    def _try_template(self, res: AskResult, q: str, decision: dict, allowed: list[str]) -> str:
+    def _try_template(
+        self,
+        res: AskResult,
+        q: str,
+        decision: dict,
+        allowed: list[str],
+        picked: dict[tuple[str, str], str] | None = None,
+    ) -> str:
         """'done', or the message for the next router round."""
         tid = str(decision.get("template") or "")
         t = self.templates.get(tid)
@@ -456,6 +551,13 @@ class AskEngine:
                 '{"action": "generate", ...} or {"action": "refuse", ...}.'
             )
         params = decision.get("params") if isinstance(decision.get("params"), dict) else {}
+        if picked:  # a name the user picked: the router may still write it as the question did
+            params = {
+                k: picked.get(((p.type if (p := t.param(k)) else ""), norm(v)), v)
+                if isinstance(v, str)
+                else v
+                for k, v in params.items()
+            }
         try:
             r: Rendered = render(t, params, self.names, asof=self.asof)
         except TemplateError as e:
@@ -480,8 +582,9 @@ class AskEngine:
         try:
             out = self._run(res, t.source, r.query, r.params, allow_maps=bool(t.library))
         except Refused as e:  # a template the guard refuses is a bug in the library
-            if e.rule == "source.busy":  # the weekly lock was taken mid-question: stop here
-                self._refuse(res, "code", "source.busy", FIXED["busy"])
+            if e.rule in _STOP_RULES:  # the weekly lock was taken, or the graph is down: stop
+                res.template_id, res.source = t.id, t.source
+                self._refuse(res, "source", e.rule, FIXED[_STOP_RULES[e.rule]])
                 return "done"
             self._record(
                 res, "template", t.source, r.query, r.params, "refused", template=t.id, code=e.rule
@@ -537,8 +640,9 @@ class AskEngine:
                 try:
                     out = self._run(res, source, query, {}, allow_maps=False)
                 except Refused as e:
-                    if e.rule == "source.busy":  # the weekly lock was taken mid-question
-                        return self._refuse(res, "code", "source.busy", FIXED["busy"])
+                    if e.rule in _STOP_RULES:  # the weekly lock was taken, or the graph is down
+                        res.source = source
+                        return self._refuse(res, "source", e.rule, FIXED[_STOP_RULES[e.rule]])
                     self._record(res, "generated", source, query, {}, "refused", code=e.rule,
                                  message=e.message)  # fmt: skip
                     problem = (

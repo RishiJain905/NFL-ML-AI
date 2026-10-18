@@ -34,6 +34,14 @@ export const PlayCallingIcon = () => (
     <path d="M10.5 10l3.5 3.5M14 10l-3.5 3.5M4 9.3C4 5.5 7 3.2 12 3.2M10 1.6l2 1.6-2 1.6" />
   </svg>
 );
+/** A speech bubble with a question mark (Explore → Ask the Engine, AE01). */
+export const AskIcon = () => (
+  <svg {...common}>
+    <path d="M2 3.2h12v8H8.2L5 13.8v-2.6H2z" />
+    <path d="M6.4 5.9a1.6 1.6 0 1 1 2.2 1.5c-.4.2-.6.5-.6.9v.3" />
+    <path d="M8 9.9v.1" strokeLinecap="round" />
+  </svg>
+);
 export const GearIcon = () => (
   <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
     <circle cx="8" cy="8" r="2.2" />

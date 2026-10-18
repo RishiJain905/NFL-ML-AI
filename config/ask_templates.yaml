@@ -735,7 +735,8 @@ templates:
     description: >-
       The leaders in one box-score stat for a season (2010 on): passing / rushing / receiving
       yards and touchdowns, receptions, interceptions thrown, sacks, tackles, interceptions,
-      optionally one position group; regular season by default.
+      optionally one position group; regular season by default. Players tied at the cut are
+      all kept (a three-way tie for the lead returns three rows).
     examples:
       - Who led the NFL in rushing yards in 2024?
       - Who has the most sacks this season?
@@ -782,8 +783,8 @@ templates:
       WHERE pg.season = $season AND {season_type}
         AND ($position IS NULL OR pg.position_group = $position)
       GROUP BY pg.player_id, pg.player_display_name
-      ORDER BY total DESC, player
-      LIMIT $limit
+      QUALIFY rank() OVER (ORDER BY sum({stat}) DESC NULLS LAST) <= $limit
+      ORDER BY total DESC NULLS LAST, player
 
   - id: player_seasons
     source: sql
@@ -1101,8 +1102,8 @@ templates:
         AND wp BETWEEN 0.2 AND 0.8 AND down <= 3 AND half_seconds_remaining > 120
         AND ($team IS NULL OR posteam = $team)
       GROUP BY posteam
-      ORDER BY avg(pass_oe) DESC, team
-      LIMIT $limit
+      QUALIFY rank() OVER (ORDER BY avg(pass_oe) DESC NULLS LAST) <= $limit
+      ORDER BY avg(pass_oe) DESC NULLS LAST, team
 
   - id: fourth_down_decisions
     source: sql
@@ -1130,8 +1131,10 @@ templates:
         AND play_type IN ('pass', 'run', 'punt', 'field_goal')
         AND ($team IS NULL OR posteam = $team)
       GROUP BY posteam
+      QUALIFY rank() OVER (
+        ORDER BY avg(CASE WHEN play_type IN ('pass', 'run') THEN 1.0 ELSE 0.0 END) DESC
+      ) <= $limit
       ORDER BY avg(CASE WHEN play_type IN ('pass', 'run') THEN 1.0 ELSE 0.0 END) DESC, team
-      LIMIT $limit
 
   - id: red_zone_td_rate
     source: sql
@@ -1167,9 +1170,12 @@ templates:
       FROM d
       WHERE $team IS NULL OR team = $team
       GROUP BY team
+      QUALIFY rank() OVER (
+        ORDER BY count(*) FILTER (WHERE rz = 1 AND td = 1) * 1.0
+                 / nullif(count(*) FILTER (WHERE rz = 1), 0) DESC NULLS LAST
+      ) <= $limit
       ORDER BY count(*) FILTER (WHERE rz = 1 AND td = 1) * 1.0
                / nullif(count(*) FILTER (WHERE rz = 1), 0) DESC NULLS LAST, team
-      LIMIT $limit
 
   - id: longest_plays
     source: sql
@@ -1204,5 +1210,5 @@ templates:
       LEFT JOIN players ru ON ru.gsis_id = p.rusher_player_id
       WHERE p.season = $season AND {kind} AND coalesce(p.two_point_attempt, 0) = 0
         AND p.yards_gained IS NOT NULL AND ($team IS NULL OR p.posteam = $team)
+      QUALIFY rank() OVER (ORDER BY p.yards_gained DESC) <= $limit
       ORDER BY p.yards_gained DESC, p.game_id, p.play_id
-      LIMIT $limit

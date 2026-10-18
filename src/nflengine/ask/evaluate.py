@@ -384,7 +384,7 @@ def score(q: GoldenQuestion, res: Any, ref: Any | None, ref_error: str | None = 
         reason = f"no rows ({res.status})"
     else:
         correct, reason = compare(res.columns, res.rows, ref.columns, ref.rows)
-    from nflengine.ops.summary import scrub
+    from nflengine.safetext import scrub_bounded as scrub
 
     return Scored(
         id=q.id,
@@ -510,8 +510,14 @@ def run_eval(
     launched_by: str | None = None,
     log: Callable[[str], None] = print,
     engine_factory: Callable[..., Any] | None = None,
+    via: str = "engine",
 ) -> dict[str, Any]:
-    """Run the golden set with one model; save `ask/evals/<stamp>_<model>.json`; log W&B."""
+    """Run the golden set with one model; save `ask/evals/<stamp>_<model>.json`; log W&B.
+
+    `via="api"` (AE01): every question goes through the control room's `POST /api/ask`
+    in-process (`app.ask_service.ApiAsker`: the middleware, the request model, the service,
+    the cleaning) and is scored from the JSON the page gets; the file gets an `_api` suffix and
+    the W&B run a `via:api` tag, and `nfl ask pick` leaves such runs out."""
     from nflengine.ask.config import ask_config
     from nflengine.ask.llm import OutOfCredits, make_llm
     from nflengine.ask.route import AskEngine, prompt_hash
@@ -532,6 +538,8 @@ def run_eval(
     engine = (engine_factory or AskEngine.build)(llm, cfg, paths)
     if golden_set not in GOLDEN_SETS:
         raise ValueError(f"golden_set must be one of {GOLDEN_SETS}")
+    if via not in ("engine", "api"):
+        raise ValueError("via must be engine or api")
     golden_path = GOLDEN_PATH if golden_set == "main" else HOLDOUT_PATH  # looked up now (tests)
     golden = load_golden(golden_path, templates=load_templates(current_season=engine.current))
     golden_total = len(golden)
@@ -562,6 +570,7 @@ def run_eval(
         "curated_week": engine.curated[1],
         "bounds": BOUNDS,
         "scorer_version": SCORER_VERSION,
+        "via": via,
     }
     run = None
     if use_wandb:
@@ -576,17 +585,24 @@ def run_eval(
                 f"model:{_slug(model)}",
                 f"effort:{llm.effort}",
                 f"set:{golden_set}",
+                f"via:{via}",
                 *(["smoke"] if smoke else []),
             ],
             launched_by=launched_by,
             name=f"ask-eval-{_slug(model)}-{llm.effort}"
-            + ("" if golden_set == "main" else f"-{golden_set}"),
+            + ("" if golden_set == "main" else f"-{golden_set}")
+            + ("" if via == "engine" else f"-{via}"),
         )
         for metric in ("eval/running_accuracy", "eval/latency_s", "eval/cost", "eval/correct"):
             run.define_metric(metric, step_metric="eval/question")
     scored: list[Scored] = []
     tables: dict[str, dict[str, Any]] = {}
     stopped: str | None = None
+    asker = None
+    if via == "api":
+        from nflengine.app.ask_service import ApiAsker
+
+        asker = ApiAsker(engine, paths)
     try:
         for i, q in enumerate(golden, start=1):
             ref, ref_error = None, None
@@ -603,7 +619,7 @@ def run_eval(
                         f": {getattr(e, 'rule', '')}" if hasattr(e, "rule") else ""
                     )
             try:
-                res = engine.ask(q.question)
+                res = engine.ask(q.question) if asker is None else asker.ask(q.question)
             except OutOfCredits:
                 stopped = "out of OpenRouter credits"
                 log(f"[red]stopped at {q.id}: out of OpenRouter credits (refill, then re-run)[/]")
@@ -626,12 +642,18 @@ def run_eval(
                          "eval/running_accuracy": acc, "eval/latency_s": s.latency_s,
                          "eval/cost": s.cost or 0.0})  # fmt: skip
     finally:
+        if asker is not None:
+            asker.close()
         engine.close()
     summary = summarise(scored) if scored else {}
     summary.update({"model": model, "reasoning_effort": llm.effort, "stopped": stopped})
     out_dir = paths.ask / "evals"
     out_dir.mkdir(parents=True, exist_ok=True)
-    suffix = ("" if golden_set == "main" else f"_{golden_set}") + ("_smoke" if smoke else "")
+    suffix = (
+        ("" if golden_set == "main" else f"_{golden_set}")
+        + ("" if via == "engine" else f"_{via}")
+        + ("_smoke" if smoke else "")
+    )
     out_file = out_dir / f"{stamp}_{_slug(model)}_{llm.effort}{suffix}.json"
     payload = {"config": config, "summary": summary, "questions": [s.to_dict() for s in scored],
                "tables": tables, "smoke": smoke, "made_at": stamp,
@@ -749,6 +771,8 @@ def latest_summaries(
         s = d.get("summary") or {}
         if (d.get("config") or {}).get("golden_set", "main") != "main":
             continue  # the held-out set is reported on its own, never in the comparison
+        if (d.get("config") or {}).get("via", "engine") != "engine":
+            continue  # through the app's endpoint (AE01): a check of the API, not a candidate
         if bool(d.get("smoke")) != smoke or s.get("stopped") or not s.get("questions"):
             continue
         cfg = d.get("config") or {}

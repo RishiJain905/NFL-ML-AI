@@ -144,7 +144,7 @@ export function Segmented<T extends string>({
   onChange,
 }: {
   label: string;
-  options: { value: T; label: string; title?: string }[];
+  options: { value: T; label: ReactNode; title?: string }[];
   value: T;
   onChange: (v: T) => void;
 }) {

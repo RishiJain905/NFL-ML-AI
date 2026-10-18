@@ -214,7 +214,10 @@ def write_answer(
     text = " ".join(text.split())
     shown = rows[:max_rows]
     signed = signed_atoms(shown) | set(signed_numbers(question))
-    check = check_answer(text, allowed_atoms(shown, question, values, row_count=len(rows)), signed)
+    allowed = allowed_atoms(shown, question, values, row_count=len(rows))
+    if len(shown) < len(rows):  # the prompt's own note: "These are the first 40 of 54 rows."
+        allowed.add(str(len(shown)))  # (AE01's own-question round: "40" failed the check)
+    check = check_answer(text, allowed, signed)
     if not check.passed:
         return fallback_sentence(len(rows), truncated), check, False
     return text, check, True
