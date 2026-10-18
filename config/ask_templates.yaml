@@ -1,0 +1,1208 @@
+# Ask the Engine: the template library (AE00; documentation/ask-the-engine/, src/nflengine/ask/templates.py).
+# A template is a hand-written, tested query with typed parameters. The router's LLM picks one
+# and fills its values; values are checked (names resolved, ranges enforced) and bound as
+# $parameters, never pasted into the text. A `choice` with a mapping substitutes a fixed
+# fragment from this file for {name}. `library:` reuses a graph/queries/*.cypher file and its
+# LIBRARY constants; `asof: true` binds $season / $week to the weekly graph's week.
+# Every query here goes through the guard like a generated one (read-only, 10 s, 500 rows).
+# Return named scalar columns (never whole nodes). Data coverage: games 1999+, plays /
+# player_games 2010+, FTN 2022+, PFR 2018+, NGS 2016+, the weekly graph 2018+.
+#
+# Sections: (1) the graph's query library, this week's games (asof); (2) graph relationships;
+# (3) SQL recipes over the curated tables. Conventions the SQL follows (curated-data skill):
+# canonical team codes; regular season by `season_type` / `game_type` = 'REG', never by week;
+# scrimmage plays = play_type in (pass, run) without two-point tries (sacks are pass plays,
+# scrambles are run plays with qb_dropback = 1); `no_play` rows are left out.
+version: 1
+templates:
+  # ==== (1) The weekly graph's query library: this week's games (asof) ====================
+  - id: starters_out_this_week
+    source: graph
+    library: q0_starters_out
+    asof: true
+    title: Starters out this week
+    description: >-
+      Regular starters (2+ starts at half the snaps this season) who are out this week: ruled
+      Out / Doubtful, on a reserve list, or out last week with no report yet.
+    examples:
+      - Which starters are out this week?
+      - Who is the Eagles missing this week?
+      - Which starters will the Chiefs be without on Sunday?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [team]}
+
+  - id: revenge_games_this_week
+    source: graph
+    library: q1_revenge
+    asof: true
+    title: Players facing a former team this week
+    description: >-
+      Players who face a team they used to play for (4+ games there), playing half the snaps
+      or more this season; with draft and trade links.
+    examples:
+      - Who is facing his former team this week?
+      - Any revenge games for the Raiders this week?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [team, opponent]}
+
+  - id: injury_ripple_this_week
+    source: graph
+    library: q2_injury_ripple
+    asof: true
+    title: How a team does without an injured starter
+    description: >-
+      For each starter out this week, the team's EPA and points with and without him (2 seasons)
+      and the backup who usually steps in, with his usage with and without the starter.
+    examples:
+      - How do the 49ers play without their injured starters?
+      - Which injuries this week hurt their team the most?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [team, opponent]}
+
+  - id: qb_changes_this_week
+    source: graph
+    library: q3_qb_change
+    asof: true
+    title: Quarterback changes this week
+    description: >-
+      Teams expected to start a different quarterback than their regular starter this week,
+      why (injury status) and how much the new QB has thrown to the current receivers.
+    examples:
+      - Which teams are starting a backup quarterback this week?
+      - Is there a QB change for the Bucs this week?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [team, opponent]}
+
+  - id: common_opponents_this_week
+    source: graph
+    library: q4_common_opponents
+    asof: true
+    title: Common opponents in this week's games
+    description: >-
+      This week's opponents who already played the same teams this season: each side's margin
+      and EPA margin against them, and what the chain says vs the game model.
+    examples:
+      - Which teams playing this week have common opponents?
+      - How did the Packers and Cowboys do against common opponents?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [team, opponent]}
+
+  - id: coach_reunions_this_week
+    source: graph
+    library: q5_coach_reunion
+    asof: true
+    title: Head coaches facing a former team this week
+    description: >-
+      Head coaches who face a team they used to coach (from 2018 on), with their record there
+      and against it. Often empty.
+    examples:
+      - Is any head coach facing his old team this week?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [team, opponent]}
+
+  - id: coaching_tree_this_week
+    source: graph
+    library: q5_coaching_tree
+    asof: true
+    title: Coaching-tree links in this week's games
+    description: >-
+      Head coaches meeting this week who are linked in the coaching tree (one worked under the
+      other, or both under the same mentor), with the seasons and teams of each link.
+    examples:
+      - Which head coaches this week come from the same coaching tree?
+      - Are the Seahawks' and Broncos' coaches connected?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [team, opponent]}
+
+  - id: former_teammates_this_week
+    source: graph
+    library: q6_former_teammates
+    asof: true
+    title: Former teammates in this week's games
+    description: >-
+      This week's expected starting QBs facing receivers they used to throw to (40+ targets
+      together), who now play for the opponent; from the weekly graph.
+    examples:
+      - Who are the former teammates on this week's Bills-Chiefs game?
+      - Which quarterbacks face a former receiver this week?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [team, opponent]}
+
+  - id: qb_style_matchups_this_week
+    source: graph
+    library: q7_style_matchup
+    asof: true
+    title: QB style vs defense this week
+    description: >-
+      Scrambling or deep-passing quarterbacks this week against defenses that do unusually well
+      or badly against that style (since two seasons ago, vs the league's split). `team` is the
+      defense, `opponent` the QB's team.
+    examples:
+      - Which defenses have trouble with scrambling quarterbacks this week?
+      - Does the Chiefs defense struggle against scrambling QBs?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [team, opponent]}
+
+  - id: play_action_matchups_this_week
+    source: graph
+    library: q7_play_action
+    asof: true
+    title: Play-action offenses vs defenses this week
+    description: >-
+      Heavy play-action offenses this week against defenses that do unusually well or badly
+      against play action (FTN, since two seasons ago). `team` is the defense, `opponent` the
+      offense.
+    examples:
+      - Which play-action offenses have a good matchup this week?
+      - How does the Browns defense handle play action?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [team, opponent]}
+
+  - id: trend_mismatches_this_week
+    source: graph
+    library: q8_trend_mismatch
+    asof: true
+    title: Teams trending in opposite directions this week
+    description: >-
+      Games this week where one team's net rating rose over the last 3 weeks and the other's
+      fell. Often empty.
+    examples:
+      - Which games this week have one team trending up and the other down?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [team, opponent]}
+
+  - id: officiating_this_week
+    source: graph
+    library: q9_officiating
+    asof: true
+    title: Referee crews this week
+    description: >-
+      This week's referees whose crews call unusually many (or few) penalties or split them
+      unevenly between home and away. Usually empty: crews are published after the games.
+    examples:
+      - Which referee crews call the most penalties this week?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [team, opponent]}
+
+  - id: passing_hub_out_this_week
+    source: graph
+    library: q10_network_hub
+    asof: true
+    title: Passing-game hubs out this week
+    description: >-
+      Receivers out this week who were among their team's top 3 passing-game hubs (PageRank on
+      this season's targets), and who takes over the hub role without them.
+    examples:
+      - Which teams lose their top receiver this week?
+      - Who replaces Stefon Diggs in the Commanders' passing game?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [team, opponent]}
+
+  - id: usage_comparisons_this_week
+    source: graph
+    library: q10_usage_comp
+    asof: true
+    title: Young players' usage look-alikes
+    description: >-
+      Young WR / TE / RB playing this week whose usage this season most resembles a past
+      player-season (KNN on usage profiles), with both usage lines.
+    examples:
+      - Which young receivers are being used like a past star?
+      - Who does Bhayshul Tuten's usage look like?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [team, opponent]}
+
+  - id: unit_mismatches_this_week
+    source: graph
+    library: q11_unit_mismatch
+    asof: true
+    title: Unit mismatches this week
+    description: >-
+      Games this week where one team's pass or rush offense is in the league's top 8 and the
+      opponent's matching defense is in the bottom 8 (or the reverse), by opponent-adjusted EPA.
+    examples:
+      - Which offenses have the biggest mismatch this week?
+      - Does the Packers' passing game have an edge this week?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [team, opponent]}
+
+  - id: special_teams_edges_this_week
+    source: graph
+    library: q12_special_teams
+    asof: true
+    title: Special-teams edges this week
+    description: >-
+      Games this week with a big gap in special-teams EPA per game this season (shrunk for small
+      samples).
+    examples:
+      - Which games this week have a big special teams gap?
+      - Do the Colts have a special teams edge this week?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [team, opponent]}
+
+  # ==== (2) Graph relationships =============================================================
+  - id: player_teams
+    source: graph
+    title: A player's teams by season
+    description: Every team a player was on, season by season (2018 on), with games and weeks.
+    examples:
+      - What teams has Saquon Barkley played for?
+      - Where did Kirk Cousins play each season?
+    params:
+      player: {type: player}
+    query: |
+      MATCH (p:Player {player_id: $player})-[r:PLAYED_FOR]->(t:Team)
+      RETURN p.name AS player, r.season AS season, t.team_id AS team, r.games AS games,
+             r.first_week AS first_week, r.last_week AS last_week
+      ORDER BY season, first_week
+
+  - id: qb_receivers
+    source: graph
+    title: A quarterback's receivers
+    description: >-
+      The players a quarterback threw to over a range of seasons (2018 on, playoffs included):
+      targets, catches, yards and touchdowns, ranked by the measure the question asks about
+      (targets by default; catches for "caught the most passes from", tds for touchdowns).
+    examples:
+      - Who has Patrick Mahomes thrown to the most this season?
+      - Who were Aaron Rodgers' favorite targets since 2022?
+      - Who has caught the most touchdown passes from Josh Allen?
+    params:
+      player: {type: player, description: the quarterback}
+      first_season: {type: season, min: 2018, default: 2018}
+      last_season: {type: season, min: 2018, default: current}
+      rank_by: {type: choice, default: targets, description: the measure to rank receivers by,
+                choices: {targets: targets, catches: catches, yards: yards, tds: tds}}
+      limit: {type: int, min: 1, max: 50, default: 10}
+    query: |
+      MATCH (q:Player {player_id: $player})-[t:THREW_TO]->(r:Player)
+      WHERE t.season >= $first_season AND t.season <= $last_season
+      RETURN q.name AS qb, r.name AS receiver, r.position AS position,
+             sum(t.targets) AS targets, sum(t.completions) AS catches, sum(t.yards) AS yards,
+             sum(t.tds) AS tds, collect(DISTINCT t.season) AS seasons
+      ORDER BY {rank_by} DESC, receiver
+      LIMIT $limit
+
+  - id: teammates
+    source: graph
+    title: When two players were teammates
+    description: >-
+      The team-seasons two players shared (2018 on), with the roster weeks they overlapped.
+    examples:
+      - Were Davante Adams and Aaron Rodgers ever teammates after 2018?
+      - When did Stefon Diggs and Josh Allen play together?
+    params:
+      player: {type: player}
+      other: {type: player, description: the second player}
+    query: |
+      MATCH (a:Player {player_id: $player})-[ra:PLAYED_FOR]->(t:Team)<-[rb:PLAYED_FOR]-(b:Player {player_id: $other})
+      WHERE ra.season = rb.season
+      WITH a, b, t, ra, rb, size([w IN ra.roster_weeks WHERE w IN rb.roster_weeks]) AS weeks_together
+      WHERE weeks_together > 0
+      RETURN a.name AS player, b.name AS other, ra.season AS season, t.team_id AS team,
+             weeks_together, ra.games AS player_games, rb.games AS other_games
+      ORDER BY season
+
+  - id: former_teammates_on_team
+    source: graph
+    asof: true
+    title: A player's former teammates on another team now
+    description: >-
+      Players on a team this season who used to be a player's teammates (2018 on), with the
+      seasons and teams they shared.
+    examples:
+      - Which of Saquon Barkley's former teammates play for the Buccaneers now?
+      - Who on the Eagles used to play with Saquon Barkley?
+    params:
+      player: {type: player}
+      team: {type: team, description: the team they're on now}
+      former_team: {type: team, default: null,
+                    description: only teammates from this team ("on the Giants"; optional)}
+    query: |
+      MATCH (p:Player {player_id: $player})-[r1:PLAYED_FOR]->(t:Team)<-[r2:PLAYED_FOR]-(o:Player)
+      WHERE r1.season = r2.season AND o <> p AND r1.season < $season
+        AND ($former_team IS NULL OR t.team_id = $former_team)
+        AND size([w IN r1.roster_weeks WHERE w IN r2.roster_weeks]) > 0
+      MATCH (o)-[:PLAYED_FOR {season: $season}]->(now:Team {team_id: $team})
+      RETURN p.name AS player, o.name AS teammate, o.position AS position,
+             collect(DISTINCT t.team_id) AS teams_together,
+             collect(DISTINCT r1.season) AS seasons_together, now.team_id AS team_now
+      ORDER BY size(seasons_together) DESC, teammate
+
+  - id: qb_starters
+    source: graph
+    title: A team's starting quarterbacks in a season
+    description: >-
+      Who started at quarterback for a team in a season (2018 on; "started" = most dropbacks
+      for his team in the game), with starts and weeks.
+    examples:
+      - Who started at QB for the Jets in 2025?
+      - How many starts did each Bears quarterback get last season?
+    params:
+      team: {type: team}
+      season: {type: season, min: 2018, default: current}
+    query: |
+      MATCH (p:Player)-[a:APPEARED_IN {qb_started: true}]->(g:Game {season: $season})
+      WHERE a.team_id = $team
+      RETURN a.team_id AS team, g.season AS season, p.name AS starter, count(*) AS starts,
+             min(g.week) AS first_week, max(g.week) AS last_week
+      ORDER BY starts DESC, first_week
+
+  - id: coach_head_record
+    source: graph
+    title: A head coach's seasons and record (graph, 2018 on)
+    description: >-
+      A head coach's teams season by season from 2018 on (or the seasons asked), with
+      regular-season and playoff wins, losses and ties (games already played).
+    examples:
+      - What is Andy Reid's record by season?
+      - How has Kyle Shanahan done each year as a head coach?
+      - What was Sean McVay's regular-season record each season from 2019 to 2023?
+    params:
+      coach: {type: coach}
+      first_season: {type: season, min: 2018, default: 2018}
+      last_season: {type: season, min: 2018, default: current}
+    query: |
+      MATCH (c:Coach {name: $coach})-[ci:COACHED_IN]->(g:Game)<-[p:PLAYED_IN]-(t:Team)
+      WHERE t.team_id = ci.team_id AND g.completed
+        AND g.season >= $first_season AND g.season <= $last_season
+      RETURN c.name AS coach, g.season AS season, t.team_id AS team,
+             sum(CASE WHEN g.game_type = 'REG' AND p.result = 'W' THEN 1 ELSE 0 END) AS wins,
+             sum(CASE WHEN g.game_type = 'REG' AND p.result = 'L' THEN 1 ELSE 0 END) AS losses,
+             sum(CASE WHEN g.game_type = 'REG' AND p.result = 'T' THEN 1 ELSE 0 END) AS ties,
+             sum(CASE WHEN g.game_type <> 'REG' AND p.result = 'W' THEN 1 ELSE 0 END) AS playoff_wins,
+             sum(CASE WHEN g.game_type <> 'REG' AND p.result = 'L' THEN 1 ELSE 0 END) AS playoff_losses
+      ORDER BY season, team
+
+  - id: coaching_tree
+    source: graph
+    title: A coach's coaching tree
+    description: >-
+      Who a coach worked under as a coordinator, and which coordinators worked under him, with
+      roles (OC / DC / ST), teams and seasons (the coaching seed: coordinators from about 2010).
+    examples:
+      - Who has worked under Kyle Shanahan?
+      - Who did Sean McVay coach under?
+      - Show me Andy Reid's coaching tree
+    params:
+      coach: {type: coach}
+      relation:
+        type: choice
+        default: both
+        description: mentors = who he worked under; proteges = who worked under him
+        choices:
+          both: "TRUE"
+          mentors: relation = 'worked under'
+          proteges: relation = 'coached under him'
+    query: |
+      MATCH (c:Coach {name: $coach})
+      CALL (c) {
+        MATCH (c)-[w:WORKED_UNDER]->(b:Coach)
+        RETURN 'worked under' AS relation, b.name AS other, w.roles AS roles, w.teams AS teams,
+               w.seasons AS seasons
+        UNION ALL
+        MATCH (x:Coach)-[w:WORKED_UNDER]->(c)
+        RETURN 'coached under him' AS relation, x.name AS other, w.roles AS roles,
+               w.teams AS teams, w.seasons AS seasons
+      }
+      WITH c, relation, other, roles, teams, seasons
+      WHERE {relation}
+      RETURN c.name AS coach, relation, other, roles, teams, seasons
+      ORDER BY relation, seasons[0], other
+
+  - id: team_coordinators
+    source: graph
+    title: A team's coordinators by season
+    description: >-
+      A team's offensive, defensive and special-teams coordinators season by season (the
+      coaching seed), with the head coach of each season (2018 on).
+    examples:
+      - Who is the Lions' offensive coordinator?
+      - Who were the Eagles' coordinators since 2022?
+    params:
+      team: {type: team}
+      first_season: {type: season, min: 2010, default: current}
+      last_season: {type: season, min: 2010, default: current}
+    query: |
+      MATCH (c:Coach)-[r:COORDINATOR_OF]->(t:Team {team_id: $team})
+      WHERE r.season >= $first_season AND r.season <= $last_season
+      OPTIONAL MATCH (h:Coach)-[hc:HEAD_COACH_OF {season: r.season}]->(t)
+      RETURN t.team_id AS team, r.season AS season, r.role AS role, c.name AS coach,
+             h.name AS head_coach
+      ORDER BY season, role
+
+  - id: team_rating_trend
+    source: graph
+    asof: true
+    title: A team's ratings this season, week by week
+    description: >-
+      A team's opponent-adjusted ratings this season as of each week (EPA per play relative to
+      the league: offense, defense allowed (lower is better), net), Elo and the 3-week trend.
+    examples:
+      - How have the 49ers' ratings changed this season?
+      - Is Detroit trending up or down?
+    params:
+      team: {type: team}
+    query: |
+      MATCH (t:Team {team_id: $team})-[:HAS_WEEK]->(tw:TeamWeek {season: $season})
+      WHERE tw.week <= $week
+      RETURN t.team_id AS team, tw.week AS as_of_week, round(tw.net, 3) AS net_epa,
+             round(tw.off_epa, 3) AS off_epa, round(tw.def_epa, 3) AS def_epa_allowed,
+             round(tw.elo, 1) AS elo, round(tw.trend_delta, 3) AS trend_3_weeks,
+             tw.trend_dir AS direction
+      ORDER BY as_of_week
+
+  - id: power_ratings_this_week
+    source: graph
+    asof: true
+    title: Team ratings this week
+    description: >-
+      Every team's opponent-adjusted ratings as of this week (EPA per play relative to the
+      league), best net rating first; defense is EPA allowed, so lower is better.
+    examples:
+      - Who are the best teams right now by your ratings?
+      - Which team has the best defense this season?
+    params:
+      unit:
+        type: choice
+        default: net
+        description: which rating to rank by
+        choices:
+          net: tw.net DESC
+          offense: tw.off_epa DESC
+          defense: tw.def_epa ASC
+          pass_offense: tw.off_pass_epa DESC
+          rush_offense: tw.off_rush_epa DESC
+          pass_defense: tw.def_pass_epa ASC
+          rush_defense: tw.def_rush_epa ASC
+      limit: {type: int, min: 1, max: 32, default: 32}
+    query: |
+      MATCH (t:Team)-[:HAS_WEEK]->(tw:TeamWeek {season: $season, week: $week})
+      RETURN t.team_id AS team, round(tw.net, 3) AS net_epa, round(tw.off_epa, 3) AS off_epa,
+             round(tw.def_epa, 3) AS def_epa_allowed, round(tw.off_pass_epa, 3) AS off_pass_epa,
+             round(tw.off_rush_epa, 3) AS off_rush_epa, round(tw.def_pass_epa, 3) AS def_pass_epa,
+             round(tw.def_rush_epa, 3) AS def_rush_epa, round(tw.elo, 1) AS elo
+      ORDER BY {unit}, team
+      LIMIT $limit
+
+  - id: game_predictions_this_week
+    source: graph
+    asof: true
+    title: This week's game predictions
+    description: >-
+      The game model's win probabilities and predicted scores for this week's games (primary
+      variant), with the expected quarterbacks.
+    examples:
+      - Who do you pick to win this week?
+      - What's your prediction for the Chiefs game this week?
+    params:
+      team: {type: team, default: null, description: only this team's game (optional)}
+    filters: {team: [away, home]}
+    query: |
+      MATCH (g:Game {season: $season, week: $week})
+      OPTIONAL MATCH (g)-[:HAS_PREDICTION]->(gp:GamePrediction {is_primary: true})
+      OPTIONAL MATCH (aq:Player {player_id: g.away_qb_expected})
+      OPTIONAL MATCH (hq:Player {player_id: g.home_qb_expected})
+      RETURN g.game_id AS game_id, g.away_team AS away, g.home_team AS home,
+             g.kickoff AS kickoff_utc, round(1 - gp.home_win_prob, 3) AS away_win_prob,
+             round(gp.home_win_prob, 3) AS home_win_prob,
+             round(gp.pred_away_points, 1) AS away_points, round(gp.pred_home_points, 1) AS home_points,
+             aq.name AS away_qb, hq.name AS home_qb
+      ORDER BY kickoff_utc, home
+
+  - id: injury_report_this_week
+    source: graph
+    asof: true
+    title: The latest injury report
+    description: >-
+      Players with a game status (Out, Doubtful, Questionable) on the latest injury report in
+      the weekly graph: this week's once game statuses are out (from Friday), else last week's
+      (the graph is built on Tuesday); `week` says which.
+    examples:
+      - Who is on the Ravens' injury report this week?
+      - Who is ruled out this week?
+    params:
+      team: {type: team, default: null, description: only this team (optional)}
+      status:
+        type: choice
+        default: any
+        description: which statuses
+        choices:
+          any: i.status IS NOT NULL
+          out: i.status IN ['Out', 'Doubtful']
+    query: |
+      MATCH (:Player)-[i0:ON_INJURY_REPORT]->(g0:Game {season: $season})
+      WHERE g0.week <= $week AND i0.status IS NOT NULL AND ($team IS NULL OR i0.team_id = $team)
+      WITH max(g0.week) AS latest
+      MATCH (p:Player)-[i:ON_INJURY_REPORT]->(g:Game {season: $season, week: latest})
+      WHERE {status} AND ($team IS NULL OR i.team_id = $team)
+      RETURN latest AS week, i.team_id AS team, p.name AS player, p.position AS position,
+             i.status AS status, i.body_part AS injury, i.practice_status AS practice
+      ORDER BY team, status, player
+
+  - id: player_injury_history
+    source: graph
+    title: A player's injury reports in a season
+    description: A player's weekly injury-report entries in a season (2018 on), week by week.
+    examples:
+      - Has Brock Bowers been on the injury report this season?
+      - What injuries did Christian McCaffrey have in 2023?
+    params:
+      player: {type: player}
+      season: {type: season, min: 2018, default: current}
+    query: |
+      MATCH (p:Player {player_id: $player})-[i:ON_INJURY_REPORT]->(g:Game {season: $season})
+      RETURN p.name AS player, g.week AS week, i.team_id AS team, i.status AS status,
+             i.body_part AS injury, i.practice_status AS practice
+      ORDER BY week
+
+  - id: depth_chart
+    source: graph
+    asof: true
+    title: A team's depth chart
+    description: >-
+      A team's latest depth chart up to this week (from 2025 one ranked list per position: QB,
+      RB, WR, TE, LT ... LDE, MLB, LCB, FS, PK, P ...), optionally one position.
+    examples:
+      - Who is on the Chiefs' depth chart at wide receiver?
+      - Who is the Cowboys' backup quarterback?
+    params:
+      team: {type: team}
+      position:
+        type: choice
+        default: null
+        description: one depth-chart position (optional)
+        choices: [QB, RB, FB, WR, TE, LT, LG, C, RG, RT, LDE, LDT, NT, RDT, RDE, WLB, MLB, SLB,
+                  LILB, RILB, LCB, RCB, NB, FS, SS, PK, P, LS, H, KR, PR]
+    query: |
+      MATCH (t:Team {team_id: $team})<-[d0:DEPTH_CHART]-(:Player)
+      WHERE d0.season = $season AND d0.week <= $week
+      WITH t, max(d0.week) AS latest
+      MATCH (t)<-[d:DEPTH_CHART]-(p:Player)
+      WHERE d.season = $season AND d.week = latest AND ($position IS NULL OR d.position = $position)
+      RETURN t.team_id AS team, latest AS week, d.position AS position, d.rank AS rank,
+             p.name AS player
+      ORDER BY position, rank
+
+  - id: similar_players
+    source: graph
+    title: Players with a similar usage profile
+    description: >-
+      Past player-seasons whose usage (target / carry / air-yards / red-zone / snap shares) most
+      resembles a WR / TE / RB's usage this season (KNN in the weekly graph).
+    examples:
+      - Which past players does Puka Nacua's usage resemble?
+      - Who is Brock Bowers most similar to?
+    params:
+      player: {type: player}
+    query: |
+      MATCH (p:Player {player_id: $player})-[s:SIMILAR_TO]->(o:Player)
+      RETURN p.name AS player, s.season AS season, s.group AS position_group, s.rank AS rank,
+             o.name AS similar_player, s.other_season AS similar_season,
+             s.other_team AS similar_team, round(s.score, 3) AS score
+      ORDER BY rank
+
+  - id: passing_hubs
+    source: graph
+    asof: true
+    title: A team's passing-game hubs this season
+    description: >-
+      Who a team's passing game goes through this season: each receiver's share of the
+      passing network (PageRank on targets), rank and targets.
+    examples:
+      - Who is the hub of the Vikings' passing game?
+      - Who does the Bills' passing game run through?
+    params:
+      team: {type: team}
+      limit: {type: int, min: 1, max: 20, default: 5}
+    query: |
+      MATCH (p:Player)-[c:PASS_CENTRALITY]->(t:Team {team_id: $team})
+      WHERE c.season = $season AND c.role = 'receiver'
+      RETURN t.team_id AS team, p.name AS player, p.position AS position, c.rank AS rank,
+             round(c.share, 3) AS share, round(c.degree) AS targets
+      ORDER BY rank
+      LIMIT $limit
+
+  - id: team_draft_picks
+    source: graph
+    title: Players a team drafted
+    description: >-
+      Players drafted by a team over a range of draft years, among players in the weekly graph
+      (on a roster from 2018 on), with round and pick.
+    examples:
+      - Who did the Lions draft in 2021?
+      - Which first-round picks of the Bears are still in the league?
+    params:
+      team: {type: team}
+      first_year: {type: int, min: 1995, max: 2026, default: 2018}
+      last_year: {type: int, min: 1995, max: 2026, default: 2026}
+      max_round: {type: int, min: 1, max: 7, default: 7}
+    query: |
+      MATCH (p:Player)-[d:DRAFTED_BY]->(t:Team {team_id: $team})
+      WHERE d.year >= $first_year AND d.year <= $last_year AND d.round <= $max_round
+      RETURN t.team_id AS team, d.year AS year, d.round AS round, d.pick AS pick,
+             p.name AS player, p.position AS position
+      ORDER BY year, pick
+
+  - id: trades
+    source: graph
+    title: Player trades
+    description: >-
+      Players traded to or from a team (draft-pick-only rows excluded), with the date and both
+      teams; players in the weekly graph only.
+    examples:
+      - Which players did the Raiders trade for this year?
+      - Who have the Browns traded away since 2023?
+    params:
+      team: {type: team}
+      first_season: {type: season, min: 2002, default: current}
+      last_season: {type: season, min: 2002, default: current}
+      direction:
+        type: choice
+        default: both
+        choices:
+          both: (t.team_id = $team OR tr.from_team = $team)
+          acquired: t.team_id = $team
+          sent: tr.from_team = $team
+    query: |
+      MATCH (p:Player)-[tr:TRADED_TO]->(t:Team)
+      WHERE {direction} AND tr.season >= $first_season AND tr.season <= $last_season
+      RETURN p.name AS player, p.position AS position, tr.from_team AS from_team,
+             t.team_id AS to_team, toString(tr.date) AS date, tr.season AS season
+      ORDER BY date, player
+
+  # ==== (3) SQL recipes over the curated tables ============================================
+  - id: stat_games_vs_team
+    source: sql
+    title: N-yard games against a team
+    description: >-
+      Players with the most games of at least N receiving, rushing or passing yards against one
+      opponent, over a range of seasons (2010 on), regular season, playoffs or both.
+    examples:
+      - Which receivers have the most 100-yard games against Dallas since 2020?
+      - Who has the most 300-yard passing games against the Chiefs?
+    params:
+      team: {type: team, description: the opponent}
+      first_season: {type: season, min: 2010, default: 2010}
+      last_season: {type: season, min: 2010, default: current}
+      stat:
+        type: choice
+        default: receiving
+        choices:
+          receiving: pg.receiving_yards
+          rushing: pg.rushing_yards
+          passing: pg.passing_yards
+      threshold: {type: int, min: 1, max: 700, default: 100}
+      min_games: {type: int, min: 1, max: 50, default: 1, description: at least this many such games}
+      season_type:
+        type: choice
+        default: ALL
+        choices:
+          REG: pg.season_type = 'REG'
+          POST: pg.season_type = 'POST'
+          ALL: "TRUE"
+    query: |
+      SELECT pg.player_display_name AS player, pg.position, count(*) AS games,
+             max({stat}) AS best
+      FROM player_games pg
+      WHERE pg.opponent_team = $team
+        AND pg.season BETWEEN $first_season AND $last_season
+        AND {season_type}
+        AND {stat} >= $threshold
+      GROUP BY pg.player_id, pg.player_display_name, pg.position
+      HAVING count(*) >= $min_games
+      ORDER BY games DESC, best DESC, player
+
+  - id: season_leaders
+    source: sql
+    title: Season stat leaders
+    description: >-
+      The leaders in one box-score stat for a season (2010 on): passing / rushing / receiving
+      yards and touchdowns, receptions, interceptions thrown, sacks, tackles, interceptions,
+      optionally one position group; regular season by default.
+    examples:
+      - Who led the NFL in rushing yards in 2024?
+      - Who has the most sacks this season?
+      - Top 5 receivers by receiving touchdowns in 2023
+    params:
+      season: {type: season, min: 2010, default: current}
+      stat:
+        type: choice
+        default: passing_yards
+        choices:
+          passing_yards: pg.passing_yards
+          passing_tds: pg.passing_tds
+          interceptions_thrown: pg.passing_interceptions
+          rushing_yards: pg.rushing_yards
+          rushing_tds: pg.rushing_tds
+          receiving_yards: pg.receiving_yards
+          receiving_tds: pg.receiving_tds
+          receptions: pg.receptions
+          targets: pg.targets
+          scrimmage_yards: (pg.rushing_yards + pg.receiving_yards)
+          sacks: pg.def_sacks
+          tackles: (pg.def_tackles_solo + pg.def_tackle_assists)
+          interceptions: pg.def_interceptions
+          passes_defended: pg.def_pass_defended
+          fantasy_points_ppr: pg.fantasy_points_ppr
+      position:
+        type: choice
+        default: null
+        description: one position group (optional)
+        choices: [QB, RB, WR, TE, OL, DL, LB, DB, SPEC]
+      season_type:
+        type: choice
+        default: REG
+        choices:
+          REG: pg.season_type = 'REG'
+          POST: pg.season_type = 'POST'
+          ALL: "TRUE"
+      limit: {type: int, min: 1, max: 100, default: 10}
+    query: |
+      SELECT pg.player_display_name AS player, arg_max(pg.team, pg.week) AS team,
+             arg_max(pg.position, pg.week) AS position, count(*) AS games,
+             sum({stat}) AS total
+      FROM player_games pg
+      WHERE pg.season = $season AND {season_type}
+        AND ($position IS NULL OR pg.position_group = $position)
+      GROUP BY pg.player_id, pg.player_display_name
+      ORDER BY total DESC, player
+      LIMIT $limit
+
+  - id: player_seasons
+    source: sql
+    title: A player's season-by-season stats
+    description: >-
+      A player's box-score totals per season (2010 on): games, passing, rushing, receiving and
+      defensive lines; regular season by default.
+    examples:
+      - Show me Derrick Henry's rushing stats by season
+      - What were Justin Jefferson's numbers each year?
+    params:
+      player: {type: player}
+      season_type:
+        type: choice
+        default: REG
+        choices:
+          REG: pg.season_type = 'REG'
+          POST: pg.season_type = 'POST'
+          ALL: "TRUE"
+    query: |
+      SELECT pg.player_display_name AS player, pg.season, string_agg(DISTINCT pg.team, '/') AS team,
+             count(*) AS games,
+             sum(pg.completions) AS completions, sum(pg.attempts) AS attempts,
+             sum(pg.passing_yards) AS passing_yards, sum(pg.passing_tds) AS passing_tds,
+             sum(pg.passing_interceptions) AS interceptions,
+             sum(pg.carries) AS carries, sum(pg.rushing_yards) AS rushing_yards,
+             sum(pg.rushing_tds) AS rushing_tds,
+             sum(pg.targets) AS targets, sum(pg.receptions) AS receptions,
+             sum(pg.receiving_yards) AS receiving_yards, sum(pg.receiving_tds) AS receiving_tds,
+             sum(pg.def_sacks) AS sacks, sum(pg.def_tackles_solo + pg.def_tackle_assists) AS tackles,
+             sum(pg.def_interceptions) AS def_interceptions
+      FROM player_games pg
+      WHERE pg.player_id = $player AND {season_type}
+      GROUP BY pg.player_display_name, pg.season
+      ORDER BY pg.season
+
+  - id: player_game_log
+    source: sql
+    title: A player's game log for a season
+    description: >-
+      A player's games in one season (2010 on), week by week: opponent and the main passing,
+      rushing, receiving and defensive numbers; playoffs included.
+    examples:
+      - How did Josh Allen do each week this season?
+      - Show me Ja'Marr Chase's game log for 2024
+    params:
+      player: {type: player}
+      season: {type: season, min: 2010, default: current}
+    query: |
+      SELECT pg.player_display_name AS player, pg.season, pg.week, pg.season_type, pg.team,
+             pg.opponent_team AS opponent,
+             pg.completions, pg.attempts, pg.passing_yards, pg.passing_tds,
+             pg.passing_interceptions AS interceptions, pg.carries, pg.rushing_yards,
+             pg.rushing_tds, pg.targets, pg.receptions, pg.receiving_yards, pg.receiving_tds,
+             pg.def_sacks AS sacks, pg.def_tackles_solo + pg.def_tackle_assists AS tackles,
+             round(pg.fantasy_points_ppr, 1) AS fantasy_points_ppr
+      FROM player_games pg
+      WHERE pg.player_id = $player AND pg.season = $season
+      ORDER BY pg.week
+
+  - id: player_vs_team
+    source: sql
+    title: A player's games against a team
+    description: >-
+      Every game a player played against one opponent (2010 on), with his main numbers, and
+      playoffs marked.
+    examples:
+      - How has Travis Kelce done against the Raiders?
+      - Show me Lamar Jackson's games against the Steelers
+    params:
+      player: {type: player}
+      team: {type: team, description: the opponent}
+    query: |
+      SELECT pg.player_display_name AS player, pg.season, pg.week, pg.season_type, pg.team,
+             pg.opponent_team AS opponent, pg.passing_yards, pg.passing_tds,
+             pg.passing_interceptions AS interceptions, pg.rushing_yards, pg.rushing_tds,
+             pg.receptions, pg.receiving_yards, pg.receiving_tds, pg.def_sacks AS sacks,
+             pg.def_tackles_solo + pg.def_tackle_assists AS tackles
+      FROM player_games pg
+      WHERE pg.player_id = $player AND pg.opponent_team = $team
+      ORDER BY pg.season, pg.week
+
+  - id: team_record
+    source: sql
+    title: A team's record by season
+    description: >-
+      A team's wins, losses, ties and points for / against per season (1999 on), regular season
+      by default (games already played).
+    examples:
+      - What was the Lions' record each year since 2020?
+      - How many games did the Bears win in 2025?
+    params:
+      team: {type: team}
+      first_season: {type: season, min: 1999, default: current}
+      last_season: {type: season, min: 1999, default: current}
+      season_type:
+        type: choice
+        default: REG
+        choices:
+          REG: game_type = 'REG'
+          POST: game_type <> 'REG'
+          ALL: "TRUE"
+    query: |
+      WITH tg AS (
+        SELECT season,
+               CASE WHEN home_team = $team THEN home_score ELSE away_score END AS pf,
+               CASE WHEN home_team = $team THEN away_score ELSE home_score END AS pa
+        FROM games
+        WHERE completed AND (home_team = $team OR away_team = $team)
+          AND season BETWEEN $first_season AND $last_season AND {season_type}
+      )
+      SELECT CAST($team AS VARCHAR) AS team, season, count(*) AS games,
+             count(*) FILTER (WHERE pf > pa) AS wins, count(*) FILTER (WHERE pf < pa) AS losses,
+             count(*) FILTER (WHERE pf = pa) AS ties, sum(pf) AS points_for, sum(pa) AS points_against
+      FROM tg
+      GROUP BY season
+      ORDER BY season
+
+  - id: head_to_head
+    source: sql
+    title: Head-to-head record between two teams
+    description: >-
+      Two teams' record against each other over a range of seasons (1999 on): games, wins,
+      losses, ties, points and the last meeting; regular season and playoffs by default.
+    examples:
+      - What's the Bills' record against the Chiefs since 2018?
+      - How often have the Packers beaten the Bears?
+    params:
+      team: {type: team}
+      other: {type: team, description: the opponent}
+      first_season: {type: season, min: 1999, default: 1999}
+      last_season: {type: season, min: 1999, default: current}
+      season_type:
+        type: choice
+        default: ALL
+        choices:
+          REG: game_type = 'REG'
+          POST: game_type <> 'REG'
+          ALL: "TRUE"
+    query: |
+      WITH tg AS (
+        SELECT game_id, gameday,
+               CASE WHEN home_team = $team THEN home_score ELSE away_score END AS pf,
+               CASE WHEN home_team = $team THEN away_score ELSE home_score END AS pa
+        FROM games
+        WHERE completed AND season BETWEEN $first_season AND $last_season AND {season_type}
+          AND ((home_team = $team AND away_team = $other) OR (home_team = $other AND away_team = $team))
+      )
+      SELECT CAST($team AS VARCHAR) AS team, CAST($other AS VARCHAR) AS opponent, count(*) AS games,
+             count(*) FILTER (WHERE pf > pa) AS wins, count(*) FILTER (WHERE pf < pa) AS losses,
+             count(*) FILTER (WHERE pf = pa) AS ties, sum(pf) AS points_for,
+             sum(pa) AS points_against, max(gameday) AS last_meeting
+      FROM tg
+
+  - id: team_season_results
+    source: sql
+    title: A team's games in a season
+    description: >-
+      A team's schedule and results for one season (1999 on): week, opponent, home or away,
+      score and result (unplayed games have no score).
+    examples:
+      - What were the Steelers' results in 2025?
+      - Show me the Chiefs' schedule this season
+    params:
+      team: {type: team}
+      season: {type: season, min: 1999, default: current}
+    query: |
+      WITH tg AS (
+        SELECT season, week, game_type, completed,
+               CASE WHEN home_team = $team THEN away_team ELSE home_team END AS opponent,
+               CASE WHEN home_team = $team THEN 'home' ELSE 'away' END AS venue,
+               CASE WHEN home_team = $team THEN home_score ELSE away_score END AS pf,
+               CASE WHEN home_team = $team THEN away_score ELSE home_score END AS pa
+        FROM games
+        WHERE season = $season AND (home_team = $team OR away_team = $team)
+      )
+      SELECT season, week, game_type, opponent, venue, pf AS points_for, pa AS points_against,
+             CASE WHEN NOT completed THEN NULL WHEN pf > pa THEN 'W' WHEN pf < pa THEN 'L'
+                  ELSE 'T' END AS result
+      FROM tg
+      ORDER BY week
+
+  - id: team_epa_by_season
+    source: sql
+    title: Team EPA per play by season
+    description: >-
+      Offense EPA per play, defense EPA allowed per play (lower is better), net and success
+      rates per team-season (regular season, scrimmage plays, 2010 on, no garbage-time filter);
+      one team or every team.
+    examples:
+      - What was the Ravens' offensive EPA per play each season since 2019?
+      - Which team had the best defense by EPA in 2024?
+    params:
+      team: {type: team, default: null, description: one team (optional)}
+      first_season: {type: season, min: 2010, default: current}
+      last_season: {type: season, min: 2010, default: current}
+      order:
+        type: choice
+        default: net
+        choices:
+          net: o.e - d.e DESC
+          offense: o.e DESC
+          defense: d.e ASC
+      limit: {type: int, min: 1, max: 500, default: 500}
+    query: |
+      WITH s AS (
+        SELECT season, posteam, defteam, epa, success
+        FROM plays
+        WHERE season BETWEEN $first_season AND $last_season AND season_type = 'REG'
+          AND play_type IN ('pass', 'run') AND coalesce(two_point_attempt, 0) = 0
+          AND epa IS NOT NULL
+      ),
+      o AS (SELECT season, posteam AS team, avg(epa) AS e, avg(success) AS sr, count(*) AS n
+            FROM s GROUP BY ALL),
+      d AS (SELECT season, defteam AS team, avg(epa) AS e, avg(success) AS sr FROM s GROUP BY ALL)
+      SELECT o.season, o.team, round(o.e, 3) AS off_epa_per_play,
+             round(d.e, 3) AS def_epa_allowed_per_play, round(o.e - d.e, 3) AS net_epa_per_play,
+             round(o.sr, 3) AS off_success_rate, round(d.sr, 3) AS def_success_allowed,
+             o.n AS off_plays
+      FROM o JOIN d USING (season, team)
+      WHERE $team IS NULL OR o.team = $team
+      ORDER BY o.season, {order}, o.team
+      LIMIT $limit
+
+  - id: coach_record
+    source: sql
+    title: A head coach's record (1999 on)
+    description: >-
+      A head coach's record per season and team from the schedules (1999 on): regular-season
+      and playoff wins, losses, ties. The 2026 schedule still lists a few teams' previous coach
+      (ARI, ATL, BUF, LV): use the graph's coach_head_record for those.
+    examples:
+      - What's Bill Belichick's record by season?
+      - How many playoff games has Sean Payton won?
+    params:
+      coach: {type: coach}
+    query: |
+      WITH cg AS (
+        SELECT season, game_type, home_team AS team, home_score AS pf, away_score AS pa
+        FROM games WHERE completed AND home_coach = $coach
+        UNION ALL
+        SELECT season, game_type, away_team AS team, away_score AS pf, home_score AS pa
+        FROM games WHERE completed AND away_coach = $coach
+      )
+      SELECT CAST($coach AS VARCHAR) AS coach, season, string_agg(DISTINCT team, '/') AS team,
+             count(*) FILTER (WHERE game_type = 'REG' AND pf > pa) AS wins,
+             count(*) FILTER (WHERE game_type = 'REG' AND pf < pa) AS losses,
+             count(*) FILTER (WHERE game_type = 'REG' AND pf = pa) AS ties,
+             count(*) FILTER (WHERE game_type <> 'REG' AND pf > pa) AS playoff_wins,
+             count(*) FILTER (WHERE game_type <> 'REG' AND pf < pa) AS playoff_losses
+      FROM cg
+      GROUP BY season
+      ORDER BY season
+
+  - id: play_action_by_down
+    source: sql
+    title: Play action by down
+    description: >-
+      A team's play-action rate and results by down for a season (FTN charting, 2022 on;
+      regular-season dropbacks; FTN's uncharted placeholder rows left out): EPA and success
+      with and without play action, on offense or defense.
+    examples:
+      - How does Detroit's play-action do on 3rd down?
+      - How often do the Rams use play action on first down?
+      - How does the Eagles defense do against play action by down?
+    params:
+      team: {type: team}
+      season: {type: season, min: 2022, default: current}
+      side:
+        type: choice
+        default: offense
+        choices:
+          offense: p.posteam
+          defense: p.defteam
+    query: |
+      SELECT CAST($team AS VARCHAR) AS team, CAST(p.down AS INTEGER) AS down, count(*) AS dropbacks,
+             count(*) FILTER (WHERE f.is_play_action) AS play_action_dropbacks,
+             round(avg(CASE WHEN f.is_play_action THEN 1.0 ELSE 0.0 END), 3) AS play_action_rate,
+             round(avg(p.epa) FILTER (WHERE f.is_play_action), 3) AS epa_play_action,
+             round(avg(p.epa) FILTER (WHERE NOT f.is_play_action), 3) AS epa_no_play_action,
+             round(avg(p.success) FILTER (WHERE f.is_play_action), 3) AS success_play_action,
+             round(avg(p.success) FILTER (WHERE NOT f.is_play_action), 3) AS success_no_play_action
+      FROM plays p
+      JOIN ftn_plays f ON f.nflverse_game_id = p.game_id
+                      AND f.nflverse_play_id = CAST(p.play_id AS INTEGER)
+      WHERE p.season = $season AND p.season_type = 'REG' AND {side} = $team
+        AND p.qb_dropback = 1 AND p.play_type IN ('pass', 'run')
+        AND coalesce(p.two_point_attempt, 0) = 0 AND p.down IS NOT NULL
+        AND NOT ((f.qb_location IS NULL OR trim(f.qb_location) IN ('', '0'))
+                 AND coalesce(f.n_defense_box, 0) = 0)
+      GROUP BY p.down
+      ORDER BY down
+
+  - id: neutral_pass_rate
+    source: sql
+    title: Pass rate over expected in neutral situations
+    description: >-
+      Each team's dropback rate and pass rate over expected (PROE, percentage points; nflverse
+      xpass) in neutral situations (win probability 20-80%, downs 1-3, outside the last two
+      minutes of a half), regular season (2010 on). The league mean sits a little below 0.
+    examples:
+      - Which teams pass the most in neutral situations this season?
+      - What's the 49ers' pass rate over expected in 2024?
+    params:
+      season: {type: season, min: 2010, default: current}
+      team: {type: team, default: null, description: one team (optional)}
+      limit: {type: int, min: 1, max: 32, default: 32}
+    query: |
+      SELECT posteam AS team, count(*) AS neutral_plays,
+             round(avg(pass), 3) AS dropback_rate, round(avg(xpass), 3) AS expected_rate,
+             round(avg(pass_oe), 1) AS proe
+      FROM plays
+      WHERE season = $season AND season_type = 'REG' AND play_type IN ('pass', 'run')
+        AND coalesce(two_point_attempt, 0) = 0
+        AND wp BETWEEN 0.2 AND 0.8 AND down <= 3 AND half_seconds_remaining > 120
+        AND ($team IS NULL OR posteam = $team)
+      GROUP BY posteam
+      ORDER BY avg(pass_oe) DESC, team
+      LIMIT $limit
+
+  - id: fourth_down_decisions
+    source: sql
+    title: Fourth-down go rate
+    description: >-
+      Each team's fourth downs in a season (2010 on, regular season): how often it went for it
+      (a run or pass, fakes included), punted or kicked, and how often a go converted.
+    examples:
+      - Which team goes for it on fourth down the most this season?
+      - How often did the Lions go for it on 4th down in 2023?
+    params:
+      season: {type: season, min: 2010, default: current}
+      team: {type: team, default: null, description: one team (optional)}
+      limit: {type: int, min: 1, max: 32, default: 32}
+    query: |
+      SELECT posteam AS team, count(*) AS fourth_downs,
+             count(*) FILTER (WHERE play_type IN ('pass', 'run')) AS go_attempts,
+             round(avg(CASE WHEN play_type IN ('pass', 'run') THEN 1.0 ELSE 0.0 END), 3) AS go_rate,
+             count(*) FILTER (WHERE play_type IN ('pass', 'run')
+                              AND (first_down = 1 OR touchdown = 1 AND td_team = posteam)) AS conversions,
+             count(*) FILTER (WHERE play_type = 'punt') AS punts,
+             count(*) FILTER (WHERE play_type = 'field_goal') AS field_goals
+      FROM plays
+      WHERE season = $season AND season_type = 'REG' AND down = 4
+        AND play_type IN ('pass', 'run', 'punt', 'field_goal')
+        AND ($team IS NULL OR posteam = $team)
+      GROUP BY posteam
+      ORDER BY avg(CASE WHEN play_type IN ('pass', 'run') THEN 1.0 ELSE 0.0 END) DESC, team
+      LIMIT $limit
+
+  - id: red_zone_td_rate
+    source: sql
+    title: Red-zone touchdown rate
+    description: >-
+      Drives that reached the opponent's 20 and how many ended in a touchdown, per team for a
+      season (2010 on, regular season), on offense or defense (allowed).
+    examples:
+      - Which offense scores touchdowns most often in the red zone this season?
+      - What's the Bills' red zone touchdown rate in 2025?
+    params:
+      season: {type: season, min: 2010, default: current}
+      team: {type: team, default: null, description: one team (optional)}
+      side:
+        type: choice
+        default: offense
+        choices:
+          offense: posteam
+          defense: defteam
+      limit: {type: int, min: 1, max: 32, default: 32}
+    query: |
+      WITH d AS (
+        SELECT game_id, fixed_drive, {side} AS team, max(drive_inside20) AS rz,
+               max(CASE WHEN fixed_drive_result = 'Touchdown' THEN 1 ELSE 0 END) AS td
+        FROM plays
+        WHERE season = $season AND season_type = 'REG' AND down IS NOT NULL
+        GROUP BY ALL
+      )
+      SELECT team, count(*) FILTER (WHERE rz = 1) AS red_zone_drives,
+             count(*) FILTER (WHERE rz = 1 AND td = 1) AS red_zone_tds,
+             round(count(*) FILTER (WHERE rz = 1 AND td = 1) * 1.0
+                   / nullif(count(*) FILTER (WHERE rz = 1), 0), 3) AS td_rate
+      FROM d
+      WHERE $team IS NULL OR team = $team
+      GROUP BY team
+      ORDER BY count(*) FILTER (WHERE rz = 1 AND td = 1) * 1.0
+               / nullif(count(*) FILTER (WHERE rz = 1), 0) DESC NULLS LAST, team
+      LIMIT $limit
+
+  - id: longest_plays
+    source: sql
+    title: Longest plays
+    description: >-
+      The longest gains from scrimmage in a season (2010 on, playoffs included), passes or
+      runs, optionally for one team (offense), with the players involved.
+    examples:
+      - What were the longest plays of the 2024 season?
+      - What's the Dolphins' longest run this season?
+    params:
+      season: {type: season, min: 2010, default: current}
+      team: {type: team, default: null, description: the offense (optional)}
+      kind:
+        type: choice
+        default: any
+        choices:
+          any: p.play_type IN ('pass', 'run')
+          pass: p.play_type = 'pass' AND p.complete_pass = 1
+          run: p.play_type = 'run'
+      limit: {type: int, min: 1, max: 50, default: 10}
+    query: |
+      SELECT p.season, p.week, p.game_id, p.posteam AS team, p.defteam AS opponent, p.play_type,
+             CAST(p.yards_gained AS INTEGER) AS yards,
+             coalesce(qb.display_name, p.passer_player_name) AS passer,
+             coalesce(rc.display_name, p.receiver_player_name) AS receiver,
+             coalesce(ru.display_name, p.rusher_player_name) AS rusher,
+             CAST(p.touchdown AS INTEGER) AS touchdown
+      FROM plays p
+      LEFT JOIN players qb ON qb.gsis_id = p.passer_player_id
+      LEFT JOIN players rc ON rc.gsis_id = p.receiver_player_id
+      LEFT JOIN players ru ON ru.gsis_id = p.rusher_player_id
+      WHERE p.season = $season AND {kind} AND coalesce(p.two_point_attempt, 0) = 0
+        AND p.yards_gained IS NOT NULL AND ($team IS NULL OR p.posteam = $team)
+      ORDER BY p.yards_gained DESC, p.game_id, p.play_id
+      LIMIT $limit

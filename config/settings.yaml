@@ -201,3 +201,35 @@ playcalling:              # play calling (PC00+; documentation/play-calling/, D1
     league_prior_plays: 2000.0    # last season's league rate is worth ~a week of plays
     pre_change_weight: 0.5        # a game before a mid-season head-coach change counts half
     ship: {seasons_pbp: 5, seasons_ftn: 3}   # beat season-to-date in 5 of 7 / 3 of 4 (D130)
+
+ask:                      # Ask the Engine (AE00+; documentation/ask-the-engine/, D107, D111, D136)
+  llm:                    # Ask's own LLM: the digest's llm: block above is never read here
+    provider: openrouter  # openrouter | openai_compatible (LLM_BASE_URL + LLM_API_KEY: a local server)
+    model: openai/gpt-6-luna  # AE00's pick (D138): ~92% main / ~90% held-out (3 / 2 runs), ~$0.0003 a question
+    reasoning_effort: low # OpenRouter reasoning.effort (none | low | high | xhigh | max); its text excluded
+    max_tokens: 2000      # a template pick, a query or a 3-sentence answer: never long
+    timeout_s: 30
+    retries: 1            # extra attempts on timeouts, 429 and 5xx
+    temperature: 0.0
+    openrouter: {sort: latency, allow_fallbacks: true}   # the fastest endpoint first
+  sources: {graph: true, sql: true, history: false}       # history: the AE02 graph
+  limits:
+    rows: 500             # rows kept from any query
+    timeout_s: 10         # per query, both sources
+    question_chars: 500
+    corrections: 2        # correction rounds after an error or an empty result
+    answer_rows: 40       # rows the answer step sees
+  sql:
+    exclude_tables: [espn_news]   # free text stays out of the sandbox (README §5.3)
+    memory_limit: 2GB
+    threads: 4
+  graph: {database: null} # the server's default database: the weekly graph
+  # The AE00 model comparison on the audited setup (`nfl ask eval --candidates [--set holdout]`,
+  # then `nfl ask pick`): each model at each effort. Rishi's final set (D138, D140): the cheap pick
+  # and every model at its highest effort. A high effort needs room: OpenRouter sizes its reasoning
+  # budget from max_tokens. (GPT-6.1 Sol at max, $0.042 a question and ~70 s, was skipped.)
+  candidates:
+    - {model: openai/gpt-6-luna, efforts: [low]}
+    - {model: openai/gpt-6-luna, efforts: [max], max_tokens: 16000, timeout_s: 120}
+    - {model: deepseek/deepseek-v4.1-flash-1017, efforts: [max], max_tokens: 16000, timeout_s: 120}
+    - {model: anthropic/claude-haiku-5.5, efforts: [max], max_tokens: 16000, timeout_s: 120}

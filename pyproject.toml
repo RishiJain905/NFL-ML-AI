@@ -23,6 +23,7 @@ dependencies = [
     "python-dotenv",
     "fastapi>=0.142.2",
     "uvicorn>=0.54.0",
+    "rapidfuzz>=3.14.6",
 ]
 
 [project.scripts]

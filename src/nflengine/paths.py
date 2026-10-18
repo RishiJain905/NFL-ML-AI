@@ -98,6 +98,11 @@ class DataPaths:
         return self.root / "live"
 
     @property
+    def ask(self) -> Path:
+        """Ask the Engine (AE00+): `ask/evals/` (the golden-set runs and the bake-off)."""
+        return self.root / "ask"
+
+    @property
     def playcalling(self) -> Path:
         """Play-calling tables (PC00+): `playcalling/<season>/` (enriched plays, tendencies)."""
         return self.root / "playcalling"

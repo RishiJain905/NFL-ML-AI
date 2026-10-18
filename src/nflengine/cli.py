@@ -2320,6 +2320,211 @@ def playcalling_library(
         raise typer.Exit(1) from None
 
 
+# --- Ask the Engine (AE00+, documentation/ask-the-engine/): questions in plain English -------
+class _AskGroup(typer.core.TyperGroup):
+    """`nfl ask "<question>"` runs the default `question` command; `nfl ask eval` / `pick` are
+    subcommands. Anything that isn't a subcommand name (or the group's --help) is a question."""
+
+    def parse_args(self, ctx, args):  # type: ignore[override]
+        if args and args[0] not in self.commands and args[0] not in ("--help", "-h"):
+            args = ["question", *args]
+        return super().parse_args(ctx, args)
+
+
+ask_app = typer.Typer(
+    cls=_AskGroup,
+    help='Ask the Engine: `nfl ask "<question>"`, `nfl ask eval`, `nfl ask pick` (AE00).',
+    no_args_is_help=True,
+)
+app.add_typer(ask_app, name="ask")
+
+
+def _scrub_tree(value, scrub):
+    """Every string in a JSON-ready structure scrubbed (keys and numbers kept): scrubbing the
+    serialised text turned `"prompt_tokens": 1234` into invalid JSON (Sol, AE00)."""
+    if isinstance(value, str):
+        return scrub(value, 20_000)
+    if isinstance(value, dict):
+        return {k: _scrub_tree(v, scrub) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_scrub_tree(v, scrub) for v in value]
+    return value
+
+
+def _ask_model(model: str | None) -> str:
+    from nflengine.ask.config import ask_config
+
+    model = model or ask_config().llm.model
+    if not model:
+        console.print(
+            "[red]ask.llm.model isn't set yet (the AE00 bake-off picks it): pass --model[/]"
+        )
+        raise typer.Exit(1)
+    return model
+
+
+@ask_app.command("question")
+def ask_question(
+    question: str = typer.Argument(..., help="The question, in quotes."),
+    source: str = typer.Option("auto", help="graph | sql | auto."),
+    show_query: bool = typer.Option(False, "--show-query", help="Print the query that ran."),
+    model: str | None = typer.Option(None, help="An OpenRouter model id (default ask.llm.model)."),
+    json_out: bool = typer.Option(False, "--json", help="Print the whole result as JSON."),
+) -> None:
+    """Answer one question from the weekly graph or the curated tables (read-only)."""
+    import json as _json
+
+    from rich.markup import escape
+
+    from nflengine.ask.llm import AskLLMError, OutOfCredits, make_llm
+    from nflengine.ask.route import AskEngine
+    from nflengine.ask.show import print_result
+    from nflengine.ops.summary import scrub
+
+    if source not in ("graph", "sql", "auto"):
+        raise typer.BadParameter("--source must be graph, sql or auto")
+    try:
+        engine = AskEngine.build(make_llm(model=_ask_model(model)))
+    except AskLLMError as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(1) from None
+    try:
+        res = engine.ask(question, source=source)
+    except OutOfCredits as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(3) from None
+    finally:
+        engine.close()
+    if json_out:
+        console.print_json(_json.dumps(_scrub_tree(res.to_dict(), scrub), default=str))
+    else:
+        print_result(console, res, show_query)
+    if res.status == "error":
+        raise typer.Exit(2)
+
+
+@ask_app.command("eval")
+def ask_eval(
+    model: str | None = typer.Option(None, help="An OpenRouter model id (default ask.llm.model)."),
+    effort: str | None = typer.Option(
+        None, help="reasoning.effort override (none | minimal | low ...); default the candidate's."
+    ),
+    candidates: bool = typer.Option(
+        False,
+        "--candidates",
+        help="Run every bake-off candidate at each of its efforts (ask.candidates), with its "
+        "own max_tokens / timeout_s if set; with --effort, only that effort.",
+    ),
+    max_tokens: int | None = typer.Option(
+        None, "--max-tokens", help="Override ask.llm.max_tokens (a high effort needs ~16000)."
+    ),
+    llm_timeout: float | None = typer.Option(
+        None, "--llm-timeout", help="Override ask.llm.timeout_s, seconds per LLM call."
+    ),
+    n: str = typer.Option("all", help="How many questions: all, or the first N."),
+    ids: str | None = typer.Option(None, help="Only these question ids, e.g. g001,g014."),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
+    smoke: bool = typer.Option(
+        False, "--smoke", help="W&B: a logging check (group ask-the-engine-smoke, tag smoke)."
+    ),
+    golden_set: str = typer.Option(
+        "main",
+        "--set",
+        help="main (config/ask_golden.yaml) or holdout (config/ask_holdout.yaml: never tuned "
+        "on, reported on its own).",
+    ),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Run the golden set (config/ask_golden.yaml) and log a W&B `ask-eval` run."""
+    from rich.markup import escape
+
+    from nflengine.ask.config import ask_config
+    from nflengine.ask.evaluate import run_eval
+
+    if golden_set not in ("main", "holdout"):
+        raise typer.BadParameter("--set must be main or holdout")
+    count = None if n == "all" else int(n)
+    id_list = _csv(ids)
+    if candidates:
+        runs = [
+            (c.model, e, c.max_tokens, c.timeout_s)
+            for c in ask_config().candidates
+            for e in c.efforts
+        ]
+        if effort is not None:
+            runs = [r for r in runs if str(r[1]) == effort]
+    else:
+        runs = [(_ask_model(model), effort if effort is not None else ..., None, None)]
+    for m, e, cand_tokens, cand_timeout in runs:
+        shown = "default" if e is ... else str(e)
+        console.print(f"[bold]ask eval: {escape(m)} (effort {escape(shown)})[/]")
+        out = run_eval(
+            m,
+            reasoning_effort=e,
+            max_tokens=max_tokens if max_tokens is not None else cand_tokens,
+            llm_timeout_s=llm_timeout if llm_timeout is not None else cand_timeout,
+            n=count,
+            ids=id_list,
+            use_wandb=not no_wandb,
+            smoke=smoke,
+            golden_set=golden_set,
+            launched_by=launched_by,
+            log=lambda s: console.print(s),
+        )
+        s = out["summary"]
+        if s.get("questions"):
+            cost = s.get("cost_per_question")
+            cost_text = "cost unknown" if cost is None else f"${cost:.5f} a question"
+            console.print(
+                f"exec accuracy {s['exec_accuracy'] or 0:.1%}"
+                f" | overall {s['overall_accuracy'] or 0:.1%}"
+                f" | templates {s['template_hit_rate'] or 0:.1%} | p50 {s['latency_p50_s']:.1f} s"
+                f" | p95 {s['latency_p95_s']:.1f} s | {cost_text}"
+                f" | in bounds: {'yes' if s['meets_bounds'] else 'no'}"
+            )
+        console.print(
+            f"saved {escape(str(out['file'].name))}"
+            + (f" | W&B: {out['url']}" if out["url"] else "")
+        )
+        if s.get("stopped"):
+            raise typer.Exit(3)
+
+
+@ask_app.command("pick")
+def ask_pick(
+    smoke: bool = typer.Option(False, "--smoke", help="Use the smoke runs instead."),
+    rescore: bool = typer.Option(
+        False,
+        "--rescore",
+        help="First re-score saved runs made by an older scorer (rewrites them).",
+    ),
+) -> None:
+    """Apply the pick rule (D138: best accuracy, cost breaks ties) to the newest full eval of
+    each model and effort.
+
+    Prints the table and the pick; writing it into settings.yaml is a separate, logged step."""
+    from rich.markup import escape
+
+    from nflengine.ask.evaluate import current_hashes, latest_summaries, pick
+    from nflengine.ask.show import bakeoff_table
+
+    if rescore:
+        from nflengine.ask.evaluate import rescore_all
+
+        rescore_all(log=lambda s: console.print(escape(s)))
+    summaries = latest_summaries(smoke=smoke, current=current_hashes())
+    if not summaries:
+        console.print("[yellow]no eval runs yet: `nfl ask eval --candidates`[/]")
+        raise typer.Exit(1)
+    best = pick(summaries)
+    console.print(bakeoff_table(summaries, best))
+    if best is None:
+        console.print("[yellow]no run has an execution accuracy to compare: Rishi decides[/]")
+        raise typer.Exit(2)
+    effort = escape(str(best["reasoning_effort"]))
+    console.print(f"[green]pick: {escape(str(best['model']))} (effort {effort})[/]")
+
+
 PLACEHOLDERS: dict[str, tuple[str, str]] = {}
 
 

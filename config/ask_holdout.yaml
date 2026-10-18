@@ -1,0 +1,477 @@
+# Ask the Engine: the HELD-OUT question set (AE00; src/nflengine/ask/evaluate.py, HOLDOUT_PATH).
+# Written after the 2026-10-18 audit of config/ask_golden.yaml and never used to tune the router,
+# the templates, the prompts or the scorer: an honest check that the fixes carry over to new
+# questions (`nfl ask eval --set holdout`). Same format and rules as the main set: each answer
+# question has a hand-written reference query, run on the day's data at every eval (the result
+# IS the expected answer; order-insensitive; the system may add columns, but every reference
+# column must match one of the system's and the row counts must be equal). The evaluator binds
+# $asof_season / $asof_week (the weekly graph's week) and $current_season. References return
+# only the columns that are the answer (the entities a "which / who" asks for, the number a
+# "how many / what was" asks for) and never tie at a LIMIT boundary. A template question's
+# reference is written independently of the template's query. Ids g201-g240 are this file's own
+# (the main set uses g001-g115).
+# Categories: template 12, sql 11, graph 11, trick 6 (3 refuse, 3 clarify).
+version: 1
+questions:
+  # ==== template: a template in config/ask_templates.yaml fits =============================
+  - id: g201
+    question: "Which tight end caught the most passes in the 2021 regular season?"
+    category: template
+    source: sql
+    template: season_leaders
+    reference: |
+      SELECT any_value(player_display_name) AS player
+      FROM player_games
+      WHERE season = 2021 AND season_type = 'REG' AND position_group = 'TE'
+      GROUP BY player_id
+      ORDER BY sum(receptions) DESC
+      LIMIT 1
+    notes: position filter + receptions (Mark Andrews 107, Travis Kelce 92 second)
+
+  - id: g202
+    question: "Give me CeeDee Lamb's receiving yards game by game for 2023."
+    category: template
+    source: sql
+    template: player_game_log
+    reference: |
+      SELECT week, receiving_yards
+      FROM player_games
+      WHERE player_display_name = 'CeeDee Lamb' AND season = 2023
+    notes: 18 rows (17 regular-season games + the wild-card loss to GB; week 7 bye); playoffs count
+
+  - id: g203
+    question: "How many rushing yards did Derrick Henry put up in each of his games against the Texans?"
+    category: template
+    source: sql
+    template: player_vs_team
+    reference: |
+      SELECT season, week, rushing_yards
+      FROM player_games
+      WHERE player_display_name = 'Derrick Henry' AND opponent_team = 'HOU'
+    notes: 16 games, TEN and BAL years (2016-2025; the 250-yard game in 2020 week 17)
+
+  - id: g204
+    question: "What's the Packers' regular-season record against the Bears since 2010?"
+    category: template
+    source: sql
+    template: head_to_head
+    reference: |
+      SELECT count(*) FILTER (WHERE (home_team = 'GB' AND result > 0) OR (away_team = 'GB' AND result < 0)) AS wins,
+             count(*) FILTER (WHERE (home_team = 'GB' AND result < 0) OR (away_team = 'GB' AND result > 0)) AS losses
+      FROM games
+      WHERE game_type = 'REG' AND completed AND season >= 2010
+        AND ((home_team = 'GB' AND away_team = 'CHI') OR (home_team = 'CHI' AND away_team = 'GB'))
+    notes: regular season only (the 2010 NFC title game left out); 27-6, no ties
+
+  - id: g205
+    question: "What was John Harbaugh's regular-season record in each season he's been a head coach?"
+    category: template
+    source: sql
+    template: coach_record
+    reference: |
+      WITH cg AS (
+        SELECT season, game_type, home_score AS pf, away_score AS pa
+        FROM games WHERE completed AND home_coach = 'John Harbaugh'
+        UNION ALL
+        SELECT season, game_type, away_score AS pf, home_score AS pa
+        FROM games WHERE completed AND away_coach = 'John Harbaugh'
+      )
+      SELECT season,
+             count(*) FILTER (WHERE game_type = 'REG' AND pf > pa) AS wins,
+             count(*) FILTER (WHERE game_type = 'REG' AND pf < pa) AS losses,
+             count(*) FILTER (WHERE game_type = 'REG' AND pf = pa) AS ties
+      FROM cg GROUP BY season
+    notes: 2008-2025 with BAL, 2026 with NYG (3-1-1 so far, so ties matter); not Jim Harbaugh
+
+  - id: g206
+    question: "Which team had the highest fourth-down go-for-it rate in the 2024 regular season?"
+    category: template
+    source: sql
+    template: fourth_down_decisions
+    reference: |
+      WITH f AS (
+        SELECT posteam AS team,
+               avg(CASE WHEN play_type IN ('pass', 'run') THEN 1.0 ELSE 0.0 END) AS go_rate
+        FROM plays
+        WHERE season = 2024 AND season_type = 'REG' AND down = 4
+          AND play_type IN ('pass', 'run', 'punt', 'field_goal')
+        GROUP BY posteam
+      )
+      SELECT team FROM f ORDER BY go_rate DESC LIMIT 1
+    notes: DET (0.32, CLE 0.28 next). Rephrased from "most often", which could mean the most attempts (CLE had more)
+
+  - id: g207
+    question: "Who had the longest run of the 2022 season, and how many yards did it go for?"
+    category: template
+    source: sql
+    template: longest_plays
+    reference: |
+      SELECT pl.display_name AS rusher, CAST(p.yards_gained AS INTEGER) AS yards
+      FROM plays p
+      JOIN players pl ON pl.gsis_id = p.rusher_player_id
+      WHERE p.season = 2022 AND p.play_type = 'run' AND coalesce(p.two_point_attempt, 0) = 0
+        AND p.yards_gained IS NOT NULL
+      ORDER BY p.yards_gained DESC, p.game_id, p.play_id
+      LIMIT 1
+    notes: Josh Jacobs, 86 yards at SEA (next longest 81, so no tie); playoffs included
+
+  - id: g208
+    question: "Which players have run for 100 or more yards against the Ravens in at least two games since 2015?"
+    category: template
+    source: sql
+    template: stat_games_vs_team
+    reference: |
+      SELECT any_value(player_display_name) AS player
+      FROM player_games
+      WHERE opponent_team = 'BAL' AND season >= 2015 AND rushing_yards >= 100
+      GROUP BY player_id
+      HAVING count(DISTINCT game_id) >= 2
+    notes: Le'Veon Bell (3), Derrick Henry, Najee Harris; playoffs count (Henry's 2019 divisional game)
+
+  - id: g209
+    question: "Which receiver gained the most yards on Joe Burrow's passes in 2022?"
+    category: template
+    source: graph
+    template: qb_receivers
+    reference: |
+      MATCH (:Player {name: 'Joe Burrow'})-[t:THREW_TO]->(r:Player)
+      WHERE t.season = 2022
+      WITH r, sum(t.yards) AS yards
+      ORDER BY yards DESC LIMIT 1
+      RETURN r.name AS receiver
+    notes: rank by yards, not targets (Ja'Marr Chase 1243, Tee Higgins 1177; playoffs included)
+
+  - id: g210
+    question: "What team was Baker Mayfield on in each season?"
+    category: template
+    source: graph
+    template: player_teams
+    reference: |
+      MATCH (:Player {name: 'Baker Mayfield'})-[r:PLAYED_FOR]->(t:Team)
+      RETURN r.season AS season, t.team_id AS team
+    notes: 10 rows, two in 2022 (CAR, then LA); CLE 2018-2021, TB 2023 on
+
+  - id: g211
+    question: "List the Seahawks' wide receivers in depth-chart order."
+    category: template
+    source: graph
+    template: depth_chart
+    reference: |
+      MATCH (t:Team {team_id: 'SEA'})<-[d0:DEPTH_CHART]-(:Player)
+      WHERE d0.season = $asof_season AND d0.week <= $asof_week
+      WITH t, max(d0.week) AS latest
+      MATCH (t)<-[d:DEPTH_CHART]-(p:Player)
+      WHERE d.season = $asof_season AND d.week = latest AND d.position = 'WR'
+      RETURN p.name AS player, d.rank AS rank
+    notes: the latest depth chart up to the graph's week, every WR (7 in week 6, JSN first); the rank is part of the answer, so a wrong order fails (added after Sol's second review; the question is unchanged)
+
+  - id: g212
+    question: "Which team has the best pass defense right now, according to your ratings?"
+    category: template
+    source: graph
+    template: power_ratings_this_week
+    reference: |
+      MATCH (tw:TeamWeek {season: $asof_season, week: $asof_week})
+      RETURN tw.team_id AS team
+      ORDER BY tw.def_pass_epa ASC LIMIT 1
+    notes: pass-defense EPA allowed, lower is better (MIN in week 6)
+
+  # ==== sql: free-form SQL (no template fits) ==============================================
+  - id: g213
+    question: "Who had the most rushing yards over expected in the 2023 regular season, according to Next Gen Stats?"
+    category: sql
+    source: sql
+    reference: |
+      SELECT player_display_name AS player
+      FROM ngs_rushing
+      WHERE season = 2023 AND season_type = 'REG' AND is_season_total
+      ORDER BY rush_yards_over_expected DESC NULLS LAST
+      LIMIT 1
+    notes: NGS's week-0 season row (Christian McCaffrey, +349; Achane next at +279)
+
+  - id: g214
+    question: "Among players with at least 80 targets, who averaged the most separation in the 2024 regular season per Next Gen Stats?"
+    category: sql
+    source: sql
+    reference: |
+      SELECT player_display_name AS player
+      FROM ngs_receiving
+      WHERE season = 2024 AND season_type = 'REG' AND is_season_total AND targets >= 80
+      ORDER BY avg_separation DESC
+      LIMIT 1
+    notes: a volume floor on the NGS season row (Khalil Shakir 4.25 yards; Demario Douglas 4.01)
+
+  - id: g215
+    question: "Which quarterback was pressured the most times in the 2024 regular season, according to PFR?"
+    category: sql
+    source: sql
+    reference: |
+      SELECT pl.display_name AS quarterback
+      FROM pfr_pass pp
+      JOIN players pl ON pl.gsis_id = pp.gsis_id
+      WHERE pp.season = 2024 AND pp.game_type = 'REG'
+      GROUP BY pl.gsis_id, pl.display_name
+      ORDER BY sum(pp.times_pressured) DESC
+      LIMIT 1
+    notes: PFR times_pressured summed over games (C.J. Stroud 174, Joe Burrow 155)
+
+  - id: g216
+    question: "Who broke the most tackles on running plays in the 2023 regular season, per PFR?"
+    category: sql
+    source: sql
+    reference: |
+      SELECT pl.display_name AS player
+      FROM pfr_rush pr
+      JOIN players pl ON pl.gsis_id = pr.gsis_id
+      WHERE pr.season = 2023 AND pr.game_type = 'REG'
+      GROUP BY pl.gsis_id, pl.display_name
+      ORDER BY sum(pr.rushing_broken_tackles) DESC
+      LIMIT 1
+    notes: rushing_broken_tackles only (Travis Etienne 31, Najee Harris 30)
+
+  - id: g217
+    question: "How many offensive snaps did Puka Nacua play in the 2025 regular season?"
+    category: sql
+    source: sql
+    reference: |
+      SELECT CAST(sum(s.offense_snaps) AS INTEGER) AS offense_snaps
+      FROM snaps s
+      JOIN players pl ON pl.gsis_id = s.gsis_id
+      WHERE pl.display_name = 'Puka Nacua' AND s.season = 2025 AND s.game_type = 'REG'
+    notes: snap counts table (727 over 16 games)
+
+  - id: g218
+    question: "How many games have the Jets played as an underdog of 10 or more points on the closing line since 2020?"
+    category: sql
+    source: sql
+    reference: |
+      SELECT count(*) AS games
+      FROM games
+      WHERE completed AND season >= 2020
+        AND ((away_team = 'NYJ' AND spread_line >= 10) OR (home_team = 'NYJ' AND spread_line <= -10))
+    notes: spread_line > 0 = home favoured, so a road dog at +10 or a home dog at -10; played games only (20)
+
+  - id: g219
+    question: "Which team threw the most interceptions in the 2023 regular season?"
+    category: sql
+    source: sql
+    reference: |
+      SELECT team
+      FROM team_games
+      WHERE season = 2023 AND season_type = 'REG'
+      GROUP BY team
+      ORDER BY sum(passing_interceptions) DESC
+      LIMIT 1
+    notes: team box score (CLE 23; WAS and NE 21)
+
+  - id: g220
+    question: "What was the league-wide completion rate on passes thrown 20 or more air yards in the 2025 regular season?"
+    category: sql
+    source: sql
+    reference: |
+      SELECT avg(complete_pass) AS completion_rate
+      FROM plays
+      WHERE season = 2025 AND season_type = 'REG' AND play_type = 'pass' AND sack = 0
+        AND air_yards >= 20 AND coalesce(two_point_attempt, 0) = 0
+    notes: one league-wide share (0.3665 of 2000 deep throws; sacks have no air yards)
+
+  - id: g221
+    question: "Which offense ran the most RPOs in the 2024 regular season, according to FTN charting?"
+    category: sql
+    source: sql
+    reference: |
+      SELECT p.posteam AS team
+      FROM plays p
+      JOIN ftn_plays f ON f.nflverse_game_id = p.game_id AND f.nflverse_play_id = CAST(p.play_id AS INTEGER)
+      WHERE p.season = 2024 AND p.season_type = 'REG' AND p.play_type IN ('pass', 'run')
+        AND coalesce(p.two_point_attempt, 0) = 0 AND f.is_rpo
+      GROUP BY p.posteam
+      ORDER BY count(*) DESC
+      LIMIT 1
+    notes: a count, not a rate (GB 92; NE 68), so the denominator question doesn't arise
+
+  - id: g222
+    question: "Which college produced the most first-round draft picks from 2015 through 2025?"
+    category: sql
+    source: sql
+    reference: |
+      SELECT college
+      FROM draft_picks
+      WHERE season BETWEEN 2015 AND 2025 AND round = 1
+      GROUP BY college
+      ORDER BY count(*) DESC
+      LIMIT 1
+    notes: draft_picks.season is the draft year (Alabama 33, Ohio St. 26)
+
+  - id: g223
+    question: "How many different 49ers players were listed as Out on an injury report during the 2024 regular season?"
+    category: sql
+    source: sql
+    reference: |
+      SELECT count(DISTINCT gsis_id) AS players
+      FROM injuries
+      WHERE season = 2024 AND team = 'SF' AND game_type = 'REG' AND report_status = 'Out'
+    notes: distinct players with a game status of Out (31)
+
+  # ==== graph: free-form Cypher over the weekly graph's relationships =====================
+  - id: g224
+    question: "Which coaches have been a defensive coordinator for four or more different teams?"
+    category: graph
+    source: graph
+    reference: |
+      MATCH (c:Coach)-[r:COORDINATOR_OF]->(t:Team)
+      WHERE r.role = 'DC'
+      WITH c, count(DISTINCT t) AS teams
+      WHERE teams >= 4
+      RETURN c.name AS coach
+    notes: the coaching seed (2006 on); 7 coaches, Gregg Williams with 6 teams
+
+  - id: g225
+    question: "Which of the Raiders' own first-round picks have they traded away since 2018?"
+    category: graph
+    source: graph
+    reference: |
+      MATCH (p:Player)-[d:DRAFTED_BY]->(:Team {team_id: 'LV'})
+      WHERE d.round = 1
+      MATCH (p)-[tr:TRADED_TO]->(:Team)
+      WHERE tr.from_team = 'LV' AND tr.season >= 2018
+      RETURN DISTINCT p.name AS player
+    notes: draft x trade (Khalil Mack, Amari Cooper, Gareon Conley; the curated trades table agrees)
+
+  - id: g226
+    question: "Which quarterbacks have thrown a touchdown pass to Derrick Henry?"
+    category: graph
+    source: graph
+    reference: |
+      MATCH (q:Player)-[t:THREW_TO]->(:Player {name: 'Derrick Henry'})
+      WITH q, sum(t.tds) AS tds
+      WHERE tds > 0
+      RETURN q.name AS quarterback
+    notes: Tannehill, Mariota, Lamar Jackson, Tyler Huntley (play-by-play from 2016 gives the same four)
+
+  - id: g227
+    question: "How many different players caught a pass from Lamar Jackson in 2024?"
+    category: graph
+    source: graph
+    reference: |
+      MATCH (:Player {name: 'Lamar Jackson', position: 'QB'})-[t:THREW_TO]->(r:Player)
+      WHERE t.season = 2024 AND t.completions > 0
+      RETURN count(DISTINCT r) AS receivers
+    notes: one number (15; plays agree); a CB is also named Lamar Jackson, hence the reference's position filter (the resolver picks the QB)
+
+  - id: g228
+    question: "Which teams have a quarterback from the 2024 draft at the top of their latest depth chart?"
+    category: graph
+    source: graph
+    reference: |
+      MATCH (t:Team)<-[d0:DEPTH_CHART]-(:Player)
+      WHERE d0.season = $asof_season AND d0.week <= $asof_week
+      WITH t, max(d0.week) AS latest
+      MATCH (t)<-[d:DEPTH_CHART]-(p:Player)-[dr:DRAFTED_BY]->(:Team)
+      WHERE d.season = $asof_season AND d.week = latest AND d.position = 'QB' AND d.rank = 1
+        AND dr.year = 2024
+      RETURN t.team_id AS team
+    notes: depth chart x draft (ATL, CHI, DEN, NE, WAS in week 6); each team's latest chart
+
+  - id: g229
+    question: "Which home teams does your model give less than a 40% chance of winning this week?"
+    category: graph
+    source: graph
+    reference: |
+      MATCH (g:Game {season: $asof_season, week: $asof_week})-[:HAS_PREDICTION]->(gp:GamePrediction {is_primary: true})
+      WHERE gp.home_win_prob < 0.4
+      RETURN g.home_team AS team
+    notes: the primary prediction (CLE, LV, TB in week 6)
+
+  - id: g230
+    question: "Which of this week's games are division matchups?"
+    category: graph
+    source: graph
+    reference: |
+      MATCH (g:Game {season: $asof_season, week: $asof_week})
+      WHERE g.div_game
+      RETURN g.game_id AS game_id
+    notes: Game.div_game (6 of 14 in week 6)
+
+  - id: g231
+    question: "Which quarterback-receiver duo connected for the most yards in a single season since 2018?"
+    category: graph
+    source: graph
+    reference: |
+      MATCH (q:Player)-[t:THREW_TO]->(r:Player)
+      WITH q, r, t.season AS season, sum(t.yards) AS yards
+      ORDER BY yards DESC LIMIT 1
+      RETURN q.name AS quarterback, r.name AS receiver
+    notes: Stafford to Kupp in 2021 (2425 with the playoffs; also first on the regular season alone)
+
+  - id: g232
+    question: "Which team's Elo rating has climbed the most since the start of this season?"
+    category: graph
+    source: graph
+    reference: |
+      MATCH (a:TeamWeek {season: $asof_season, week: 1}), (b:TeamWeek {season: $asof_season, week: $asof_week})
+      WHERE a.team_id = b.team_id
+      WITH a.team_id AS team, b.elo - a.elo AS rise
+      ORDER BY rise DESC LIMIT 1
+      RETURN team
+    notes: Elo going into week 1 vs going into this week (SF +94 in week 6; KC +78 next); in week 1 every rise is 0 and the question has no unique answer (Sol), so run the held-out set from week 2 on
+
+  - id: g233
+    question: "Which players have scored both a rushing and a receiving touchdown in the same game this season?"
+    category: graph
+    source: graph
+    reference: |
+      MATCH (p:Player)-[a:APPEARED_IN]->(:Game {season: $asof_season})
+      WHERE a.rush_tds >= 1 AND a.rec_tds >= 1
+      RETURN DISTINCT p.name AS player
+    notes: one row per player (8 through week 5; Kenneth Walker III did it twice); player_games agrees
+
+  - id: g234
+    question: "Which Chiefs players have been ruled Out for a game this season?"
+    category: graph
+    source: graph
+    reference: |
+      MATCH (p:Player)-[i:ON_INJURY_REPORT]->(:Game {season: $asof_season})
+      WHERE i.team_id = 'KC' AND i.status = 'Out'
+      RETURN DISTINCT p.name AS player
+    notes: injury-report history this season (Josh Simmons, Chamarri Conner); the curated injuries agree
+
+  # ==== trick: refuse and clarify (ambiguous names) =========================================
+  - id: g235
+    question: "Insert a row into the teams table for a new expansion franchise."
+    category: trick
+    expect: refuse
+    notes: a write request (INSERT)
+
+  - id: g236
+    question: "Which game drew the biggest TV audience in 2025?"
+    category: trick
+    expect: refuse
+    notes: no viewership or ratings data
+
+  - id: g237
+    question: "What was the 49ers' regular-season record in 1994?"
+    category: trick
+    expect: refuse
+    notes: games start with the 1999 season
+
+  - id: g238
+    question: "How many receiving yards did Steve Smith have in 2011?"
+    category: trick
+    expect: clarify
+    choices: [00-0020337, 00-0025438]
+    notes: two WRs with 8+ games, neither recent (CAR / BAL 2001-2016 and NYG / PHI / LA 2007-2012); both played in 2011
+
+  - id: g239
+    question: "How many touchdowns did Brandon Marshall score in 2015?"
+    category: trick
+    expect: clarify
+    choices: [00-0024334, 00-0029620]
+    notes: the WR (NYJ in 2015) and the Broncos linebacker, both active through 2018, neither recent
+
+  - id: g240
+    question: "How many tackles did Byron Murphy make in 2025?"
+    category: trick
+    expect: clarify
+    choices: [00-0035236, 00-0039309]
+    notes: the Vikings CB and Byron Murphy II (Seahawks DT; the suffix drops out of the name), both playing now
