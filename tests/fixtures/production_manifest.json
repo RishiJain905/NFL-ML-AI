@@ -116,7 +116,7 @@
     "src/nflengine/ops/rehearsal.py": "624f5dd5028428ec2480c4c8a28b96daefdba6ea16a562260218294642e340b2",
     "src/nflengine/ops/season_review.py": "dfcbad47afb5c4c1941d898a61d1f8fd0dd3450d7481bc978a59300f7db09a37",
     "src/nflengine/ops/services.py": "0e2d80b6f49d7029c75f46ab76716385ab5d3ae03a6340d0c6f1d7c350a3611c",
-    "src/nflengine/ops/summary.py": "72a02a3bea96b4eff6cd2d5757f7cd7d52c2bace0c9892d0a9cc21155eda23da",
+    "src/nflengine/ops/summary.py": "07aa1db2e7268653d3005790ff876bf2cf76b7c5f47ff08fef072b8c6299c2c9",
     "src/nflengine/schedule.py": "2dc4baac8204459210420fbfb76499e1dac7a291e3537731f0a58126cb58569f",
     "src/nflengine/weekly.py": "e48779191cdaf7b95206b97f8c17cd38d0fcc130a402ff4ec13c5686d923a203"
   },
