@@ -104,5 +104,12 @@ MATCH (pi:PublishedInsight) RETURN pi ORDER BY pi.season DESC, pi.week DESC LIMI
 - A seed row for a coordinator's *current* team also makes him `WORKED_UNDER` his current head coach, so `shortestPath` between two head coaches can run through him instead of an old mentor (both are real links; the golden test accepts either).
 - `UNION ALL` queries need identical column names in the same order in every part.
 
+## 10. Ask the Engine reads this graph (AE00+)
+- `nfl ask` (the `ask-the-engine` skill) runs template and generated Cypher against this graph **read-only**, through `ask/guard.py`: a text check, `EXPLAIN` (type `r`, no procedure / file operator) and `execute_read` with a 10 s timeout. Its templates reuse the 16 `graph/queries/*.cypher` files as they are (`library:` in `config/ask_templates.yaml`, `$season` / `$week` bound to the graph's week from `graph_results.json`).
+- **The weekly graph stays exactly as the weekly build makes it (D107):** no index, node or property for Ask (names resolve in Python, "as of" comes from `graph_results.json`). Changing a library query's columns or constants also changes Ask's library templates and two golden questions (g033, g034 re-derive Q12's and Q6's rules): run `uv run pytest tests/ask` after any query change.
+- While the weekly lock is held (a weekly run, the injury update, Update play calling), Ask refuses: the graph may be mid-rebuild.
+- Graph quirks Ask's audit and held-out set found (2026-10-18): Super Bowl LIII (`2018_21_NE_LA`) has `APPEARED_IN.team_id` swapped for some players (Whitworth and Brian Allen tagged NE, Thuney LA); a second "Lamar Jackson" `Player` (a CB, `00-0036152`) exists, so name-matched references filter on position; `PLAYED_FOR` leaves out CUT roster rows that `rosters_weekly` keeps; the graph's starter (most dropbacks) and `games.home_qb_id` / `away_qb_id` disagree on a few starts. `THREW_TO` and `PLAYED_FOR` include playoffs and can't be split by game type (Ask's convention: playoffs count unless a question says regular season).
+- Play-level data goes into a **second database in its own container** (`nfl-neo4j-history`, compose profile `history`, AE02, D112), never into this one.
+
 ## Improving this skill
 Add new quirks, query patterns and performance findings here in the same commit as the change, and note it in the `PROGRESS.md` session log. Keep it procedural; the spec stays in documentation/05.

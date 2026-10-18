@@ -228,6 +228,18 @@ Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/particip
 - **Sampling noise share of a team-game's rate** (2019-2025; FTN 2022-2025): PROE 78%, deep shots 78%, screens 71%, play-action 46%, dropback rate (all plays) 35%, blitz 34%, heavy box 17%, motion 15%. The model card `playcall-forecast.md` has the full table.
 - **`spread_line` from the team's side:** + = favoured (home `spread_line`, away `-spread_line`); corr with the actual margin 0.45 per team-game.
 
+## Quirks found in AE00 (checked live 2026-10-17)
+
+- **Same-name players:** `players` has two "Justin Jefferson" rows (the WR and a 2026 LB), three "Mike Williams" WRs, two "Michael Thomas" (the Saints WR, a Bengals DB), and the graph two "Josh Allen" `Player` nodes (the QB and a 2014-2016 center). A scalar subquery on a name fails or picks the wrong one: filter on the name **and** position (or resolve to a GSIS id first: `ask/names.py`).
+- **Plays files differ in one column's type:** `plays/season=*.parquet` agree on all 372 columns except `goal_to_go` (int32 in some seasons, double in others); a reader that unifies schemas needs `pa.unify_schemas(..., promote_options="permissive")` (DuckDB's `union_by_name` handles it).
+- **Reading curated files while the curate step runs (Windows):** a reader that keeps a Parquet file open during a query (a DuckDB `read_parquet` view, a pyarrow dataset scan) makes `fsutil.replace_file` fail after its 2 s retry. Read what you need and close the file (Ask reads only the named columns, file by file: D136).
+- **`player_games` lags the games a little in season:** on Saturday 2026-10-17 it (and `plays`) ran through week 5; Thursday's week-6 game came with the next curate.
+- **`officials` changed its ids in 2023** (found 2026-10-18): 108 officials have two `official_id` values (Carl Cheffers is 3 through 2022, 279 from 2023), so counting games by id splits a referee's career (11 + 4 for his 15 Chiefs games since 2018). Group by `official_name`; the graph's `Official` names can differ in spelling from `games.referee` ("Ronald Torbert" vs "Ron Torbert").
+- **`games.home_coach` / `away_coach` are nflverse's** and wrong for three 2026 hires (it lists last season's coach), one misspelling and the 2025 interims; `config/head_coach_fixes.csv` corrects them. The graph build applies it (`graph/tables_extra.apply_coach_fixes`), and so does Ask's SQL sandbox when it loads `games`; anything else reading the curated `games` file gets nflverse's names.
+- **`plays`' `passer_player_name` / `receiver_player_name` / `rusher_player_name` are abbreviated** ("B.Thomas", "A.Rodgers"): for full names join `players` on `gsis_id = <role>_player_id` (or use `player_games.player_display_name`).
+- **NGS's week-0 rows (`is_season_total`) are NGS's own season figures**; rebuilding a season from the weekly rows (attempt-weighted) differs in the third decimal (Aaron Rodgers' 2025 time to throw: 2.592 vs 2.591).
+- **The graph's `PLAYED_FOR` includes practice-squad and reserve stints** (`status_last`, `roster_weeks`), so "teams he played for" counts run higher than game appearances; use `APPEARED_IN` for teams he played games for.
+
 ## Recipes
 
 **Open the data:**

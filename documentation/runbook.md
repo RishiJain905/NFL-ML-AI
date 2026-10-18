@@ -333,6 +333,13 @@ The play browser (a team page in Explore → Play calling → **Plays**) needs n
 3. `uv run nfl playcalling library --download --weeks 1-18`: the play labels (`supplementary_data.csv`) and each week's two tracking files (`input_2023_wNN.csv`, `output_2023_wNN.csv`), ~0.86 GB for the season (all 18 weeks are on D: since 2026-10-17), into `bdb\2026\raw\` (with `manifest.json`: sizes and sha256), then the library into `playcalling\bdb_library\` (about 10 plays per concept, five pass concepts, spread over the season one week at a time). `uv run nfl playcalling library` alone rebuilds the library from the files on disk; `--weeks 1-4` limits it to some weeks.
 4. **The terms (D134):** non-commercial, not redistributed. Never copy these files (or the library, or screenshots of a real clip) into the repo, W&B or anything published.
 
+### Ask the Engine: a question in plain English (AE00)
+
+`uv run nfl ask "Which receivers have the most 100-yard games against Dallas since 2020?"` answers from the curated tables or the weekly graph (read-only), with the rows, the route and the cost; add `--show-query` for the query, `--source sql|graph` to force a source. Guide: [ask-the-engine.md](guides/ask-the-engine.md).
+- It needs nothing scheduled: it reads whatever the last weekly run built. **While a weekly run (or the injury update, or Update play calling) holds the lock, it refuses** ("the weekly data refresh is running"): ask again when it's done.
+- After changing a prompt, a schema note, a template or the model: `uv run nfl ask eval --model <id> --effort <e>` (the golden set, ~8 minutes and ~$0.04 with the default model, a W&B `ask-eval` run), then `uv run nfl ask eval ... --set holdout` (the 40 held-out questions: the honest check) and `uv run nfl ask pick` to see it beside the comparison. Exit 3 = out of OpenRouter credits: refill, then re-run.
+- The model is `ask.llm.model` in `config/settings.yaml`: GPT-6 Luna at reasoning effort "low" (D138: ~92% of the main set over three runs, ~90% held-out over two, ~$0.0003 a question); the digest's `llm:` block is separate.
+
 ## What each alert means
 
 Alerts are printed at the end of a run (`ALERT (level) title: text`), stored in `run_summary.json` → `alerts`, and sent as W&B alerts (W&B's own email or app notifications, set in your W&B user settings; `ops.wandb_alerts`). None of them changes anything automatically.
@@ -383,6 +390,7 @@ Every alert's full text (with the numbers) is in that week's `run_summary.json` 
 | The play-calling tables (PC00) | `playcalling\<season>\`: `plays_enriched.parquet`, `team_game_tendencies.parquet`, `team_tendencies.parquet`, `league_tendencies.parquet`, `build.json`; a simulation in `playcalling\<season>\through_weekWW\` (all rebuildable: `nfl playcalling build`) |
 | The Big Data Bowl library (PC03) | `bdb\2026\raw\` (the downloaded BDB 2026 files + `manifest.json`), `playcalling\bdb_library\` (`index.json` + one JSON per real play, by concept); local only (D134) |
 | The play-calling forecast (PC02) | `playcalling\<season>\week<NN>\forecast.parquet` + `forecast.json` (a week's forecast), `playcalling\<season>\playcall_scoreboard.parquet` (the grades), backtests in `playcalling\backtests\<first>-<last>\`; the model `models\playcall\<version>\params.json` and the pointer `models\playcall\production.json` |
+| Ask the Engine's eval runs (AE00) | `ask\evals\<UTC stamp>_<model>_<effort>[_holdout][_smoke].json` (every golden question's route, outcome, time, cost, query and answer; read by `nfl ask pick`) |
 | The decision reviews (LD03) | `live\<season>\week<NN>\decision_review.parquet` + `.json` (a week), `live\<season>\season_review.parquet` + `.json` (the season through the newest reviewed week); the control room's own copies in `cache\control-room\live\review\` (safe to delete) |
 
 ## Scheduling later (not now)
