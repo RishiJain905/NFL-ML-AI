@@ -139,8 +139,8 @@ def clean(text: Any, paths: DataPaths | None, limit: int = 400) -> str | None:
     root = paths.root if paths is not None else _DATA_ROOT
     if root is not None:
         s = relative_paths(s, root)
-    # bounded (D142): `ops.summary.scrub` is quadratic on a long word, and an Ask cell can be
-    # megabytes; same masks, the input capped before scrubbing (nflengine.safetext)
+    # bounded (D142): `ops.summary.scrub` scrubs a whole text before capping it, and an Ask cell
+    # can be megabytes; same masks, the input capped before scrubbing (nflengine.safetext)
     return scrub_bounded(s, limit)
 
 

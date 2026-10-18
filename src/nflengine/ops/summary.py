@@ -38,8 +38,10 @@ from nflengine.ops.records import (
 _URL_QUERY = re.compile(r"(\b[a-z][\w+.-]*://[^\s?'\"<>]+)\?[^\s'\"<>]*", re.I)
 _URL_USERINFO = re.compile(r"(\b[a-z][\w+.-]*://)[^/@\s'\"<>]+@", re.I)
 _AUTH_SCHEME = re.compile(r"(?i)\b(bearer|basic|token)\s+[A-Za-z0-9._~+/=-]{6,}")
+# the name starts only at the start of a word run (`(?<![\w-])`): the same matches, but linear
+# instead of quadratic on a long word (20,000 characters took up to 28 s; AE01, D144)
 _SECRET_KV = re.compile(
-    r"(?i)([\"']?)([\w-]*(?:key|token|secret|password|passwd|auth|credential)[\w-]*)\1"
+    r"(?i)([\"']?)(?<![\w-])([\w-]*(?:key|token|secret|password|passwd|auth|credential)[\w-]*)\1"
     r"(\s*[=:]\s*)(\"[^\"]*\"|'[^']*'|[^\s,;}\]]+)"
 )
 # key-shaped strings with no name in front: OpenRouter / OpenAI style, W&B, GitHub, long hex

@@ -4,7 +4,8 @@
 scrubs the whole text before capping it, and its `name=value` rule (`[\\w-]*` before the
 key / token / password ... alternation) is retried from every start position, so it is
 quadratic on a long run of word characters: 10,000 characters took 3.5 s, 20,000 up to 28 s
-(the AE01 test worker). A legal Ask query (`SELECT repeat('a', 5000000)`, a `string_agg`)
+(the AE01 test worker; the original's rule is anchored too since D144, but it still scrubs the
+whole text before capping it). A legal Ask query (`SELECT repeat('a', 5000000)`, a `string_agg`)
 returns such a cell, and the control room cleans every cell, so one question could hold a
 request thread (and Ask's one-question lock) for hours. `ops/` is protected by the no-touch
 rule (D107), so the fix lives here and the Ask / control-room code calls it:

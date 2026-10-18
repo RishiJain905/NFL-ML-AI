@@ -377,4 +377,4 @@ The model is `ask.llm.model` in `config/settings.yaml` (with `reasoning_effort`,
 - Play-level relationships (who was on the field together) need the **history graph** (AE02); six-degrees connections come in AE03; a local fine-tuned model is AE04's experiment.
 - **Each question stands alone** on the page (§9.3): no follow-ups that lean on the previous answer.
 - The leaders' **Cypher templates** (`qb_receivers`, `passing_hubs`, `power_ratings_this_week`) still cut ties with `LIMIT`; the five SQL leader templates keep them (AE01).
-- `ops.summary.scrub` (the pipeline's own) is still quadratic on a very long word; the page and `nfl ask` use `safetext.scrub_bounded` (§9.4, D142), and the fix to the original waits for Rishi's OK (the no-touch rule, D107).
+- Cleaning text in bounded time: the page and `nfl ask` use `safetext.scrub_bounded` (§9.4, D142), which caps a text before scrubbing it; the pipeline's own `ops.summary.scrub` got the linear name=value rule too (D144, Rishi's OK) but still scrubs a whole text before capping it.
