@@ -900,7 +900,7 @@ class TestSources:
 
     def test_an_unknown_source_is_a_programming_error(self):
         with pytest.raises(ValueError):
-            Sources(sandbox=None, driver=FakeDriver()).run("history", "MATCH (n) RETURN n")
+            Sources(sandbox=None, driver=FakeDriver()).run("nosuch", "MATCH (n) RETURN n")
 
     def test_allow_maps_is_off_by_default_and_forwarded_when_asked(self):
         drv = FakeDriver(keys=["m"], records=[[{"a": 1}]])

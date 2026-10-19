@@ -7,7 +7,8 @@
 # define the answer (names, team codes, the number asked) and never tie at a LIMIT boundary.
 # A template question's reference is written independently of the template's query: it checks
 # the template too. Categories: template (a template fits), sql (free-form SQL), graph
-# (free-form Cypher, relationships), trick (clarify / refuse).
+# (free-form Cypher, relationships), history (free-form Cypher on the history graph, AE02),
+# trick (clarify / refuse).
 version: 1
 questions:
   # ==== template: a template in config/ask_templates.yaml fits =============================
@@ -1021,6 +1022,240 @@ questions:
       WITH q, sum(t.completions) AS catches WHERE catches > 0
       RETURN q.name AS quarterback
     notes: a running back's passers across PHI / PIT / TB
+
+  # ==== history: the history graph (AE02), every play since 2018 =============================
+  # Template questions (category template, source history) and free-form ones (category
+  # history). References are written independently of the templates (CAUGHT where a template
+  # counts p.complete; the side of ON_FIELD where a template computes the opponent). They need
+  # the history graph: an eval without it skips them (`run_eval`, config `skipped`).
+  - id: g117
+    question: "Who has caught the most 3rd-down passes from Patrick Mahomes since 2018?"
+    category: template
+    source: history
+    template: history_qb_receivers_situation
+    reference: |
+      MATCH (qb:Player {name: 'Patrick Mahomes'})-[:PASSED]->(p:Play)<-[:CAUGHT]-(r:Player)
+      WHERE qb.position = 'QB' AND p.down = 3
+      WITH r, count(p) AS catches
+      WITH collect({receiver: r.name, catches: catches}) AS rows, max(catches) AS top
+      UNWIND rows AS x
+      WITH x, top WHERE x.catches = top
+      RETURN x.receiver AS receiver, x.catches AS catches
+    notes: the phase file's example; every tied leader is the answer
+
+  - id: g118
+    question: "Who has the most red-zone targets for the Chiefs since 2023?"
+    category: template
+    source: history
+    template: history_team_targets_situation
+    reference: |
+      MATCH (r:Player)-[:TARGETED]->(p:Play {offense: 'KC'})
+      WHERE p.season >= 2023 AND p.yards_to_goal <= 20
+      WITH r, count(p) AS targets
+      WITH collect({receiver: r.name, targets: targets}) AS rows, max(targets) AS top
+      UNWIND rows AS x
+      WITH x, top WHERE x.targets = top
+      RETURN x.receiver AS receiver, x.targets AS targets
+    notes: red zone = 20 yards or less to go (playcalling/labels.py); playoffs count
+
+  - id: g119
+    question: "Who has the most carries on 3rd and short for the Eagles since 2021?"
+    category: template
+    source: history
+    template: history_team_carries_situation
+    reference: |
+      MATCH (r:Player)-[:RUSHED]->(p:Play {offense: 'PHI'})
+      WHERE p.season >= 2021 AND p.play_type = 'run' AND p.down = 3 AND p.distance <= 3
+      WITH r, count(p) AS carries
+      WITH collect({runner: r.name, carries: carries}) AS rows, max(carries) AS top
+      UNWIND rows AS x
+      WITH x, top WHERE x.carries = top
+      RETURN x.runner AS runner, x.carries AS carries
+    notes: short = 1-3 yards to go; carries are designed runs and scrambles (no kneels)
+
+  - id: g120
+    question: "How often did the Steelers blitz on 3rd and long in 2024?"
+    category: template
+    source: history
+    template: history_defense_pass_rush
+    reference: |
+      MATCH (p:Play {defense: 'PIT'})
+      WHERE p.season = 2024 AND p.down = 3 AND p.distance >= 7 AND p.dropback AND p.ftn
+        AND p.play_type IN ['pass', 'run'] AND NOT coalesce(p.two_point, false)
+        AND p.blitz IS NOT NULL
+      RETURN round(avg(CASE WHEN p.blitz THEN 1.0 ELSE 0.0 END), 3) AS blitz_rate
+    notes: >-
+      the phase file's example; a blitz is FTN's (1+ blitzer, charted dropbacks: the PC00
+      definition), 3rd and long = 7+ yards to go
+
+  - id: g121
+    question: "What was the 49ers' man versus zone split on defense in 2024?"
+    category: template
+    source: history
+    template: history_defense_coverage
+    reference: |
+      MATCH (p:Play {defense: 'SF'})
+      WHERE p.season = 2024 AND p.part AND p.dropback AND p.man_zone IS NOT NULL
+        AND p.play_type IN ['pass', 'run'] AND NOT coalesce(p.two_point, false)
+      WITH p.man_zone AS coverage, count(p) AS dropbacks
+      WITH collect({coverage: coverage, dropbacks: dropbacks}) AS rows, sum(dropbacks) AS total
+      UNWIND rows AS x
+      RETURN x.coverage AS coverage, round(toFloat(x.dropbacks) / total, 3) AS share
+    notes: participation (research) coverage on opponents' dropbacks
+
+  - id: g122
+    question: "How has Josh Allen done against man and zone coverage since 2023, in EPA per play?"
+    category: template
+    source: history
+    template: history_qb_vs_coverage
+    reference: |
+      MATCH (qb:Player {name: 'Josh Allen'})-[:PASSED]->(p:Play)
+      WHERE qb.position = 'QB' AND p.season >= 2023 AND p.part AND p.man_zone IS NOT NULL
+      RETURN p.man_zone AS coverage, round(avg(p.epa), 3) AS epa_per_play
+    notes: PASSED = pass attempts and sacks (scrambles are RUSHED); participation through 2025
+
+  - id: g123
+    question: "How many times was Justin Jefferson targeted on each route in 2024?"
+    category: template
+    source: history
+    template: history_receiver_routes
+    reference: |
+      MATCH (r:Player {name: 'Justin Jefferson'})-[:TARGETED]->(p:Play)
+      WHERE r.position = 'WR' AND p.season = 2024 AND p.target_route IS NOT NULL
+      RETURN p.target_route AS route, count(p) AS targets
+    notes: two Justin Jeffersons exist (the WR and a 2026 LB); the route of the targeted receiver
+
+  - id: g124
+    question: "How many snaps were Travis Kelce and Patrick Mahomes on the field together from 2018 to 2025?"
+    category: template
+    source: history
+    template: history_snaps_together
+    reference: |
+      MATCH (a:Player {name: 'Travis Kelce'})-[ra:ON_FIELD]->(p:Play)<-[rb:ON_FIELD]-(b:Player {name: 'Patrick Mahomes'})
+      WHERE ra.side = rb.side
+      RETURN count(p) AS snaps_together
+    notes: every snap participation lists (special teams and penalty snaps too), the template's default
+
+  - id: g125
+    question: "How many scrimmage snaps did Aaron Donald play against the Seahawks?"
+    category: template
+    source: history
+    template: history_player_snaps_vs_team
+    reference: |
+      MATCH (a:Player {name: 'Aaron Donald'})-[r:ON_FIELD]->(p:Play {offense: 'SEA'})
+      WHERE r.side = 'defense' AND p.play_type IN ['pass', 'run'] AND NOT coalesce(p.two_point, false)
+      RETURN count(p) AS snaps
+    notes: Donald played 2014-2023; the graph's participation starts in 2018
+
+  - id: g126
+    question: "What personnel groupings did the Rams use in 2024, and what share of their plays was each?"
+    category: template
+    source: history
+    template: history_team_personnel
+    reference: |
+      MATCH (p:Play {offense: 'LA'})
+      WHERE p.season = 2024 AND p.part AND p.personnel IS NOT NULL
+        AND p.play_type IN ['pass', 'run'] AND NOT coalesce(p.two_point, false)
+      WITH p.personnel AS personnel, count(p) AS plays
+      WITH collect({personnel: personnel, plays: plays}) AS rows, sum(plays) AS total
+      UNWIND rows AS x
+      RETURN x.personnel AS personnel, round(toFloat(x.plays) / total, 3) AS share
+    notes: scrimmage plays with participation's personnel
+
+  - id: g127
+    question: "How did the Ravens' drives end in 2024?"
+    category: template
+    source: history
+    template: history_drive_results
+    reference: |
+      MATCH (d:Drive)-[:IN_GAME]->(g:Game)
+      WHERE d.team = 'BAL' AND g.season = 2024
+      RETURN d.result AS result, count(d) AS drives
+    notes: nflverse fixed_drive_result; playoffs count
+
+  # ---- free-form questions over the history graph (no template fits) ----------------------
+  - id: g128
+    question: "Which defender has the most sacks on 3rd down since 2018?"
+    category: history
+    source: history
+    reference: |
+      MATCH (d:Player)-[s:SACKED]->(p:Play)
+      WHERE p.down = 3
+      WITH d, sum(CASE WHEN s.half THEN 0.5 ELSE 1.0 END) AS sacks
+      WITH collect({player: d.name, sacks: sacks}) AS rows, max(sacks) AS top
+      UNWIND rows AS x
+      WITH x, top WHERE x.sacks = top
+      RETURN x.player AS player, x.sacks AS sacks
+    notes: a shared sack counts a half (SACKED.half), as the box score does
+
+  - id: g129
+    question: "Which quarterback threw the most red-zone interceptions in the 2024 regular season?"
+    category: history
+    source: history
+    reference: |
+      MATCH (qb:Player)-[:PASSED]->(p:Play)
+      WHERE p.season = 2024 AND p.season_type = 'REG' AND p.yards_to_goal <= 20 AND p.interception
+      WITH qb, count(p) AS interceptions
+      WITH collect({qb: qb.name, interceptions: interceptions}) AS rows, max(interceptions) AS top
+      UNWIND rows AS x
+      WITH x, top WHERE x.interceptions = top
+      RETURN x.qb AS qb, x.interceptions AS interceptions
+    notes: regular season only (the question says so)
+
+  - id: g130
+    question: "Which offense ran the most 4th-down plays in 2024?"
+    category: history
+    source: history
+    reference: |
+      MATCH (p:Play)
+      WHERE p.season = 2024 AND p.down = 4 AND p.play_type IN ['pass', 'run']
+        AND NOT coalesce(p.two_point, false)
+      WITH p.offense AS team, count(p) AS plays
+      WITH collect({team: team, plays: plays}) AS rows, max(plays) AS top
+      UNWIND rows AS x
+      WITH x, top WHERE x.plays = top
+      RETURN x.team AS team, x.plays AS plays
+    notes: scrimmage plays only (no punts or field goals); playoffs count
+
+  - id: g131
+    question: "Who caught Josh Allen's longest touchdown pass since 2018?"
+    category: history
+    source: history
+    reference: |
+      MATCH (qb:Player {name: 'Josh Allen'})-[:PASSED]->(p:Play)<-[:CAUGHT]-(r:Player)
+      WHERE qb.position = 'QB' AND p.touchdown AND NOT coalesce(p.fumble_lost, false)
+      WITH r, p ORDER BY p.yards DESC
+      WITH collect({receiver: r.name, yards: p.yards}) AS rows
+      WITH rows, rows[0].yards AS top
+      UNWIND rows AS x
+      WITH x, top WHERE x.yards = top
+      RETURN x.receiver AS receiver, x.yards AS yards
+    notes: a touchdown pass is a completion with a touchdown that wasn't fumbled away
+
+  - id: g132
+    question: "Which teammate was on the field for the most snaps with Tom Brady from 2018 to 2022?"
+    category: history
+    source: history
+    reference: |
+      MATCH (b:Player {name: 'Tom Brady'})-[rb:ON_FIELD]->(p:Play)<-[ro:ON_FIELD]-(o:Player)
+      WHERE ro.side = rb.side
+      WITH o, count(p) AS snaps
+      WITH collect({player: o.name, snaps: snaps}) AS rows, max(snaps) AS top
+      UNWIND rows AS x
+      WITH x, top WHERE x.snaps = top
+      RETURN x.player AS player, x.snaps AS snaps
+    notes: Brady's snaps 2018-2022 (NE, TB) in participation; teammates = the same side
+
+  - id: g133
+    question: "What was the Chiefs' EPA per play on plays with pre-snap motion in 2024?"
+    category: history
+    source: history
+    reference: |
+      MATCH (p:Play {offense: 'KC'})
+      WHERE p.season = 2024 AND p.ftn AND p.motion
+        AND p.play_type IN ['pass', 'run'] AND NOT coalesce(p.two_point, false)
+      RETURN round(avg(p.epa), 3) AS epa_per_play
+    notes: "FTN charting (2022 on): motion on charted scrimmage plays"
 
   # ==== trick: clarify (ambiguous names) and refuse =========================================
   - id: g100

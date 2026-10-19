@@ -1,4 +1,4 @@
-# Neo4j for the knowledge graph (documentation/05 -> Runtime).
+# Neo4j for the knowledge graph (documentation/05 -> Runtime), and the history graph (AE02).
 # Values come from the repo env file (NFL_DATA_ROOT, NEO4J_PASSWORD, optional NEO4J_USER).
 # Database files, logs and downloaded plugins live on the D: data drive via bind mounts.
 services:
@@ -21,3 +21,37 @@ services:
       - ${NFL_DATA_ROOT}/neo4j/logs:/logs
       - ${NFL_DATA_ROOT}/neo4j/plugins:/plugins
     restart: unless-stopped
+
+  # The history graph (AE02, D112): every play since 2018 in its own database and container.
+  # Under the `history` profile, so `docker compose up -d` (what the weekly run calls) never
+  # starts it: `uv run nfl history-graph start` does (`docker compose --profile history up -d
+  # neo4j-history`). Never `docker compose down`: commands name this service explicitly.
+  # Built by `uv run nfl history-graph build` (a bulk import into a fresh store), appended to
+  # by `uv run nfl history-graph append`; Ask reads it read-only. Same password as the weekly
+  # graph (no new secret). Browser http://localhost:7475, Bolt bolt://localhost:7688.
+  neo4j-history:
+    image: neo4j:5.26-community
+    container_name: nfl-neo4j-history
+    profiles: ["history"]
+    ports:
+      - "7475:7474"   # Neo4j Browser
+      - "7688:7687"   # Bolt
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:?NEO4J_PASSWORD must be set}
+      NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
+      NEO4J_dbms_security_procedures_unrestricted: "gds.*,apoc.*"
+      NEO4J_dbms_security_procedures_allowlist: "gds.*,apoc.*"
+      # the Browser on 7475 must connect to this server's Bolt port, not the weekly graph's
+      NEO4J_server_bolt_advertised__address: "localhost:7688"
+      NEO4J_server_http_advertised__address: "localhost:7475"
+      NEO4J_dbms_usage__report_enabled: "false"   # no anonymous usage data to Neo4j
+      NEO4J_server_memory_heap_initial__size: 512M
+      NEO4J_server_memory_heap_max__size: 1G
+      NEO4J_server_memory_pagecache_size: 1500M
+    volumes:
+      - ${NFL_DATA_ROOT:?NFL_DATA_ROOT must be set}/neo4j-history/data:/data
+      - ${NFL_DATA_ROOT}/neo4j-history/logs:/logs
+      - ${NFL_DATA_ROOT}/neo4j-history/import:/import
+      - ${NFL_DATA_ROOT}/neo4j-history/plugins:/plugins
+    restart: "no"     # started when wanted, not with Docker
+    stop_grace_period: 2m   # Neo4j checkpoints on stop: the default 10 s ended in a SIGKILL

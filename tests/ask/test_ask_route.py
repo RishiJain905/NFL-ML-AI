@@ -307,6 +307,7 @@ class TestBeforeTheModel:
             "curated_week": 5,
             "current_season": 2026,
             "today": "2026-10-17",
+            "history_asof": None,
         }
         b = build(tmp_path, [], asof=None)
         assert b.eng.ask("").context["graph_asof"] is None

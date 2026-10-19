@@ -212,7 +212,8 @@ ask:                      # Ask the Engine (AE00+; documentation/ask-the-engine/
     retries: 1            # extra attempts on timeouts, 429 and 5xx
     temperature: 0.0
     openrouter: {sort: latency, allow_fallbacks: true}   # the fastest endpoint first
-  sources: {graph: true, sql: true, history: false}       # history: the AE02 graph
+  sources: {graph: true, sql: true, history: true}        # history: the AE02 graph (offered only
+                                                          # when built and its container answers)
   limits:
     rows: 500             # rows kept from any query
     timeout_s: 10         # per query, both sources
@@ -233,3 +234,17 @@ ask:                      # Ask the Engine (AE00+; documentation/ask-the-engine/
     - {model: openai/gpt-6-luna, efforts: [max], max_tokens: 16000, timeout_s: 120}
     - {model: deepseek/deepseek-v4.1-flash-1017, efforts: [max], max_tokens: 16000, timeout_s: 120}
     - {model: anthropic/claude-haiku-5.5, efforts: [max], max_tokens: 16000, timeout_s: 120}
+
+history_graph:            # the history graph (AE02+; documentation/ask-the-engine/AE02, D112, D145)
+  first_season: 2018      # plays from here; participation (research) 2018-2025, FTN 2022 on
+  bolt_uri: bolt://localhost:7688     # its own container (docker-compose.yml, profile `history`)
+  browser_url: http://localhost:7475
+  service: neo4j-history  # the compose service; commands always name it (never `down`)
+  container: nfl-neo4j-history
+  profile: history
+  # The bulk import writes into a Docker volume (on the SSD), then the finished store is
+  # copied to {NFL_DATA_ROOT}/neo4j-history/data: importing straight onto the HDD bind mount
+  # was ~12x slower (one season: 2 m 43 s vs 13.6 s for the relationship stage, AE02 probe)
+  staging_volume: nfl-neo4j-history-staging
+  start_timeout_s: 300    # wait for Bolt after a start
+  batch_size: 5000        # rows per UNWIND transaction (the weekly append)

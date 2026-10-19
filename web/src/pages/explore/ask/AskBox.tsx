@@ -5,11 +5,14 @@
 import { forwardRef, type FormEvent, type KeyboardEvent } from 'react';
 import type { AskExample, AskExamplesResponse, AskSource } from '../../../api/types';
 import { Segmented } from '../../../components/ui';
+import { historyPickable } from '../../../lib/ask';
 
 const SOURCES: { value: AskSource; label: string; title: string }[] = [
   { value: 'auto', label: 'Auto', title: 'The engine picks: the weekly graph or the curated tables' },
   { value: 'graph', label: 'Weekly graph', title: 'Only the weekly graph (Neo4j): connections, this week’s games, coaching trees' },
   { value: 'sql', label: 'Tables', title: 'Only the curated tables: stats, records, play-by-play' },
+  // AE02: shown only when the history graph is switched on and built
+  { value: 'history', label: 'History graph', title: 'Only the history graph: every play since 2018, who was on the field, coverages, routes, blitzes, drives' },
 ];
 
 function ExampleText({ e }: { e: AskExample }) {
@@ -40,6 +43,9 @@ export const AskBox = forwardRef<
   const over = n > max;
   const canAsk = !running && !over && question.trim().length > 0;
   const gDown = examples ? ['down', 'config_problem'].includes(examples.sources.graph.status) : false;
+  const history = examples?.sources.history;
+  const hNote = history?.status === 'down' ? 'not running' : history?.status === 'busy' ? 'rebuilding' : null;
+  const sources = SOURCES.filter((s) => s.value !== 'history' || historyPickable(examples));
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (canAsk) onAsk();
@@ -73,12 +79,16 @@ export const AskBox = forwardRef<
           <span className="eyebrow">Source</span>
           <Segmented
             label="Source"
-            options={SOURCES.map((s) => ({
+            options={sources.map((s) => ({
               ...s,
               label:
                 s.value === 'graph' && gDown ? (
                   <>
                     {s.label} <span className="muted">(down)</span>
+                  </>
+                ) : s.value === 'history' && hNote ? (
+                  <>
+                    {s.label} <span className="muted">({hNote})</span>
                   </>
                 ) : (
                   s.label

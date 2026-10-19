@@ -71,6 +71,13 @@ class DataPaths:
         return self.root / "neo4j" / "plugins"
 
     @property
+    def neo4j_history(self) -> Path:
+        """The history graph (AE02): its own Neo4j container's `data/`, `logs/`, `import/`
+        (the bulk import's CSVs) and `plugins/`, plus `build.json` and `append.json`. Never the
+        weekly graph's `neo4j/` folder."""
+        return self.root / "neo4j-history"
+
+    @property
     def wandb(self) -> Path:
         return self.root / "wandb"
 

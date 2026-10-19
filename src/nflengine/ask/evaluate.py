@@ -1,8 +1,9 @@
 """The golden set and `nfl ask eval` (AE00; W&B job type `ask-eval`).
 
 **The golden set** (`config/ask_golden.yaml`, `version: 1`): 60-100 questions, each with
-`id`, `question`, `category` (template | sql | graph | trick), `expect` (answer | refuse |
-clarify; default answer) and, for an answer, its `source` and a hand-written, checked
+`id`, `question`, `category` (template | sql | graph | history | trick), `expect` (answer |
+refuse | clarify; default answer) and, for an answer, its `source` (sql | graph | history, AE02)
+and a hand-written, checked
 `reference` query (+ optional `params`). `template` names the template a good router should
 pick; `choices` lists the values a clarify question must offer. The reference is run **on the
 day's data** at every eval, so the set doesn't go stale; `$asof_season`, `$asof_week` (the
@@ -57,7 +58,8 @@ STORED_ROWS = 200  # rows of each result kept in the eval file (for `rescore`)
 # 3: a same-named column stands only for its namesake (Sol, AE00); 4: a one-item list equals
 # its item (['LAC'] vs 'LAC', the 2026-10-18 audit)
 SCORER_VERSION = 4
-CATEGORIES = ("template", "sql", "graph", "trick")
+CATEGORIES = ("template", "sql", "graph", "history", "trick")  # history: AE02
+ANSWER_SOURCES = ("sql", "graph", "history")
 EXPECTS = ("answer", "refuse", "clarify")
 RESERVED = ("asof_season", "asof_week", "current_season")
 # D137's bounds: still reported (`meets_bounds`, the table's "in bounds"), no longer part
@@ -103,7 +105,7 @@ def load_golden(path: Path | None = None, templates: dict | None = None) -> list
             raise ValueError(f"{where}: category must be {CATEGORIES}, expect {EXPECTS}")
         source, ref = q.get("source"), q.get("reference")
         if expect == "answer":
-            if source not in ("sql", "graph") or not str(ref or "").strip():
+            if source not in ANSWER_SOURCES or not str(ref or "").strip():
                 raise ValueError(f"{where}: an answer question needs source and reference")
         elif ref:
             raise ValueError(f"{where}: a {expect} question has no reference")
@@ -496,6 +498,29 @@ def _slug(model: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", model.lower()).strip("-")[:60]
 
 
+def _history_available(engine) -> bool:
+    """Can the history graph answer for this run? Switched on and built (`_history_ready`),
+    not being rebuilt, and answering on Bolt, probed once; the answer is pinned on the
+    engine's sources for the run, so "auto" doesn't route to a stopped container either."""
+    ready = getattr(engine, "_history_ready", None)
+    sources = getattr(engine, "sources", None)
+    if ready is None or not ready():
+        return False
+    up = getattr(sources, "history_up", None)
+    if up is not None:
+        ok = bool(up())
+    else:
+        from nflengine.history_graph.client import history_up
+
+        ok = history_up()
+    busy = getattr(sources, "history_busy", None)
+    if ok and callable(busy) and busy():
+        ok = False
+    if sources is not None:
+        sources.history_up = lambda: ok
+    return ok
+
+
 def run_eval(
     model: str,
     *,
@@ -543,6 +568,13 @@ def run_eval(
     golden_path = GOLDEN_PATH if golden_set == "main" else HOLDOUT_PATH  # looked up now (tests)
     golden = load_golden(golden_path, templates=load_templates(current_season=engine.current))
     golden_total = len(golden)
+    # AE02: the history graph's questions need it (switched on, built, a driver, and answering:
+    # Sol, a stopped container used to count as available); without it they're skipped and
+    # named, the run counts as partial (never compared in `pick`), and "auto" leaves it out
+    skipped = [] if _history_available(engine) else [q.id for q in golden if q.source == "history"]
+    if skipped:
+        log(f"history graph not available: skipping {len(skipped)} ({', '.join(skipped)})")
+        golden = [q for q in golden if q.id not in set(skipped)]
     if ids:
         golden = [q for q in golden if q.id in set(ids)]
     if n:
@@ -563,6 +595,8 @@ def run_eval(
         "golden_questions": len(golden),
         "golden_total": golden_total,  # the whole set: a run of fewer is partial
         "partial": len(golden) < golden_total,
+        "skipped": skipped,  # AE02: history questions without the history graph
+        "history_asof": engine.context().get("history_asof"),
         "templates_hash": file_hash(TEMPLATES_PATH),
         "templates": len(engine.templates),
         "limits": cfg.limits.model_dump(),

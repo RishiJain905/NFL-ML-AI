@@ -190,11 +190,11 @@ class TestQuestion:
         assert "SELECT player, yards FROM t" in r.output and '{"season": 2023}' in r.output
 
     def test_a_bad_source_is_a_usage_error_before_anything_is_built(self, stub):
-        r = invoke("--source", "history", "Who leads?")
-        assert r.exit_code == 2 and "--source must be graph, sql or auto" in r.output
+        r = invoke("--source", "weekly", "Who leads?")
+        assert r.exit_code == 2 and "--source must be graph, sql, history or auto" in r.output
         assert stub.built == [] and stub.llm_calls == []
 
-    @pytest.mark.parametrize("source", ["graph", "sql", "auto"])
+    @pytest.mark.parametrize("source", ["graph", "sql", "history", "auto"])
     def test_the_sources(self, stub, source):
         invoke("--source", source, "Who leads?")
         assert stub.engine.asked == [("Who leads?", source)]

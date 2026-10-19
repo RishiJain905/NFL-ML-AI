@@ -1212,3 +1212,453 @@ templates:
         AND p.yards_gained IS NOT NULL AND ($team IS NULL OR p.posteam = $team)
       QUALIFY rank() OVER (ORDER BY p.yards_gained DESC) <= $limit
       ORDER BY p.yards_gained DESC, p.game_id, p.play_id
+
+  # ==== (4) The history graph (AE02): play-level questions since 2018 ======================
+  # Read through the same Cypher guard on the history graph's own driver (`source: history`).
+  # Every query starts from an index: Play(offense), Play(defense) or Player {player_id} (names
+  # resolve to GSIS ids first). Conventions (ask/schema.py HISTORY_SCHEMA): scrimmage plays =
+  # play_type pass / run without two-point tries; roles (PASSED, TARGETED, RUSHED ...) exist only
+  # on plays that count; situations use the play-calling buckets (playcalling/labels.py:
+  # distance 1-3 short, 4-6 medium, 7+ long; red zone = 20 yards or less; two-minute = the last
+  # 120 s of a half); playoffs count unless `games` says otherwise. Participation (formation,
+  # personnel, coverage, routes, pressure, pass rushers, ON_FIELD) is 2018-2025 only; FTN
+  # (blitz, play action) 2022 on. Leaders keep every row tied at the cut (`limit`): the cut's
+  # value is read from the sorted list and every row >= it is kept.
+  - id: history_qb_receivers_situation
+    source: history
+    title: A quarterback's receivers in a situation
+    description: >-
+      The receivers a quarterback targeted in a situation (3rd down, 3rd and long, the red zone
+      ...) over a range of seasons (2018 on): targets, catches, yards, touchdowns and first
+      downs, ranked by the measure asked about (catches for "caught the most passes from").
+    examples:
+      - Who has caught the most 3rd-down passes from Patrick Mahomes?
+      - Who does Josh Allen target most in the red zone since 2020?
+      - Who are Jalen Hurts' favorite targets on 3rd and long?
+    params:
+      player: {type: player, description: the quarterback}
+      situation:
+        type: choice
+        default: any
+        description: the down / distance / field situation
+        choices: &situations
+          any: "true"
+          1st_down: p.down = 1
+          2nd_down: p.down = 2
+          3rd_down: p.down = 3
+          4th_down: p.down = 4
+          3rd_short: p.down = 3 AND p.distance <= 3
+          3rd_medium: p.down = 3 AND p.distance >= 4 AND p.distance <= 6
+          3rd_long: p.down = 3 AND p.distance >= 7
+          3rd_or_4th: p.down >= 3
+          red_zone: p.yards_to_goal <= 20
+          goal_to_go: p.goal_to_go
+          two_minute: ((p.quarter = 2 AND p.seconds_left <= 1920) OR (p.quarter = 4 AND p.seconds_left <= 120))
+      first_season: {type: season, min: 2018, default: 2018}
+      last_season: {type: season, min: 2018, default: current}
+      games: &games
+        type: choice
+        default: all
+        description: all games (playoffs included) unless the question says regular season or playoffs
+        choices: {all: "true", regular: "p.season_type = 'REG'", playoffs: "p.season_type = 'POST'"}
+      rank_by: {type: choice, default: targets, description: the measure to rank receivers by,
+                choices: {targets: targets, catches: catches, yards: yards, tds: tds,
+                          first_downs: first_downs}}
+      limit: {type: int, min: 1, max: 50, default: 10}
+    query: |
+      MATCH (qb:Player {player_id: $player})-[:PASSED]->(p:Play)<-[:TARGETED]-(r:Player)
+      WHERE p.season >= $first_season AND p.season <= $last_season AND {situation} AND {games}
+      WITH qb, r, count(p) AS targets,
+           sum(CASE WHEN p.complete THEN 1 ELSE 0 END) AS catches,
+           sum(CASE WHEN p.complete THEN p.yards ELSE 0 END) AS yards,
+           sum(CASE WHEN p.complete AND p.touchdown AND NOT coalesce(p.fumble_lost, false)
+                    THEN 1 ELSE 0 END) AS tds,
+           sum(CASE WHEN p.complete AND p.first_down THEN 1 ELSE 0 END) AS first_downs
+      WITH qb.name AS qb, r.name AS receiver, r.position AS position, targets, catches, yards,
+           tds, first_downs, {rank_by} AS m
+      ORDER BY m DESC, receiver
+      WITH collect({qb: qb, receiver: receiver, position: position, targets: targets,
+                    catches: catches, yards: yards, tds: tds, first_downs: first_downs, m: m}) AS rows
+      WITH rows, [x IN rows | x.m][$limit - 1] AS cut
+      UNWIND rows AS x
+      WITH x WHERE cut IS NULL OR x.m >= cut
+      RETURN x.qb AS qb, x.receiver AS receiver, x.position AS position, x.targets AS targets,
+             x.catches AS catches, x.yards AS yards, x.tds AS tds, x.first_downs AS first_downs
+      ORDER BY {rank_by} DESC, receiver
+
+  - id: history_team_targets_situation
+    source: history
+    title: A team's targets in a situation
+    description: >-
+      Who a team's passes went to in a situation (the red zone by default; 3rd down, goal to go
+      ...) over a range of seasons (2018 on): targets, catches, yards, touchdowns, ranked by the
+      measure asked about.
+    examples:
+      - Who gets the most red-zone targets for the Chiefs since 2023?
+      - Who did the Lions throw to most on 3rd down in 2024?
+      - Which Bills receiver has the most goal-to-go catches since 2018?
+    params:
+      team: {type: team, description: the offense}
+      situation: {type: choice, default: red_zone, description: the down / distance / field situation,
+                  choices: *situations}
+      first_season: {type: season, min: 2018, default: 2018}
+      last_season: {type: season, min: 2018, default: current}
+      games: *games
+      rank_by: {type: choice, default: targets, description: the measure to rank receivers by,
+                choices: {targets: targets, catches: catches, yards: yards, tds: tds}}
+      limit: {type: int, min: 1, max: 50, default: 10}
+    query: |
+      MATCH (p:Play {offense: $team})<-[:TARGETED]-(r:Player)
+      WHERE p.season >= $first_season AND p.season <= $last_season AND {situation} AND {games}
+      WITH r, count(p) AS targets,
+           sum(CASE WHEN p.complete THEN 1 ELSE 0 END) AS catches,
+           sum(CASE WHEN p.complete THEN p.yards ELSE 0 END) AS yards,
+           sum(CASE WHEN p.complete AND p.touchdown AND NOT coalesce(p.fumble_lost, false)
+                    THEN 1 ELSE 0 END) AS tds
+      WITH r.name AS receiver, r.position AS position, targets, catches, yards, tds,
+           {rank_by} AS m
+      ORDER BY m DESC, receiver
+      WITH collect({receiver: receiver, position: position, targets: targets, catches: catches,
+                    yards: yards, tds: tds, m: m}) AS rows
+      WITH rows, [x IN rows | x.m][$limit - 1] AS cut
+      UNWIND rows AS x
+      WITH x WHERE cut IS NULL OR x.m >= cut
+      RETURN $team AS team, x.receiver AS receiver, x.position AS position,
+             x.targets AS targets, x.catches AS catches, x.yards AS yards, x.tds AS tds
+      ORDER BY {rank_by} DESC, receiver
+
+  - id: history_team_carries_situation
+    source: history
+    title: A team's ball carriers in a situation
+    description: >-
+      Who carried the ball for a team in a situation (3rd and short by default; 4th down, goal
+      to go, the red zone ...) over a range of seasons (2018 on): carries (designed runs and
+      scrambles, no kneels), yards, first downs, touchdowns and success rate.
+    examples:
+      - Who gets the ball on 3rd and short for the Eagles?
+      - Who has the most goal-to-go carries for the Ravens since 2020?
+      - Which 49ers runner has the most 4th-down conversions since 2018?
+    params:
+      team: {type: team, description: the offense}
+      situation: {type: choice, default: 3rd_short, description: the down / distance / field situation,
+                  choices: *situations}
+      first_season: {type: season, min: 2018, default: 2018}
+      last_season: {type: season, min: 2018, default: current}
+      games: *games
+      rank_by: {type: choice, default: carries, description: the measure to rank runners by,
+                choices: {carries: carries, yards: yards, first_downs: first_downs, tds: tds}}
+      limit: {type: int, min: 1, max: 50, default: 10}
+    query: |
+      MATCH (p:Play {offense: $team})<-[:RUSHED]-(r:Player)
+      WHERE p.play_type = 'run' AND p.season >= $first_season AND p.season <= $last_season
+        AND {situation} AND {games}
+      WITH r, count(p) AS carries, sum(p.yards) AS yards,
+           sum(CASE WHEN p.first_down THEN 1 ELSE 0 END) AS first_downs,
+           sum(CASE WHEN p.touchdown AND NOT coalesce(p.fumble_lost, false) THEN 1 ELSE 0 END)
+             AS tds,
+           avg(CASE WHEN p.success THEN 1.0 ELSE 0.0 END) AS success_rate
+      WITH r.name AS runner, r.position AS position, carries, yards, first_downs, tds,
+           success_rate, {rank_by} AS m
+      ORDER BY m DESC, runner
+      WITH collect({runner: runner, position: position, carries: carries, yards: yards,
+                    first_downs: first_downs, tds: tds, success_rate: success_rate, m: m}) AS rows
+      WITH rows, [x IN rows | x.m][$limit - 1] AS cut
+      UNWIND rows AS x
+      WITH x WHERE cut IS NULL OR x.m >= cut
+      RETURN $team AS team, x.runner AS runner, x.position AS position, x.carries AS carries,
+             x.yards AS yards, x.first_downs AS first_downs, x.tds AS tds,
+             round(x.success_rate, 3) AS success_rate
+      ORDER BY {rank_by} DESC, runner
+
+  - id: history_defense_pass_rush
+    source: history
+    title: How often a defense blitzes, sends 5+ or gets pressure
+    description: >-
+      A defense's pass rush on opponents' dropbacks in a situation (3rd and long, any ...) over
+      a range of seasons: the blitz rate (FTN's 1+ blitzer, charted dropbacks, 2022 on), the
+      rate of 5+ pass rushers (participation 2018-2025, FTN's rusher count after) and the
+      pressure rate (participation, 2018-2025), each over the dropbacks that have it; one row
+      in all, or one per season.
+    examples:
+      - How often do the Steelers blitz on 3rd and long since 2018?
+      - What's the Ravens' pressure rate on 3rd down each season?
+      - How often did the Eagles send five or more rushers in 2024?
+    params:
+      team: {type: team, description: the defense}
+      situation: {type: choice, default: any, description: the down / distance / field situation,
+                  choices: *situations}
+      first_season: {type: season, min: 2018, default: 2018}
+      last_season: {type: season, min: 2018, default: current}
+      games: *games
+      by:
+        type: choice
+        default: total
+        description: one row for the whole range, or one row per season
+        choices:
+          total: toString($first_season) + '-' + toString($last_season)
+          season: toString(p.season)
+    query: |
+      MATCH (p:Play {defense: $team})
+      WHERE p.season >= $first_season AND p.season <= $last_season AND p.dropback
+        AND p.play_type IN ['pass', 'run'] AND NOT coalesce(p.two_point, false)
+        AND {situation} AND {games}
+      WITH {by} AS seasons, count(p) AS dropbacks,
+           sum(CASE WHEN p.ftn AND p.blitz IS NOT NULL THEN 1 ELSE 0 END) AS ftn_dropbacks,
+           sum(CASE WHEN p.ftn AND p.blitz THEN 1 ELSE 0 END) AS blitzes,
+           sum(CASE WHEN coalesce(p.part_rushers, CASE WHEN p.ftn THEN p.rushers END) IS NOT NULL
+                    THEN 1 ELSE 0 END) AS rusher_dropbacks,
+           sum(CASE WHEN coalesce(p.part_rushers, CASE WHEN p.ftn THEN p.rushers END) >= 5
+                    THEN 1 ELSE 0 END) AS five_plus,
+           sum(CASE WHEN p.part AND p.pressure IS NOT NULL THEN 1 ELSE 0 END) AS pressure_dropbacks,
+           sum(CASE WHEN p.part AND p.pressure THEN 1 ELSE 0 END) AS pressures
+      RETURN $team AS defense, seasons, dropbacks,
+             CASE WHEN ftn_dropbacks > 0 THEN round(toFloat(blitzes) / ftn_dropbacks, 3) END
+               AS blitz_rate,
+             ftn_dropbacks,
+             CASE WHEN rusher_dropbacks > 0 THEN round(toFloat(five_plus) / rusher_dropbacks, 3) END
+               AS five_plus_rushers_rate,
+             CASE WHEN pressure_dropbacks > 0
+               THEN round(toFloat(pressures) / pressure_dropbacks, 3) END AS pressure_rate
+      ORDER BY seasons
+
+  - id: history_defense_coverage
+    source: history
+    title: A defense's coverage mix
+    description: >-
+      The coverages a defense played on opponents' dropbacks in a situation (participation,
+      2018-2025): plays, share and EPA allowed per dropback for each coverage shell (cover_1,
+      cover_3 ...), man vs zone, or personnel package (base / nickel / dime).
+    examples:
+      - What coverages do the 49ers play on 3rd and long?
+      - How often did the Chiefs play man coverage in 2024?
+      - How often are the Bills in nickel since 2022?
+    params:
+      team: {type: team, description: the defense}
+      field:
+        type: choice
+        default: coverage
+        description: coverage shells, man vs zone, or personnel packages
+        choices: {coverage: p.coverage, man_zone: p.man_zone, package: p.def_package}
+      situation: {type: choice, default: any, description: the down / distance / field situation,
+                  choices: *situations}
+      first_season: {type: season, min: 2018, max: 2025, default: 2018}
+      last_season: {type: season, min: 2018, max: 2025, default: 2025}
+      games: *games
+    query: |
+      MATCH (p:Play {defense: $team})
+      WHERE p.season >= $first_season AND p.season <= $last_season AND p.part AND p.dropback
+        AND p.play_type IN ['pass', 'run'] AND NOT coalesce(p.two_point, false)
+        AND {field} IS NOT NULL AND {situation} AND {games}
+      WITH {field} AS look, count(p) AS dropbacks, avg(p.epa) AS epa
+      WITH collect({look: look, dropbacks: dropbacks, epa: epa}) AS rows, sum(dropbacks) AS total
+      UNWIND rows AS x
+      RETURN $team AS defense, x.look AS coverage, x.dropbacks AS dropbacks,
+             round(toFloat(x.dropbacks) / total, 3) AS share,
+             round(x.epa, 3) AS epa_allowed_per_dropback
+      ORDER BY dropbacks DESC, coverage
+
+  - id: history_qb_vs_coverage
+    source: history
+    title: A quarterback against each coverage
+    description: >-
+      A quarterback's passing (attempts and sacks; scrambles aren't passes) by the defense's
+      coverage (participation, 2018-2025): man vs zone, or the coverage shell, with completion
+      rate, sacks, interceptions and EPA per pass play.
+    examples:
+      - How does Josh Allen do against man coverage?
+      - How did Patrick Mahomes play against Cover 2 since 2020?
+      - What's Lamar Jackson's EPA against zone in 2024?
+    params:
+      player: {type: player, description: the quarterback}
+      field:
+        type: choice
+        default: man_zone
+        description: man vs zone, or the coverage shell
+        choices: {man_zone: p.man_zone, coverage: p.coverage}
+      situation: {type: choice, default: any, description: the down / distance / field situation,
+                  choices: *situations}
+      first_season: {type: season, min: 2018, max: 2025, default: 2018}
+      last_season: {type: season, min: 2018, max: 2025, default: 2025}
+      games: *games
+    query: |
+      MATCH (qb:Player {player_id: $player})-[:PASSED]->(p:Play)
+      WHERE p.season >= $first_season AND p.season <= $last_season AND p.part
+        AND {field} IS NOT NULL AND {situation} AND {games}
+      WITH qb.name AS qb, {field} AS coverage, count(p) AS pass_plays,
+           sum(CASE WHEN p.pass_attempt THEN 1 ELSE 0 END) AS attempts,
+           sum(CASE WHEN p.complete THEN 1 ELSE 0 END) AS completions,
+           sum(CASE WHEN p.sack THEN 1 ELSE 0 END) AS sacks,
+           sum(CASE WHEN p.interception THEN 1 ELSE 0 END) AS interceptions,
+           avg(p.epa) AS epa
+      RETURN qb, coverage, pass_plays, attempts, completions,
+             CASE WHEN attempts > 0 THEN round(toFloat(completions) / attempts, 3) END
+               AS completion_rate,
+             sacks, interceptions, round(epa, 3) AS epa_per_play
+      ORDER BY pass_plays DESC, coverage
+
+  - id: history_receiver_routes
+    source: history
+    title: A receiver's targets by route
+    description: >-
+      The routes a receiver was targeted on (participation's route of the targeted receiver,
+      2018-2025; the names changed in 2023 with the FTN era): targets, share, catches, yards
+      and EPA per target.
+    examples:
+      - What routes does Justin Jefferson get targeted on most?
+      - How does Travis Kelce do on each route since 2023?
+      - What routes was Tyreek Hill targeted on in 2024?
+    params:
+      player: {type: player, description: the receiver}
+      situation: {type: choice, default: any, description: the down / distance / field situation,
+                  choices: *situations}
+      first_season: {type: season, min: 2018, max: 2025, default: 2018}
+      last_season: {type: season, min: 2018, max: 2025, default: 2025}
+      games: *games
+    query: |
+      MATCH (r:Player {player_id: $player})-[:TARGETED]->(p:Play)
+      WHERE p.season >= $first_season AND p.season <= $last_season AND p.part
+        AND p.target_route IS NOT NULL AND {situation} AND {games}
+      WITH r.name AS receiver, p.target_route AS route, count(p) AS targets,
+           sum(CASE WHEN p.complete THEN 1 ELSE 0 END) AS catches,
+           sum(CASE WHEN p.complete THEN p.yards ELSE 0 END) AS yards, avg(p.epa) AS epa
+      WITH receiver, collect({route: route, targets: targets, catches: catches, yards: yards,
+                              epa: epa}) AS rows, sum(targets) AS total
+      UNWIND rows AS x
+      RETURN receiver, x.route AS route, x.targets AS targets,
+             round(toFloat(x.targets) / total, 3) AS share, x.catches AS catches,
+             x.yards AS yards, round(x.epa, 3) AS epa_per_target
+      ORDER BY targets DESC, route
+
+  - id: history_snaps_together
+    source: history
+    title: Snaps two players shared on the field
+    description: >-
+      How many snaps two players were on the field together (the same side) and against each
+      other (participation, 2018-2025), with the games and seasons; every snap participation
+      lists (special teams and penalty snaps included) unless `snaps` is scrimmage.
+    examples:
+      - How many snaps were Travis Kelce and Patrick Mahomes on the field together?
+      - How many snaps did Aaron Donald and Jalen Ramsey share?
+      - How many plays did Justin Jefferson face Jaire Alexander?
+    params:
+      player: {type: player}
+      other: {type: player, description: the second player}
+      snaps:
+        type: choice
+        default: all
+        description: every snap, or scrimmage plays only (passes and runs)
+        choices:
+          all: "true"
+          scrimmage: p.play_type IN ['pass', 'run'] AND NOT coalesce(p.two_point, false)
+      first_season: {type: season, min: 2018, max: 2025, default: 2018}
+      last_season: {type: season, min: 2018, max: 2025, default: 2025}
+      games: *games
+    query: |
+      MATCH (a:Player {player_id: $player})-[ra:ON_FIELD]->(p:Play)<-[rb:ON_FIELD]-(b:Player {player_id: $other})
+      WHERE p.season >= $first_season AND p.season <= $last_season AND {snaps} AND {games}
+      RETURN a.name AS player, b.name AS other,
+             sum(CASE WHEN ra.side = rb.side THEN 1 ELSE 0 END) AS snaps_together,
+             sum(CASE WHEN ra.side <> rb.side THEN 1 ELSE 0 END) AS snaps_against,
+             count(DISTINCT p.game_id) AS games, min(p.season) AS first_season,
+             max(p.season) AS last_season
+
+  - id: history_player_snaps_vs_team
+    source: history
+    title: A player's snaps against a team
+    description: >-
+      How many snaps a player was on the field against one team (participation, 2018-2025),
+      with the games and seasons; scrimmage plays only by default, or every snap.
+    examples:
+      - How many snaps has Aaron Donald played against the Seahawks?
+      - How many plays has Travis Kelce played against the Raiders since 2018?
+    params:
+      player: {type: player}
+      team: {type: team, description: the opponent}
+      snaps:
+        type: choice
+        default: scrimmage
+        description: scrimmage plays only (passes and runs), or every snap
+        choices:
+          all: "true"
+          scrimmage: p.play_type IN ['pass', 'run'] AND NOT coalesce(p.two_point, false)
+      first_season: {type: season, min: 2018, max: 2025, default: 2018}
+      last_season: {type: season, min: 2018, max: 2025, default: 2025}
+      games: *games
+    query: |
+      MATCH (a:Player {player_id: $player})-[r:ON_FIELD]->(p:Play)
+      WHERE (p.offense = $team OR p.defense = $team) AND p.season >= $first_season
+        AND p.season <= $last_season AND {snaps} AND {games}
+      WITH a, p, CASE WHEN r.side = 'offense' THEN p.defense ELSE p.offense END AS opponent
+      WHERE opponent = $team
+      RETURN a.name AS player, opponent, count(p) AS snaps, count(DISTINCT p.game_id) AS games,
+             min(p.season) AS first_season, max(p.season) AS last_season
+
+  - id: history_team_personnel
+    source: history
+    title: A team's personnel groupings or formations
+    description: >-
+      How often an offense used each personnel grouping ("11" = 1 back, 1 tight end) or
+      formation on scrimmage plays in a situation (participation, 2018-2025; formation names
+      changed in 2023), with the share, the dropback rate and EPA per play.
+    examples:
+      - How often do the Rams use 11 personnel?
+      - What formations did the 49ers use on 3rd down in 2024?
+      - What personnel do the Eagles use in the red zone since 2022?
+    params:
+      team: {type: team, description: the offense}
+      field:
+        type: choice
+        default: personnel
+        description: personnel groupings or formations
+        choices: {personnel: p.personnel, formation: p.formation}
+      situation: {type: choice, default: any, description: the down / distance / field situation,
+                  choices: *situations}
+      first_season: {type: season, min: 2018, max: 2025, default: 2018}
+      last_season: {type: season, min: 2018, max: 2025, default: 2025}
+      games: *games
+    query: |
+      MATCH (p:Play {offense: $team})
+      WHERE p.season >= $first_season AND p.season <= $last_season AND p.part
+        AND p.play_type IN ['pass', 'run'] AND NOT coalesce(p.two_point, false)
+        AND {field} IS NOT NULL AND {situation} AND {games}
+      WITH {field} AS look, count(p) AS plays,
+           sum(CASE WHEN p.dropback THEN 1 ELSE 0 END) AS dropbacks, avg(p.epa) AS epa
+      WITH collect({look: look, plays: plays, dropbacks: dropbacks, epa: epa}) AS rows,
+           sum(plays) AS total
+      UNWIND rows AS x
+      RETURN $team AS team, x.look AS grouping, x.plays AS plays,
+             round(toFloat(x.plays) / total, 3) AS share,
+             round(toFloat(x.dropbacks) / x.plays, 3) AS dropback_rate,
+             round(x.epa, 3) AS epa_per_play
+      ORDER BY plays DESC, grouping
+
+  - id: history_drive_results
+    source: history
+    title: How a team's drives ended
+    description: >-
+      How a team's offensive drives ended (Touchdown, Field goal, Punt, Turnover ...) over a
+      range of seasons (2018 on): drives and share for each result.
+    examples:
+      - How often do the Ravens' drives end in a touchdown since 2019?
+      - How did the Jets' drives end in 2023?
+    params:
+      team: {type: team, description: the offense}
+      first_season: {type: season, min: 2018, default: 2018}
+      last_season: {type: season, min: 2018, default: current}
+      games:
+        type: choice
+        default: all
+        description: all games (playoffs included) unless the question says regular season or playoffs
+        choices:
+          all: "true"
+          regular: "EXISTS { MATCH (d)-[:IN_GAME]->(g:Game) WHERE g.game_type = 'REG' }"
+          playoffs: "EXISTS { MATCH (d)-[:IN_GAME]->(g:Game) WHERE g.game_type <> 'REG' }"
+    query: |
+      MATCH (d:Drive {team: $team})
+      WHERE d.season >= $first_season AND d.season <= $last_season AND {games}
+      WITH d.result AS result, count(d) AS drives
+      WITH collect({result: result, drives: drives}) AS rows, sum(drives) AS total
+      UNWIND rows AS x
+      RETURN $team AS team, x.result AS result, x.drives AS drives,
+             round(toFloat(x.drives) / total, 3) AS share
+      ORDER BY drives DESC, result

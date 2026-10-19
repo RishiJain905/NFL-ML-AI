@@ -25,6 +25,12 @@ choice must be one the engine offered, or a value that resolves to exactly one e
 graph that doesn't answer (`source.down`) stops the question at once with a fixed sentence,
 like the weekly lock; `refresh(paths)` re-reads today's date, the graph's week, the curated
 dates and the names for a process that holds the engine for days.
+
+AE02 (the history graph, D145): a third source, `history` (every play since 2018, read through
+the same Cypher guard on its own driver). It's offered only when `ask.sources.history` is on, a
+history driver exists, the graph has a build (`history_graph.state.history_asof`) and the app's
+check doesn't say it's down; a history query that finds the graph down (`source.history_down`)
+or being rebuilt (`source.history_busy`) stops the question at once, like `source.down`.
 """
 
 from __future__ import annotations
@@ -43,11 +49,13 @@ from nflengine.ask.config import AskConfig, ask_config
 from nflengine.ask.guard import QueryFailed, QueryResult, Refused, Sources
 from nflengine.ask.llm import AskLLM, AskLLMError, OutOfCredits
 from nflengine.ask.names import Match, Mention, NameIndex, Resolution, ambiguous, norm
-from nflengine.ask.schema import graph_schema, sql_schema
+from nflengine.ask.schema import graph_schema, history_schema, sql_schema
 from nflengine.ask.templates import Rendered, Template, TemplateError, load_templates, render
 
 PROMPT_DIR = Path(__file__).resolve().parent / "prompts"
 REFUSE_REASONS = ("write", "no_data", "out_of_range", "not_nfl")
+SOURCES = ("sql", "graph", "history")
+LANGUAGE = {"sql": "DuckDB SQL", "graph": "Neo4j Cypher", "history": "Neo4j Cypher"}
 
 # a request to change data, at the start of the question ("please delete ...", "can you drop")
 _WRITE_INTENT = re.compile(
@@ -72,10 +80,24 @@ FIXED = {
     "busy": "The weekly data refresh is running: ask again when it's done.",
     "graph_down": "The weekly graph (Neo4j) isn't answering right now, and this question needs "
     "it. Questions about the tables still work.",
+    # AE02: the history graph
+    "history_down": "The history graph isn't running, and this question needs it: start it with "
+    "`uv run nfl history-graph start`. Questions about the weekly graph and the tables still "
+    "work.",
+    "history_busy": "The history graph is being rebuilt or appended to, or the last build or "
+    "append didn't finish (`uv run nfl history-graph status` says which): ask again when it's "
+    "done.",
+    "history_none": "The history graph hasn't been built yet: build it with "
+    "`uv run nfl history-graph build`.",
 }
 # guard rules that stop a question at once, whatever round it's in: the data is being rebuilt
 # (the weekly lock) or the graph doesn't answer (Neo4j down); neither is the query's fault
-_STOP_RULES = {"source.busy": "busy", "source.down": "graph_down"}
+_STOP_RULES = {
+    "source.busy": "busy",
+    "source.down": "graph_down",
+    "source.history_down": "history_down",  # AE02
+    "source.history_busy": "history_busy",
+}
 PICK_KINDS = ("team", "player", "coach")
 
 
@@ -131,7 +153,12 @@ def prompt_hash() -> str:
     h = hashlib.sha256()
     for name in ("route.md", "generate.md", "answer.md"):
         h.update((PROMPT_DIR / name).read_bytes().replace(b"\r\n", b"\n"))
-    notes = [schema.SQL_RULES, schema.GRAPH_SCHEMA, json.dumps(schema.TABLE_NOTES, sort_keys=True)]
+    notes = [
+        schema.SQL_RULES,
+        schema.GRAPH_SCHEMA,
+        json.dumps(schema.TABLE_NOTES, sort_keys=True),
+        schema.HISTORY_SCHEMA,  # AE02
+    ]
     h.update("\n".join(notes).encode("utf-8"))
     return h.hexdigest()[:12]
 
@@ -154,6 +181,20 @@ def graph_asof(paths, season: int) -> tuple[int, int] | None:
         if d.get("status") == "ok" and d.get("mode") == "live":
             best = (int(d["season"]), int(d["week"]))
     return best
+
+
+def history_asof(paths, cfg: AskConfig | None = None) -> dict[str, Any] | None:
+    """What the history graph covers (`history_graph.state.history_asof`: a file read, no
+    Neo4j session), or None when `ask.sources.history` is off or there's no build."""
+    cfg = cfg or ask_config()
+    if not cfg.sources.get("history", False):
+        return None
+    from nflengine.history_graph.state import history_asof as read_asof
+
+    try:
+        return read_asof(paths)
+    except (OSError, ValueError, KeyError, TypeError):  # a build file mid-write
+        return None
 
 
 def curated_through(paths, season: int) -> tuple[str | None, int | None]:
@@ -193,6 +234,7 @@ class AskEngine:
         asof: tuple[int, int] | None,
         curated: tuple[str | None, int | None] = (None, None),
         today: dt.date | None = None,
+        history: dict[str, Any] | None = None,
     ):
         self.llm = llm
         self.sources = sources
@@ -203,6 +245,7 @@ class AskEngine:
         self.asof = asof
         self.curated = curated
         self.today = today or dt.date.today()
+        self.history = history  # AE02: `history_asof` (None: off or not built)
         # the last question's model calls, also when it raised (OutOfCredits): the app's error
         # card shows what was spent before the failure (AE01, the test worker)
         self.last_calls: list[dict[str, Any]] = []
@@ -224,6 +267,7 @@ class AskEngine:
             current_season=season,
             asof=graph_asof(paths, season),
             curated=curated_through(paths, season),
+            history=history_asof(paths, cfg),
         )
 
     def close(self) -> None:
@@ -238,6 +282,7 @@ class AskEngine:
         self.asof = graph_asof(paths, self.current)
         self.curated = curated_through(paths, self.current)
         self.names = NameIndex.load(paths.curated, self.current)
+        self.history = history_asof(paths, self.cfg)
 
     # ---- context ------------------------------------------------------------------------------
 
@@ -249,6 +294,7 @@ class AskEngine:
             "curated_week": week,
             "current_season": self.current,
             "today": self.today.isoformat(),
+            "history_asof": self.history,
         }
 
     def _graph_text(self) -> str:
@@ -265,15 +311,34 @@ class AskEngine:
             bits.append(f"rebuilt {str(run_at)[:10]}")
         return "Curated data: " + ", ".join(bits) if bits else "Curated data"
 
+    def _history_ready(self) -> bool:
+        """The history graph can be offered: switched on, a driver, a build."""
+        return (
+            bool(self.sources.enabled.get("history", False))
+            and getattr(self.sources, "history_driver", None) is not None
+            and bool(self.history)
+        )
+
     def _allowed(self, source: str) -> list[str]:
         on = [s for s in ("sql", "graph") if self.sources.enabled.get(s, True)]
-        if source in ("sql", "graph"):
+        if self._history_ready():
+            on.append("history")
+        if source in SOURCES:
             return [s for s in on if s == source]
         if self.sources.driver is None or not self.asof:
             on = [s for s in on if s != "graph"]
         if self.sources.sandbox is None:
             on = [s for s in on if s != "sql"]
+        up = getattr(self.sources, "history_up", None)
+        if "history" in on and up is not None and not up():
+            # the container is started only when wanted: while the app's check says it's down,
+            # "auto" doesn't offer it (choosing it on the page says how to start it)
+            on.remove("history")
         return on
+
+    def _history_text(self) -> str:
+        h = self.history or {}
+        return str(h.get("label") or "history graph")
 
     # ---- prompts ------------------------------------------------------------------------------
 
@@ -284,10 +349,30 @@ class AskEngine:
         if "graph" in allowed and not self.asof:
             temps = [t for t in temps if not t.asof]
         rule = f"Only this source may be used: {allowed[0]}.\n" if len(allowed) == 1 else ""
+        history_line, history_generate, history_when = "", "", ""
+        if "history" in allowed:  # AE02: only when the history graph can answer
+            history_line = (
+                f"- history: the history graph (Neo4j), {self._history_text()}: every play "
+                "2018 on with its drive and game; who passed, rushed, was targeted, caught, "
+                "tackled, sacked or intercepted on each play; the players on the field 2018-2025 "
+                "(participation: formation, personnel, coverage, man / zone, routes, pressure, "
+                "pass rushers); FTN charting 2022 on (play action, blitzes, motion). Best for "
+                "play-level questions: situations (3rd and long, the red zone), snaps together, "
+                "who was on the field, coverages, routes, formations and blitzes since 2018, "
+                "drives.\n"
+            )
+            history_generate = ' or {"action": "generate", "source": "history"}'
+            history_when = (
+                " history for play-level questions the templates don't cover (situations, "
+                "who was on the field, coverages, routes, blitzes, drives)."
+            )
         system = _fill(
             (PROMPT_DIR / "route.md").read_text(encoding="utf-8"),
             curated=self._curated_text(),
             graph=self._graph_text(),
+            history_line=history_line,
+            history_generate=history_generate,
+            history_when=history_when,
             source_rule=rule,
             templates="\n".join(t.prompt_line() for t in temps) or "(none)",
             current=str(self.current),
@@ -320,6 +405,8 @@ class AskEngine:
         if source == "sql":
             cols = {t: self.sources.sandbox.columns(t) for t in self.sources.sandbox.tables()}
             schema = sql_schema(question, cols)
+        elif source == "history":
+            schema = history_schema(self.history)
         else:
             schema = graph_schema() + f"\nThe graph is {self._graph_text()}."
         system = _fill(
@@ -329,7 +416,7 @@ class AskEngine:
         )
         names = "\n".join(m.prompt_line() for m in mentions) or "(none found)"
         user = (
-            f"Source: {source} ({'DuckDB SQL' if source == 'sql' else 'Neo4j Cypher'})\n"
+            f"Source: {source} ({LANGUAGE.get(source, 'Neo4j Cypher')})\n"
             f"Today: {self.today.isoformat()}; current season {self.current}.\n"
             f"Question: {question}\nNames:\n{names}"
         )
@@ -421,9 +508,23 @@ class AskEngine:
             return self._refuse(res, "code", "write", FIXED["write"])
         allowed = self._allowed(source)
         if not allowed:
+            if (
+                source == "history"
+                and self.sources.enabled.get("history", False)
+                and getattr(self.sources, "history_driver", None) is not None
+                and not self.history
+            ):  # switched on, but never built
+                return self._refuse(res, "code", "source.history_none", FIXED["history_none"])
             return self._refuse(res, "code", "source.off", FIXED["source_off"])
         if self.sources.busy():  # the weekly run is rebuilding the data (D136)
             return self._refuse(res, "code", "source.busy", FIXED["busy"])
+        if allowed == ["history"]:  # asked of the history graph alone: no model call if it can't
+            up = getattr(self.sources, "history_up", None)
+            if up is not None and not up():
+                return self._refuse(res, "source", "source.history_down", FIXED["history_down"])
+            busy = getattr(self.sources, "history_busy", None)
+            if busy is not None and busy():
+                return self._refuse(res, "source", "source.history_busy", FIXED["history_busy"])
 
         t = time.monotonic()
         mentions = self._apply_picks(self.names.mentions(q), picks)

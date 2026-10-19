@@ -513,8 +513,13 @@ class TestSourceDown:
         assert res.refusal == {"by": "code", "rule": "source.busy", "message": FIXED["busy"]}
         assert b.llm.requests == []
 
-    def test_only_these_two_rules_stop_a_question(self):
-        assert _STOP_RULES == {"source.busy": "busy", "source.down": "graph_down"}
+    def test_only_these_rules_stop_a_question(self):
+        assert _STOP_RULES == {
+            "source.busy": "busy",
+            "source.down": "graph_down",
+            "source.history_down": "history_down",  # AE02
+            "source.history_busy": "history_busy",
+        }
         assert all(v in FIXED for v in _STOP_RULES.values())
         assert "tables still work" in FIXED["graph_down"]
 

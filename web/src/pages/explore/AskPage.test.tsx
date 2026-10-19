@@ -21,6 +21,9 @@ import {
   TRUNCATED,
   errorBody,
   examplesWith,
+  examplesWithHistory,
+  HISTORY_ANSWER,
+  HISTORY_DOWN,
 } from './askFixtures';
 import { SESSION_KEY, loadSession, saveSession, type SessionItem } from './ask/session';
 
@@ -277,7 +280,7 @@ describe('AskPage: banners and refused requests', () => {
   it.each([
     [409, 'busy', 'A question is already running: wait for its answer, then ask again.', 'Still finishing the last question.'],
     [429, 'rate_limited', "That's the limit of 10 questions a minute: wait 40 s, then ask again.", 'Too many questions in a minute.'],
-    [422, 'bad_request', 'Ask a question of 1-500 characters (source: auto, graph or sql; up to 5 picks from a which-one card).', 'That request wasn’t accepted.'],
+    [422, 'bad_request', 'Ask a question of 1-500 characters (source: auto, graph, sql or history; up to 5 picks from a which-one card).', 'That request wasn’t accepted.'],
   ])('shows a %i notice with the server’s message and keeps the page usable', async (status, code, message, title) => {
     let refuse = true;
     setup(() => (refuse ? withStatus(status, errorBody(code, message)) : ANSWERED));
@@ -416,5 +419,48 @@ describe('Sidebar: Explore', () => {
     const explore = await screen.findByRole('navigation', { name: 'Explore' });
     expect(within(explore).getAllByRole('link').map((l) => l.textContent)).toEqual(['Play calling', 'Ask the Engine']);
     expect(within(explore).getByRole('link', { name: 'Ask the Engine' })).toHaveAttribute('href', '/explore/ask');
+  });
+});
+
+describe('AskPage: the history graph (AE02)', () => {
+  it('has no History graph option while it is switched off or not built', async () => {
+    setup(ANSWERED);
+    await screen.findByText('More examples (2)');
+    expect(screen.queryByRole('button', { name: /History graph/ })).toBeNull();
+    expect(screen.queryByText(/history graph/i)).toBeNull();
+  });
+
+  it('has no History graph option before the first build', async () => {
+    setup(ANSWERED, examplesWithHistory({ status: 'none', label: null }));
+    await screen.findByText('More examples (3)');
+    expect(screen.queryByRole('button', { name: /^History graph/ })).toBeNull();
+    expect(screen.getByText('history graph · not built yet')).toBeInTheDocument();
+  });
+
+  it('offers the history graph when it is up, sends source history and labels the answer', async () => {
+    const { posts } = setup(HISTORY_ANSWER, examplesWithHistory());
+    expect(await screen.findByText('history graph 2018-2025 + 2026 week 5 · running')).toBeInTheDocument();
+    const more = screen.getByText('More examples (3)');
+    (more.closest('details') as HTMLDetailsElement).open = true;
+    expect(screen.getByRole('heading', { name: /The history graph/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Who has caught the most 3rd-down passes from Joe Example\?/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'History graph' }));
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await waitFor(() =>
+      expect(posts).toEqual([{ question: 'Who has caught the most 3rd-down passes from Joe Example?', source: 'history' }]),
+    );
+    const card = await screen.findByRole('article');
+    expect(within(card).getByRole('img', { name: 'Source: history graph 2018-2025 + 2026 week 5' })).toBeInTheDocument();
+    expect(within(card).getByText('Cypher')).toBeInTheDocument();
+  });
+
+  it('says how to start it when it is down', async () => {
+    setup(HISTORY_DOWN, examplesWithHistory({ status: 'down' }));
+    expect(await screen.findByText('history graph 2018-2025 + 2026 week 5 · not running')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'History graph (not running)' }));
+    await askIt(HISTORY_DOWN.question);
+    const card = await screen.findByRole('article');
+    expect(card).toHaveTextContent('Stopped: the history graph isn’t running');
+    expect(card).toHaveTextContent('History down');
   });
 });

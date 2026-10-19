@@ -7,6 +7,7 @@ export const EXAMPLES: AskExamplesResponse = {
   sources: {
     graph: { on: true, status: 'up', season: 2026, week: 6, label: 'weekly graph as of 2026 week 6' },
     sql: { on: true, status: 'up', season: 2026, week: 5, rebuilt: '2026-10-14', label: 'curated data through 2026 week 5' },
+    history: { on: false, status: 'off', first_season: null, through_season: null, season: null, week: null, label: null },
   },
   model: { name: 'vendor/test-model', label: 'test-model', effort: 'max', provider: 'openrouter', timeout_s: 120 },
   limits: { question_chars: 500, per_minute: 10, rows: 500, query_timeout_s: 10, corrections: 2 },
@@ -37,6 +38,31 @@ export const examplesWith = (over: Partial<AskExamplesResponse>, graph?: Partial
   ...EXAMPLES,
   ...over,
   sources: { ...EXAMPLES.sources, graph: { ...EXAMPLES.sources.graph, ...graph } },
+});
+
+// AE02: the history graph switched on and built (status up unless given)
+export const HISTORY_ON: AskExamplesResponse['sources']['history'] = {
+  on: true,
+  status: 'up',
+  first_season: 2018,
+  through_season: 2025,
+  season: 2026,
+  week: 5,
+  label: 'history graph 2018-2025 + 2026 week 5',
+};
+export const examplesWithHistory = (history?: Partial<AskExamplesResponse['sources']['history']>): AskExamplesResponse => ({
+  ...EXAMPLES,
+  sources: { ...EXAMPLES.sources, history: { ...HISTORY_ON, ...history } },
+  groups: [
+    ...EXAMPLES.groups,
+    {
+      source: 'history',
+      label: 'The history graph',
+      examples: [
+        { question: 'Who has caught the most 3rd-down passes from Joe Example?', template: 'history_qb_receivers_situation', title: "A quarterback's receivers in a situation", source: 'history', this_week: false },
+      ],
+    },
+  ],
 });
 
 const BASE: AskResponse = {
@@ -243,3 +269,32 @@ export const QUERY_FAILED = answer({
 });
 
 export const errorBody = (code: string, message: string) => ({ error: { code, message } });
+
+// AE02: an answer from the history graph, and a history question while its container is stopped
+export const HISTORY_ANSWER = answer({
+  question: 'Who has caught the most 3rd-down passes from Joe Example?',
+  answer: 'Sam Sample has caught the most 3rd-down passes from Joe Example: 41 of 60 targets.',
+  columns: ['qb', 'receiver', 'position', 'targets', 'catches'],
+  rows: [['Joe Example', 'Sam Sample', 'WR', 60, 41]],
+  row_count: 1,
+  query: 'MATCH (qb:Player {player_id: $player})-[:PASSED]->(p:Play)<-[:TARGETED]-(r:Player)\nRETURN r.name AS receiver',
+  params: [{ name: 'player', value: '00-0000001' }],
+  source: { kind: 'history', season: 2026, week: 5, through_season: 2025, label: 'history graph 2018-2025 + 2026 week 5' },
+  route_label: 'template: history_qb_receivers_situation',
+  template: { id: 'history_qb_receivers_situation', title: "A quarterback's receivers in a situation" },
+});
+
+export const HISTORY_DOWN = answer({
+  question: 'How many snaps did Sam Sample and Joe Example share?',
+  status: 'refused',
+  answer: 'The history graph is not running, and this question needs it.',
+  answer_kind: 'fixed',
+  ...noRows,
+  source: null,
+  route: 'refused',
+  route_label: 'refused',
+  template: null,
+  refusal: { by: 'source', rule: 'source.history_down', message: 'The history graph is not running, and this question needs it.' },
+  cost: 0,
+  llm: { model: 'test-model', calls: [], providers: [] },
+});

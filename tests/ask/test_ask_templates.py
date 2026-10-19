@@ -170,9 +170,9 @@ class TestLoad:
     def test_duplicate_ids(self, tmp_path):
         bad(tmp_path, tpl(), tpl(title="again"), match="duplicate id 'wins_by_team'")
 
-    @pytest.mark.parametrize("source", [None, "history", "SQL", "cypher"])
-    def test_source_must_be_sql_or_graph(self, tmp_path, source):
-        bad(tmp_path, tpl(source=source), match="source must be sql or graph")
+    @pytest.mark.parametrize("source", [None, "History", "SQL", "cypher"])
+    def test_source_must_be_sql_graph_or_history(self, tmp_path, source):
+        bad(tmp_path, tpl(source=source), match="source must be sql, graph or history")
 
     def test_no_query(self, tmp_path):
         bad(tmp_path, tpl(query=None), match="no query")
@@ -607,7 +607,7 @@ class TestRealLibrary:
         assert len(real) >= 40
         for t in real.values():
             assert t.examples and all(e.strip() for e in t.examples), t.id
-            assert t.source in ("sql", "graph") and t.title and t.description, t.id
+            assert t.source in ("sql", "graph", "history") and t.title and t.description, t.id
 
     def test_ids_are_well_formed_and_the_file_has_no_duplicates(self):
         data = yaml.safe_load(TEMPLATES_PATH.read_text(encoding="utf-8"))

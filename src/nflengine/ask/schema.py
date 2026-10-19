@@ -8,6 +8,9 @@ helps small models most (AE00 pitfall). So:
   with the question.
 - **Graph:** the weekly graph's labels and relationships with their properties and what they
   mean (from the `neo4j-graph` skill), always whole (it's short), plus the as-of rules.
+- **History** (AE02): the history graph's play-level schema (`history_graph/schema.py`) with
+  its conventions (roles only on plays that count, participation and FTN coverage, the
+  situations), always whole, plus what the build covers.
 """
 
 from __future__ import annotations
@@ -317,3 +320,98 @@ Relationships:
 
 def graph_schema() -> str:
     return GRAPH_SCHEMA
+
+
+# ---- the history graph (AE02) ---------------------------------------------------------------
+
+# from `history_graph/schema.py` (labels, keys, properties) and the play-calling definitions
+# (`playcalling/labels.py`: distance 1-3 short, 4-6 medium, 7+ long; red zone = 20 yards or less)
+HISTORY_SCHEMA = """\
+Neo4j 5 (Cypher), the HISTORY graph, READ ONLY: every play since 2018 with its drive and game,
+who did what on it, and (2018-2025) the players on the field. Return named properties
+(p.season AS season, r.name AS receiver), never whole nodes, relationships or paths. Use
+CALL (x) { ... } subqueries, EXISTS { }, COUNT { } as needed; no procedures.
+
+Conventions:
+- Start from an indexed match: (p:Play {offense: 'KC'}), (p:Play {defense: 'KC'}),
+  (pl:Player {player_id: '00-0033873'}) (the "Names" list gives the id) or Play season/week.
+  Teams are codes (KC, BUF, LA = Rams, LAC, LV, WAS ...). Players by full name (Player.name).
+- Count every game, playoffs included, unless the question says "regular season" (Play
+  season_type 'REG') or "playoffs" ('POST'). Game.game_type: 'REG', 'WC', 'DIV', 'CON', 'SB'.
+- Real plays: p.play_type IN ['pass', 'run'] (a scramble and a sack are dropbacks:
+  p.dropback); drop p.play_type = 'no_play' (a penalty snap) and p.two_point for per-play counts
+  and rates. Role relationships (PASSED, RUSHED, TARGETED, CAUGHT, INTERCEPTED, SACKED,
+  TACKLED) exist only on plays that count, so count() of a role equals the box score.
+- PASSED includes sacks (p.sack): pass attempts are p.pass_attempt (spikes included, as the box
+  score counts them), completions p.complete.
+  Scrambles are RUSHED (p.scramble). A receiver's yards = p.yards on his completed targets.
+- p.touchdown is any touchdown on the play, the defense's return of a fumble or interception
+  too: an offensive touchdown is p.touchdown AND NOT p.interception AND NOT p.fumble_lost.
+- Situations: 3rd and long = p.down = 3 AND p.distance >= 7 (short 1-3, medium 4-6, long
+  7+); red zone = p.yards_to_goal <= 20; goal to go = p.goal_to_go; quarter 5 = overtime.
+- On a kickoff the offense is the receiving team. p.offense / p.defense equal the OFFENSE /
+  DEFENSE relationships (use the properties: they're indexed).
+- Participation (research data, seasons 2018-2025 only, only where p.part is true):
+  formation, personnel, extra_ol, def_package, coverage, man_zone, target_route, pressure,
+  time_to_throw, part_box, part_rushers and the ON_FIELD relationships. Never for the current
+  season. FTN charting (2022 on, only where p.ftn is true): play_action, screen, rpo, motion,
+  blitzers, rushers, blitz (1+ blitzer), box, qb_alignment, qb_sneak, drop (the targeted
+  receiver dropped it), throw_away, out_of_pocket (the QB). Rates over these use only the plays
+  that have them (p.part / p.ftn) in the denominator.
+- A blitz is FTN's (p.ftn AND p.blitz, 2022 on); before 2022 the closest measure is 5+ pass
+  rushers from participation (p.part_rushers >= 5). Say which one a rate uses.
+- Answer in the question's own shape: one row for a single answer (ORDER BY the measure,
+  LIMIT 1); one row per player / team for "which ..."; the top N for "top N".
+
+Nodes (key property first):
+- Season {season}
+- Team {team_id (code), name, nickname, conference, division}
+- Player {player_id (GSIS id), name (full name), position, position_group}
+- Coach {coach_id ('andy-reid'), name}
+- Game {game_id, season, week, game_type, gameday ('2024-09-05'), home_team, away_team,
+  home_score, away_score, overtime, stadium, roof, home_coach, away_coach}
+- Drive {drive_key, game_id, season, week, drive (1, 2 ... in the game), team (the offense),
+  result ('Touchdown', 'Field goal', 'Punt', 'Turnover' ...), plays, first_downs, quarter,
+  start, end, time_of_possession, scored}
+- Play {play_key, game_id, play_id, season, week, season_type ('REG' / 'POST'), quarter,
+  clock, seconds_left (in the game), order, offense, defense, down, distance, yards_to_goal,
+  goal_to_go, score_diff (offense minus defense), wp (offense win probability), play_type
+  ('pass', 'run', 'punt', 'field_goal', 'extra_point', 'kickoff', 'qb_kneel', 'qb_spike',
+  'no_play'), description, yards, epa, success, first_down, touchdown, penalty, two_point,
+  dropback, pass_attempt, sack, scramble, complete, interception, fumble_lost, air_yards,
+  yards_after_catch, pass_length ('short' / 'deep': 16+ air yards), pass_location / run_location
+  ('left' / 'middle' / 'right'), run_gap ('end' / 'tackle' / 'guard'), shotgun, no_huddle,
+  FTN: ftn, play_action, screen, rpo, motion, blitzers, rushers, blitz, box, qb_alignment
+  ('shotgun' / 'under_center' / 'pistol'), qb_sneak, drop, throw_away, out_of_pocket,
+  participation: part, formation, personnel ('11' = 1
+  back, 1 tight end), extra_ol, def_package ('base' / 'nickel' / 'dime'), coverage ('cover_0',
+  'cover_1', 'cover_2', 'cover_2_man', 'cover_3', 'cover_4', ...), man_zone ('man' / 'zone'),
+  target_route, pressure, time_to_throw, part_box, part_rushers}
+
+Relationships:
+- (Game)-[:IN_SEASON]->(Season); (Game)-[:HOME_TEAM]->(Team); (Game)-[:AWAY_TEAM]->(Team)
+- (Drive)-[:IN_GAME]->(Game); (Play)-[:IN_DRIVE]->(Drive)
+- (Play)-[:OFFENSE]->(Team); (Play)-[:DEFENSE]->(Team)
+- (Player)-[:PASSED|RUSHED|TARGETED|CAUGHT|INTERCEPTED]->(Play)
+- (Player)-[:SACKED {half (a shared sack)}]->(Play); (Player)-[:TACKLED {kind: 'solo' /
+  'assist' / 'with_assist'}]->(Play)
+- (Player)-[:ON_FIELD {side ('offense' / 'defense'), position}]->(Play): participation, every
+  snap (no_play and special teams too: on a kickoff the return unit is 'offense', on a punt or
+  field goal the kicking unit). A snap is any play participation lists (an ON_FIELD link),
+  penalty and special-teams snaps included; "on offense" / "on defense" match ON_FIELD.side.
+  Filter to scrimmage plays (p.play_type IN ['pass', 'run'] AND NOT p.two_point) only when
+  the question asks about plays, passes or runs rather than snaps
+- (Player)-[:PLAYED_FOR {season, weeks, first_week, last_week, games, status_last}]->(Team)
+- (Coach)-[:HEAD_COACH {season, games, first_week, last_week}]->(Team);
+  (Coach)-[:OFF_COORD|DEF_COORD|ST_COORD {season}]->(Team)"""
+
+
+def history_schema(asof: dict | None = None) -> str:
+    """The history graph's schema for the generation prompt, with what the build covers
+    (`history_graph.state.history_asof`)."""
+    if not asof:
+        return HISTORY_SCHEMA
+    cover = f"The graph covers {asof['first_season']}-{asof['through_season']}"
+    if asof.get("season"):
+        cover += f" plus {asof['season']} through week {asof['week']}"
+    return f"{HISTORY_SCHEMA}\n{cover} ({asof.get('label') or 'history graph'})."

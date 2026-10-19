@@ -2,7 +2,8 @@
 queries reach Neo4j and DuckDB. Every query Ask runs, a template's or a generated one, goes
 through `run_cypher` or `run_sql`; nothing else in `ask/` opens a session or a connection.
 
-**Cypher** (the weekly graph, Neo4j 5.26 Community: no read-only user, D112):
+**Cypher** (the weekly graph and, from AE02, the history graph: Neo4j 5.26 Community, no
+read-only user, D112; both go through the same checks, `run_cypher(..., source=)`):
 1. `check_cypher`: a skeleton of the text (strings emptied, comments dropped) must be one
    statement with no write clause (CREATE, MERGE, SET, DELETE, REMOVE, FOREACH, DROP ...), no
    procedure call (`CALL name(...)`; `CALL (x) { ... }` subqueries are fine), no `LOAD CSV`,
@@ -115,6 +116,12 @@ RULES: dict[str, str] = {
     "ask again when it's done.",
     "source.down": "The weekly graph (Neo4j) isn't answering right now: questions about the "
     "tables still work.",
+    # AE02: the history graph (its own container, started only when wanted)
+    "source.history_down": "The history graph isn't running: start it with "
+    "`uv run nfl history-graph start`.",
+    "source.history_busy": "The history graph is being rebuilt or appended to, or the last "
+    "build or append didn't finish (`uv run nfl history-graph status` says which): ask again "
+    "when it's done.",
     "result.size": f"The result is too big to show (a list over {MAX_CELL_ITEMS:,} items, a "
     f"text over {MAX_CELL_CHARS:,} characters, more than {MAX_RESULT_COLUMNS} columns, or too "
     "much in all): aggregate, filter or return fewer columns.",
@@ -152,7 +159,7 @@ class QueryFailed(Exception):
 
 @dataclass
 class QueryResult:
-    source: str  # "graph" | "sql"
+    source: str  # "graph" | "history" | "sql"
     query: str
     params: dict[str, Any]
     columns: list[str]
@@ -477,9 +484,11 @@ def explain_cypher(
     params: dict[str, Any] | None = None,
     database: str | None = None,
     timeout_s: float = 10.0,
+    down_rule: str = "source.down",
 ) -> None:
     """`EXPLAIN` the checked query in a READ session, timed out: query type `r`, no procedure
-    / file operator. Raises `Refused` or `QueryFailed`."""
+    / file operator. Raises `Refused` or `QueryFailed`; an unreachable server is `down_rule`
+    (the weekly graph's `source.down`, the history graph's `source.history_down`)."""
     from neo4j import Query
 
     try:
@@ -487,7 +496,7 @@ def explain_cypher(
             summary = s.run(Query("EXPLAIN " + query, timeout=timeout_s), params or {}).consume()
     except Exception as e:
         if _unreachable(e):
-            raise Refused("source.down") from None
+            raise Refused(down_rule) from None
         raise _neo4j_failed(e) from None
     if summary.query_type != "r":
         raise Refused("cypher.plan_not_read", _ident(summary.query_type))
@@ -505,15 +514,21 @@ def run_cypher(
     timeout_s: float = 10.0,
     cap: int = 500,
     allow_maps: bool = False,
+    source: str = "graph",
 ) -> QueryResult:
     """Check, EXPLAIN and run a Cypher query read-only, timed out and capped. `allow_maps`
-    lets query-built maps through (the library's templates only: see `_scalar`)."""
+    lets query-built maps through (the library's templates only: see `_scalar`). `source`
+    names the graph ("graph" = the weekly one, "history" = AE02's): it goes on the result, and
+    an unreachable history graph is `source.history_down`, not the weekly `source.down`."""
     from neo4j import unit_of_work
 
+    if source not in ("graph", "history"):
+        raise ValueError(f"unknown graph source {source!r}")
+    down_rule = "source.history_down" if source == "history" else "source.down"
     params = dict(params or {})
     t0 = time.monotonic()
     text = check_cypher(query)
-    explain_cypher(driver, text, params, database, timeout_s)
+    explain_cypher(driver, text, params, database, timeout_s, down_rule)
     t1 = time.monotonic()
     remaining = timeout_s - (t1 - t0)  # one deadline for the plan and the run (Sol, AE00)
     if remaining <= 0:
@@ -542,11 +557,11 @@ def run_cypher(
         raise
     except Exception as e:
         if _unreachable(e):
-            raise Refused("source.down") from None
+            raise Refused(down_rule) from None
         raise _neo4j_failed(e) from None
     t2 = time.monotonic()
     return QueryResult(
-        source="graph",
+        source=source,
         query=text,
         params=params,
         columns=_columns(keys),
@@ -1137,8 +1152,9 @@ def run_sql(
 
 @dataclass
 class Sources:
-    """What a question may read: the weekly graph's driver, the SQL sandbox, and the limits.
-    Built once per process (`Sources.open`) and shared by every question."""
+    """What a question may read: the weekly graph's driver, the SQL sandbox, the history
+    graph's driver (AE02, only when `ask.sources.history` is on), and the limits. Built once
+    per process (`Sources.open`) and shared by every question."""
 
     sandbox: SqlSandbox | None
     driver: Any | None
@@ -1150,6 +1166,28 @@ class Sources:
     # AE01: the control room's Neo4j check (`ServiceStatus`, every 30 s); False = down, so a
     # graph question stops at once instead of waiting on the driver's connection timeout
     graph_up: Callable[[], bool] | None = None
+    # AE02: the history graph (its own container on Bolt 7688; `history_graph.client`). Read
+    # through the same Cypher guard; `history_up` is the app's cached check (False = down, so a
+    # question stops at once), `history_lock` the history graph's own lock (a build or an
+    # append holds it: `history_graph.state.lock_path`)
+    history_driver: Any | None = None
+    history_up: Callable[[], bool] | None = None
+    history_lock: Path | None = None
+
+    def history_busy(self) -> bool:
+        """Is a history-graph build or append holding its lock? (The note first, then the
+        probe: the weekly lock's rule in `busy`.)"""
+        if self.history_lock is None:
+            return False
+        from nflengine.history_graph.state import unfinished_next_to
+        from nflengine.ops.lock import is_locked, read_holder
+
+        if unfinished_next_to(self.history_lock):  # the last build / append didn't finish (Sol)
+            return True
+        try:
+            return bool(read_holder(self.history_lock)) and is_locked(self.history_lock)
+        except OSError:
+            return False
 
     def busy(self) -> bool:
         """Is a weekly run (or an injury update, or Update play calling) holding the weekly
@@ -1188,6 +1226,16 @@ class Sources:
                 driver = get_driver(connection_timeout=5.0)
             except Exception:  # NEO4J_PASSWORD not set: graph questions fail soft
                 driver = None
+        history_driver, history_lock = None, None
+        if enabled.get("history", False):
+            from nflengine.history_graph.client import get_history_driver
+            from nflengine.history_graph.state import lock_path as history_lock_path
+
+            history_lock = history_lock_path(paths)
+            try:  # the driver connects lazily: a stopped container fails the first query
+                history_driver = get_history_driver(connection_timeout=5.0)
+            except Exception:  # NEO4J_PASSWORD not set: history questions fail soft
+                history_driver = None
         return cls(
             sandbox=sandbox,
             driver=driver,
@@ -1196,6 +1244,8 @@ class Sources:
             cap=cfg.limits.rows,
             enabled=enabled,
             lock_file=lock_path(paths.runs),
+            history_driver=history_driver,
+            history_lock=history_lock,
         )
 
     def run(
@@ -1206,7 +1256,8 @@ class Sources:
         *,
         allow_maps: bool = False,
     ) -> QueryResult:
-        """Run through the guard. `allow_maps` (graph only) is for library templates."""
+        """Run through the guard. `allow_maps` (graph only) is for library templates. The weekly
+        lock stops every source; the history graph also stops while its own lock is held."""
         if self.busy():
             raise Refused("source.busy")
         if source == "sql":
@@ -1227,9 +1278,27 @@ class Sources:
                 cap=self.cap,
                 allow_maps=allow_maps,
             )
+        if source == "history":
+            if self.history_driver is None or not self.enabled.get("history", False):
+                raise Refused("source.off", "history")
+            if self.history_up is not None and not self.history_up():
+                raise Refused("source.history_down")
+            if self.history_busy():
+                raise Refused("source.history_busy")
+            return run_cypher(
+                self.history_driver,
+                query,
+                params,
+                database=None,  # the history server's default database
+                timeout_s=self.timeout_s,
+                cap=self.cap,
+                allow_maps=allow_maps,
+                source="history",
+            )
         raise ValueError(f"unknown source {source!r}")
 
     def close(self) -> None:
-        if self.driver is not None:
-            with contextlib.suppress(Exception):
-                self.driver.close()
+        for d in (self.driver, self.history_driver):
+            if d is not None:
+                with contextlib.suppress(Exception):
+                    d.close()

@@ -128,7 +128,7 @@ class AskBody(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     question: str = Field(min_length=1, max_length=500)
-    source: str = Field("auto", pattern="^(auto|graph|sql)$")
+    source: str = Field("auto", pattern="^(auto|graph|sql|history)$")
     picks: list[AskPick] = Field(default_factory=list, max_length=5)
 
 

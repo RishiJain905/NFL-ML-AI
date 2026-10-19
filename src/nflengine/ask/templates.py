@@ -14,7 +14,8 @@ The YAML (`version: 1`):
 ```yaml
 templates:
   - id: hundred_yard_games_vs_team      # [a-z0-9_]+, unique
-    source: sql                         # sql (curated tables) | graph (the weekly graph)
+    source: sql                         # sql (curated tables) | graph (the weekly graph) |
+                                        # history (the history graph, AE02)
     title: 100-yard games against a team
     description: Players with the most games of N+ yards against one team.
     examples: ["Which receivers have the most 100-yard games against Dallas since 2020?"]
@@ -63,6 +64,8 @@ _ID = re.compile(r"[a-z0-9_]{1,64}")
 _PLACEHOLDER = re.compile(r"\{([a-z0-9_]+)\}")
 _GSIS = re.compile(r"00-\d{7}")
 TEXT_MAX = 60
+SOURCES = ("sql", "graph", "history")  # history: the AE02 history graph (Cypher)
+CYPHER_SOURCES = ("graph", "history")
 
 
 class TemplateError(ValueError):
@@ -127,7 +130,7 @@ class Param:
 @dataclass(frozen=True)
 class Template:
     id: str
-    source: Literal["sql", "graph"]
+    source: Literal["sql", "graph", "history"]
     title: str
     description: str
     query: str
@@ -245,8 +248,8 @@ def load_templates(
             raise ValueError(f"{where}: duplicate id {tid!r}")
         where = f"{path.name}: {tid}"
         source = t.get("source")
-        if source not in ("sql", "graph"):
-            raise ValueError(f"{where}: source must be sql or graph")
+        if source not in SOURCES:
+            raise ValueError(f"{where}: source must be sql, graph or history")
         constants = dict(t.get("constants") or {})
         library = t.get("library")
         if library:
@@ -258,7 +261,7 @@ def load_templates(
             query = str(t.get("query") or "")
         if not query.strip():
             raise ValueError(f"{where}: no query")
-        if source == "graph":  # comments can name {x} or $x without being slots (the library's)
+        if source in CYPHER_SOURCES:  # comments can name {x} or $x without being slots
             from nflengine.ask.guard import strip_cypher_comments
 
             query = strip_cypher_comments(query)

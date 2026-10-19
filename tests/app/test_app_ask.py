@@ -1557,7 +1557,9 @@ class TestExamples:
         r = rig.examples()
         assert r.status_code == 200
         b = r.json()
-        assert [f["template"] for f in b["featured"]] == list(FEATURED)
+        # the history graph is off here (AE02): its chip isn't shown
+        weekly_and_sql = [t for t in FEATURED if not t.startswith("history_")]
+        assert [f["template"] for f in b["featured"]] == weekly_and_sql
         real = load_templates(current_season=2026)
         for f in b["featured"]:
             t = real[f["template"]]

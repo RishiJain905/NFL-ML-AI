@@ -25,6 +25,11 @@ a file-less in-memory DuckDB), and the session's questions are kept in the brows
 The engine is built once (about 4 s: the name index), on the first question or in the
 background when the page asks for its examples, and `refresh()`ed before each question: the
 app runs for days and the weekly run moves the graph's week and the curated tables.
+
+AE02 (the history graph): a third source when `ask.sources.history` is on. Its container is
+started only when wanted, so its Bolt check (`HistoryCheck`) runs on a daemon thread at most
+every 30 s and a request only reads the last answer (a stopped container takes the 5 s connect
+timeout to say so); "down" keeps it out of "auto" and stops a history question at once.
 """
 
 from __future__ import annotations
@@ -62,21 +67,74 @@ FEATURED = (
     "season_leaders",
     "game_predictions_this_week",
     "head_to_head",
+    "history_qb_receivers_situation",  # AE02: shown only when the history graph can answer
 )
 
 ERRORS = {
     "busy": "A question is already running: wait for its answer, then ask again.",
     "rate_limited": "That's the limit of {n} a minute: wait {s} s, then ask again.",
     "too_big": "The request is too large: a question is up to 500 characters.",
-    "bad_request": "Ask a question of 1-500 characters (source: auto, graph or sql; up to 5 "
-    "picks from a which-one card).",
+    "bad_request": "Ask a question of 1-500 characters (source: auto, graph, sql or history; up "
+    "to 5 picks from a which-one card).",
     "unavailable": "Ask the Engine couldn't start ({reason}): check `uv run nfl doctor`.",
     "out_of_credits": "OpenRouter is out of credits: top up the account, then ask again.",
     "body_timeout": "The request took too long to arrive: ask again.",
     "failed": "Something went wrong answering that ({reason}): see the app's console.",
 }
-SOURCE_NAMES = {"graph": "weekly graph", "sql": "curated data"}
-LANGUAGES = {"graph": "cypher", "sql": "sql"}
+SOURCE_NAMES = {"graph": "weekly graph", "sql": "curated data", "history": "history graph"}
+LANGUAGES = {"graph": "cypher", "sql": "sql", "history": "cypher"}
+HISTORY_EVERY_S = 30.0  # the history graph's Bolt check, like the weekly graph's (status.py)
+
+
+def _default_history_ping() -> bool:
+    from nflengine.history_graph.client import history_up
+
+    return history_up(timeout=5.0)
+
+
+class HistoryCheck:
+    """Is the history graph answering on Bolt? (AE02) The last answer, refreshed at most every
+    `every_s` on a daemon thread, so no request waits on a stopped container's 5 s connect
+    timeout; "checking" until the first answer. `background=False` (tests) checks in line."""
+
+    def __init__(
+        self,
+        ping: Callable[[], bool] | None = None,
+        every_s: float = HISTORY_EVERY_S,
+        background: bool = True,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._ping = ping or _default_history_ping
+        self._every = every_s
+        self._background = background
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._state = "checking"
+        self._at: float | None = None
+        self._running = False
+
+    def _check(self) -> None:
+        try:
+            ok = bool(self._ping())
+        except Exception:  # noqa: BLE001 - never raises: an error means it isn't answering
+            ok = False
+        with self._lock:
+            self._state, self._at, self._running = ("up" if ok else "down"), self._clock(), False
+
+    def state(self) -> str:
+        """ "up" | "down" | "checking" (the last answer; a stale one starts a new check)."""
+        with self._lock:
+            stale = self._at is None or self._clock() - self._at >= self._every
+            start = stale and not self._running
+            if start:
+                self._running = True
+        if start:
+            if self._background:
+                threading.Thread(target=self._check, name="cr-ask-history", daemon=True).start()
+            else:
+                self._check()
+        with self._lock:
+            return self._state
 
 
 class _WeeklyLockHeld(Exception):
@@ -124,6 +182,7 @@ class AskService:
         window_s: float = WINDOW_S,
         background: bool = True,
         config: Any = None,
+        history_check: HistoryCheck | None = None,
     ) -> None:
         self._factory = engine_factory  # None: `_default_factory`, looked up when used
         self._clock = clock
@@ -139,6 +198,7 @@ class AskService:
         self._rate_lock = threading.Lock()
         self._warming = False
         self._last_sources: dict[str, Any] | None = None  # status() while the weekly lock is held
+        self._history = history_check or HistoryCheck(background=background)
 
     # ---- the engine ---------------------------------------------------------------------------
 
@@ -203,6 +263,38 @@ class AskService:
 
     # ---- the examples and the sources' status -------------------------------------------------
 
+    def _history_on(self) -> bool:
+        return bool(self._cfg().sources.get("history", False))
+
+    def history_status(self, paths: DataPaths) -> dict[str, Any]:
+        """The history graph's part of `status()` (AE02): on / off, built or not, answering or
+        not (the cached check), being rebuilt (its own lock), and what it covers."""
+        from nflengine.history_graph.state import history_asof, history_busy
+
+        on = self._history_on()
+        try:
+            asof = history_asof(paths) if on else None
+        except (OSError, ValueError, KeyError, TypeError):  # build.json mid-write
+            asof = None
+        if not on:
+            state = "off"
+        elif asof is None:
+            state = "none"
+        elif history_busy(paths):
+            state = "busy"
+        else:
+            state = self._history.state()
+        a = asof or {}
+        return {
+            "on": on,
+            "status": state,  # up | down | checking | busy | none (no build) | off
+            "first_season": a.get("first_season"),
+            "through_season": a.get("through_season"),
+            "season": a.get("season"),  # the appended current season, if any
+            "week": a.get("week"),
+            "label": a.get("label"),
+        }
+
     def status(self, paths: DataPaths, graph: dict[str, Any] | None) -> dict[str, Any]:
         """Which sources a question can use now, how fresh each is, the model, the limits."""
         from nflengine.ask.route import curated_through, graph_asof
@@ -231,6 +323,7 @@ class AskService:
                 if not graph_on
                 else ("none" if sources["graph"]["week"] is None else neo),
             },
+            "history": self.history_status(paths),  # AE02: its own files, not the weekly run's
         }
         return {
             "sources": sources,
@@ -280,6 +373,8 @@ class AskService:
         templates = load_templates(current_season=get_config().seasons.current)
         body = self.status(paths, graph)
         on = {s for s, v in body["sources"].items() if v["on"]}
+        if body["sources"]["history"]["status"] in ("none", "off"):
+            on.discard("history")  # switched on but never built: nothing to ask it yet
 
         def item(t: Any) -> dict[str, Any]:
             return {
@@ -293,7 +388,11 @@ class AskService:
         featured = [item(templates[t]) for t in FEATURED if t in templates]
         featured = [f for f in featured if f["source"] in on]
         groups = []
-        for source, label in (("graph", "The weekly graph"), ("sql", "The curated tables")):
+        for source, label in (
+            ("graph", "The weekly graph"),
+            ("sql", "The curated tables"),
+            ("history", "The history graph"),
+        ):
             if source not in on:
                 continue
             ts = [t for t in templates.values() if t.source == source and t.examples]
@@ -365,6 +464,9 @@ class AskService:
 
         state = (graph or {}).get("status")
         engine.sources.graph_up = lambda: state not in ("down", "config_problem")
+        if self._history_on():  # AE02: the cached check ("checking" counts as up)
+            history = self._history.state()
+            engine.sources.history_up = lambda: history != "down"
         asked = self._now()
         t0 = time.monotonic()
         if not engine.sources.busy():  # while the weekly run replaces the files, leave them be
@@ -474,6 +576,15 @@ def _route_label(res: Any) -> str | None:
 
 
 def _source_info(res: Any, engine: Any) -> dict[str, Any] | None:
+    if res.source == "history":  # AE02
+        h = getattr(engine, "history", None) or {}
+        return {
+            "kind": "history",
+            "season": h.get("season"),  # the appended current season (None without one)
+            "week": h.get("week"),
+            "through_season": h.get("through_season"),
+            "label": h.get("label") or "history graph",
+        }
     if res.source == "graph":
         asof = engine.asof
         return {

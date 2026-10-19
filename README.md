@@ -109,6 +109,15 @@ uv run nfl playcalling forecast --season 2026 --week 6    # PC02: each team's ne
 uv run nfl playcalling backtest --seasons 2019-2025       # PC02: walk-forward backtest vs four baselines (--promote: production)
 # guide: documentation/guides/play-calling.md
 
+uv run nfl ask "Who has caught the most 3rd-down passes from Patrick Mahomes?"   # AE00: a question in plain English (--source graph|sql|history|auto)
+uv run nfl ask eval                                       # AE00: the golden set with the configured model (--set holdout, --via api)
+# AE01: the page: uv run nfl app -> Explore -> Ask the Engine; guide: documentation/guides/ask-the-engine.md
+uv run nfl history-graph start                            # AE02: the history graph's own Neo4j (Browser http://localhost:7475, Bolt 7688); stop with `stop`
+uv run nfl history-graph build --through-season 2025      # AE02: every play since 2018, from scratch (~5 min; once a season, at the pre-season switch)
+uv run nfl history-graph append                           # AE02: the current season's new weeks (Tuesday, after the weekly run; a re-run writes nothing)
+uv run nfl history-graph status                           # AE02: container, last build / append, counts
+# guide: documentation/guides/history-graph.md
+
 uv run pytest                      # tests (integration tests excluded by default)
 uv run pytest -m integration       # Neo4j golden / load / performance tests (~10 min; rebuilds the graph)
 uv run ruff check .                # lint

@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, askQuestion, useAskExamples } from '../../api/client';
 import type { AskChoice, AskExamplesResponse, AskPick, AskRequest, AskSource } from '../../api/types';
 import { TipTarget } from '../../charts/TipTarget';
-import { GRAPH_STATUS, requestRefusedTitle } from '../../lib/ask';
+import { GRAPH_STATUS, HISTORY_STATUS, historyPickable, requestRefusedTitle } from '../../lib/ask';
 import { AnswerCard } from './ask/AnswerCard';
 import { AskBox } from './ask/AskBox';
 import { SessionList } from './ask/SessionList';
@@ -36,6 +36,9 @@ function StatusLine({ ex }: { ex: AskExamplesResponse }) {
   const gs = GRAPH_STATUS[g.status] ?? { tone: 'flat', label: g.status };
   const gLabel = g.on ? (g.label ?? 'weekly graph: not built') : 'weekly graph: off';
   const qLabel = q.on ? (q.label ?? 'curated data') : 'curated data: off';
+  const h = ex.sources.history;
+  const hs = h ? (HISTORY_STATUS[h.status] ?? { tone: 'flat', label: h.status }) : null;
+  const hLabel = h?.label ?? 'history graph';
   return (
     <div className="ask-status" aria-label="Sources and model">
       <TipTarget
@@ -57,6 +60,20 @@ function StatusLine({ ex }: { ex: AskExamplesResponse }) {
         <i className={`dot ${q.on && q.status === 'up' ? 'ok' : 'flat'}`} aria-hidden="true" />
         {qLabel}
       </TipTarget>
+      {h?.on && hs ? (
+        <TipTarget
+          lines={[
+            'The history graph (Neo4j, its own container)',
+            h.label ?? 'not built yet',
+            'Every play since 2018: who was on the field (2018-2025), coverages, routes, blitzes, drives',
+            h.status === 'down' ? 'Start it with `uv run nfl history-graph start`' : `History graph: ${hs.label}`,
+          ]}
+          label={`${hLabel}, ${hs.label}`}
+        >
+          <i className={`dot ${hs.tone}`} aria-hidden="true" />
+          {hLabel} · {hs.label}
+        </TipTarget>
+      ) : null}
       <TipTarget
         lines={[
           `The model: ${m.name ?? '—'}`,
@@ -221,6 +238,9 @@ export function AskPage() {
   // leaving the page stops waiting too
   useEffect(() => () => runRef.current?.controller.abort(), []);
 
+  // the history graph switched off or not built any more: ask with Auto
+  const picked: AskSource = ex && source === 'history' && !historyPickable(ex) ? 'auto' : source;
+
   const current = items.find((i) => i.id === shown) ?? null;
 
   const onPick = (choice: AskChoice, value: string) => {
@@ -251,11 +271,11 @@ export function AskPage() {
               ref={input}
               question={question}
               onQuestion={setQuestion}
-              source={source}
+              source={picked}
               onSource={setSource}
               max={max}
               running={!!running}
-              onAsk={() => void ask({ question, source })}
+              onAsk={() => void ask({ question, source: picked })}
               onExample={onExample}
               examples={ex}
               examplesState={examples.isLoading ? 'loading' : examples.isError && !ex ? 'error' : 'ok'}

@@ -57,6 +57,8 @@ def print_result(console: Console, res: Any, show_query: bool = False) -> None:
     ctx = res.context or {}
     if res.source == "graph" and ctx.get("graph_asof"):
         where = f"weekly graph as of {ctx['graph_asof']['season']} week {ctx['graph_asof']['week']}"
+    elif res.source == "history":
+        where = (ctx.get("history_asof") or {}).get("label") or "history graph"
     elif res.source == "sql":
         wk = ctx.get("curated_week")
         where = (

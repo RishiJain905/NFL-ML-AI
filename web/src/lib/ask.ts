@@ -136,6 +136,8 @@ export function refusedBy(a: AskResponse): string {
   if (r.by === 'source') {
     if (r.rule === 'source.busy') return 'Stopped: the weekly refresh started, so the data isn’t available';
     if (r.rule === 'source.down') return 'Stopped: the data source isn’t available (the graph is down)';
+    if (r.rule === 'source.history_down') return 'Stopped: the history graph isn’t running';
+    if (r.rule === 'source.history_busy') return 'Stopped: the history graph is being rebuilt';
     return 'Stopped: the data source isn’t available';
   }
   if (r.by === 'router') return 'Refused by the router (the model’s first step)';
@@ -149,6 +151,9 @@ const GLYPH: Record<string, string> = {
   not_nfl: 'NFL only',
   'source.down': 'Graph down',
   'source.busy': 'Refreshing',
+  'source.history_down': 'History down',
+  'source.history_busy': 'Rebuilding',
+  'source.history_none': 'Not built',
   no_data: 'Not in data',
   out_of_range: 'Out of range',
 };
@@ -194,3 +199,20 @@ export const GRAPH_STATUS: Record<string, { tone: 'ok' | 'err' | 'warn' | 'flat'
   none: { tone: 'warn', label: 'no graph built yet' },
   off: { tone: 'flat', label: 'switched off' },
 };
+
+// AE02: the history graph (its own container, started only when wanted: down is normal)
+export const HISTORY_STATUS: Record<string, { tone: 'ok' | 'err' | 'warn' | 'flat'; label: string }> = {
+  up: { tone: 'ok', label: 'running' },
+  down: { tone: 'flat', label: 'not running' },
+  checking: { tone: 'flat', label: 'checking' },
+  busy: { tone: 'warn', label: 'being rebuilt' },
+  none: { tone: 'warn', label: 'not built yet' },
+  off: { tone: 'flat', label: 'switched off' },
+};
+
+/** The history graph can be picked as a source: switched on and built (it may still be down:
+ * then a question says how to start it). */
+export function historyPickable(ex: AskExamplesResponse | undefined): boolean {
+  const h = ex?.sources.history;
+  return !!h && h.on && h.status !== 'none' && h.status !== 'off';
+}

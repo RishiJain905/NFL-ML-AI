@@ -1423,8 +1423,11 @@ export interface LiveSeasonReviewResponse {
 // time, ~10 a minute) and GET /api/ask/examples. Every string is cleaned on the server; rows are
 // scalar cells (numbers, text, dates as text, lists of them; a library template's map arrives as
 // one line of text). The session's questions are kept in the browser only (localStorage).
+// AE02 adds a third source, `history` (the history graph: every play since 2018, its own Neo4j
+// container), offered only when `ask.sources.history` is on and the graph is built.
 
-export type AskSource = 'auto' | 'graph' | 'sql';
+export type AskSource = 'auto' | 'graph' | 'sql' | 'history';
+export type AskDataSource = 'graph' | 'sql' | 'history';
 export type AskStatus = 'answered' | 'empty' | 'refused' | 'clarify' | 'error';
 export type AskRoute = 'template' | 'generated' | 'refused' | 'clarify' | 'none';
 export type AskCell = string | number | boolean | null | AskCell[];
@@ -1441,11 +1444,13 @@ export interface AskRequest {
 }
 
 export interface AskSourceInfo {
-  kind: 'graph' | 'sql';
-  season: number | null;
-  week: number | null; // graph: the week it's built as of; sql: the newest week with a final game
+  kind: AskDataSource;
+  season: number | null; // history: the appended current season (null without one)
+  week: number | null; // graph: the week it's built as of; sql: the newest week with a final game; history: the appended week
   rebuilt?: string | null; // sql: the curated tables' rebuild date (YYYY-MM-DD)
-  label: string; // "weekly graph as of 2026 week 6" | "curated data through 2026 week 5"
+  through_season?: number | null; // history: the last full season in the build
+  // "weekly graph as of 2026 week 6" | "curated data through 2026 week 5" | "history graph 2018-2025 + 2026 week 5"
+  label: string;
 }
 export interface AskChoice {
   text: string; // "Michael Thomas"
@@ -1472,7 +1477,7 @@ export interface AskResponse {
   row_count: number;
   truncated: boolean; // more rows existed than the cap
   query: string | null; // the exact query that ran (or the last one tried)
-  language: 'cypher' | 'sql' | null;
+  language: 'cypher' | 'sql' | null; // the history graph's queries are Cypher too
   params: { name: string; value: AskCell }[]; // the values bound to the query's $names
   source: AskSourceInfo | null;
   route: AskRoute;
@@ -1503,7 +1508,7 @@ export interface AskExample {
   question: string;
   template: string;
   title: string;
-  source: 'graph' | 'sql';
+  source: AskDataSource;
   this_week: boolean; // a weekly-graph template read as of the graph's week
 }
 export interface AskStatusInfo {
@@ -1523,6 +1528,16 @@ export interface AskStatusInfo {
       rebuilt: string | null;
       label: string | null;
     };
+    // AE02: the history graph. busy = being rebuilt or appended to; none = never built
+    history: {
+      on: boolean;
+      status: 'up' | 'down' | 'checking' | 'busy' | 'none' | 'off';
+      first_season: number | null;
+      through_season: number | null;
+      season: number | null; // the appended current season (null without one)
+      week: number | null;
+      label: string | null; // "history graph 2018-2025 + 2026 week 5"
+    };
   };
   model: { name: string | null; label: string | null; effort: string | null; provider: string; timeout_s: number };
   limits: { question_chars: number; per_minute: number; rows: number; query_timeout_s: number; corrections: number };
@@ -1530,7 +1545,7 @@ export interface AskStatusInfo {
 }
 export interface AskExamplesResponse extends AskStatusInfo {
   featured: AskExample[]; // the chips
-  groups: { source: 'graph' | 'sql'; label: string; examples: AskExample[] }[];
+  groups: { source: AskDataSource; label: string; examples: AskExample[] }[];
 }
 
 // ---- PC01: Play calling (documentation/play-calling/PC01-play-calling-pages.md) ------------

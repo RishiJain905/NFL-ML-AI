@@ -240,6 +240,15 @@ Research only (never live features): `{NFL_DATA_ROOT}/research/nflverse/particip
 - **NGS's week-0 rows (`is_season_total`) are NGS's own season figures**; rebuilding a season from the weekly rows (attempt-weighted) differs in the third decimal (Aaron Rodgers' 2025 time to throw: 2.592 vs 2.591).
 - **The graph's `PLAYED_FOR` includes practice-squad and reserve stints** (`status_last`, `roster_weeks`), so "teams he played for" counts run higher than game appearances; use `APPEARED_IN` for teams he played games for.
 
+## Quirks found in AE02 (checked live 2026-10-18)
+
+- **Timeouts are `no_play` rows without an offense** (`posteam` null, ~2,000 a season: "Timeout #1 by ATL at 03:03."); the rows without any `play_type` are game / quarter markers and two-minute warnings. "A play" = a `play_type` **and** a `posteam` (2018-2025: 377,937; the history graph's rule).
+- **Player ids on plays:** a scramble has a `rusher_player_id` and no `passer_player_id`; a sack has the passer (and `pass_attempt` 1); `no_play` rows carry no player ids. Box-score counts (targets, receptions, attempts, carries, sacks, solo tackles) come from plays that aren't `no_play` and aren't two-point tries.
+- **`rosters_weekly` has a whitespace `gsis_id`** (a 2025 GB practice-squad row): not null, so `is_not_null()` keeps it. Strip ids and treat blank as null before joining or keying on them (`history_graph.export.clean_id`).
+- **Participation's `play_id` type differs by season** (int32 in 2018, double from 2023): cast both sides before joining to `plays`. **Per-play positions, names and numbers** (`offense_positions`, `offense_names` ...) exist only from 2023 (FTN era); they line up one-to-one with the id lists and are sorted by position. 2016-2022 has only the id lists (and ~4,150 rows a season with empty lists, mostly kicks). 53 plays with listed players (2018-2025) aren't plays with a type and an offense.
+- **Drives:** `fixed_drive` is set on every play with a `play_type`; a drive's `posteam` changes inside it on 73 of 6,124 drives in 2024 (the kickoff belongs to the receiving team): take the first non-kickoff play's team. `fixed_drive_result` values: Touchdown, Field goal, Punt, Turnover, Turnover on downs, Missed field goal, End of half, Opp touchdown, Safety.
+- **The history graph** (`nfl-neo4j-history`, Bolt 7688; the `ask-the-engine` and `neo4j-graph` skills) holds every play 2018 on with these rules applied: prefer it for play-level "who was on the field" and situational counting questions.
+
 ## Recipes
 
 **Open the data:**

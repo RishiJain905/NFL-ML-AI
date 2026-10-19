@@ -378,3 +378,61 @@ The model is `ask.llm.model` in `config/settings.yaml` (with `reasoning_effort`,
 - **Each question stands alone** on the page (§9.3): no follow-ups that lean on the previous answer.
 - The leaders' **Cypher templates** (`qb_receivers`, `passing_hubs`, `power_ratings_this_week`) still cut ties with `LIMIT`; the five SQL leader templates keep them (AE01).
 - Cleaning text in bounded time: the page and `nfl ask` use `safetext.scrub_bounded` (§9.4, D142), which caps a text before scrubbing it; the pipeline's own `ops.summary.scrub` got the linear name=value rule too (D144, Rishi's OK) but still scrubs a whole text before capping it.
+
+## 15. The history graph as a source (AE02)
+
+AE02 built the **history graph** (every play since 2018 with the players on the field, in its own Neo4j: [history-graph.md](history-graph.md)) and made it Ask's third source, `history`, next to `sql` (the curated tables) and `graph` (the weekly graph).
+
+### 15.1 What changes for a question
+
+- **The router sees a third line** describing the history graph (only when it can answer: `ask.sources.history` is on, a build exists, and the container answers), the 11 history templates in its list, and `{"action": "generate", "source": "history"}` as an option. The generator gets the history graph's own schema text (`schema.HISTORY_SCHEMA`: every label, property and relationship, plus its conventions).
+- **The guard is the same** (`guard.run_cypher(..., source="history")`): the text check, `EXPLAIN` (type `r`, no procedure or file operator), a READ session, 10 s, 500 rows, the result-size checks; on its own driver (Bolt 7688). Red-team probes (a write, `CALL apoc...`, `LOAD CSV`) are refused on the history graph as on the weekly one (`tests/ask/test_ask_history_live.py`).
+- **New stops, all without a model call when the question asked for the history graph alone:** `source.history_down` ("The history graph isn't running: start it with `uv run nfl history-graph start`"), `source.history_busy` (a build or an append holds its lock, or the last one didn't finish: the `.history.unfinished` marker, [history-graph.md §3](history-graph.md#3-operating-it)), `source.history_none` (switched on but never built). Mid-question, a history query that finds the graph down or busy stops at once, like the weekly graph's `source.down`. "Auto" simply leaves the history graph out while the app's check says it's down.
+- **"As of":** the source chip reads `history_graph.state.history_asof`'s label, "history graph 2018-2025 + 2026 week 5" (`build.json` + `append.json`, a file read, never a Neo4j session).
+
+### 15.2 The conventions the history graph adds (`HISTORY_SCHEMA`)
+
+- Start from an indexed match: `Play {offense: 'KC'}`, `Play {defense: 'KC'}`, `Player {player_id: ...}` (the "Names" list gives the id), a Play season / week.
+- Real plays: `play_type IN ['pass','run']` and not a two-point try (`dropback` is also true on 9,915 `no_play` rows). The role relationships exist only on plays that count, so `count()` of a role is the box score; `PASSED` includes sacks (`p.sack`); attempts are `p.pass_attempt` (spikes included, as the box score counts them); scrambles are `RUSHED`.
+- `p.touchdown` is any touchdown on the play, a defensive return included (31 completed passes and 45 runs in 2018–2026 were fumbled away for a touchdown): offensive touchdowns add `NOT coalesce(p.fumble_lost, false)`.
+- Situations from the play-calling definitions: 3rd and long = `down = 3 AND distance >= 7` (short 1–3, medium 4–6), the red zone = `yards_to_goal <= 20`.
+- **A snap** is any play participation lists (an `ON_FIELD` link), penalty and special-teams snaps included, as the snaps-together template counts them by default; "on offense" / "on defense" match `ON_FIELD.side`; scrimmage only when the question asks about plays, passes or runs (the first eval found the schema text and the template disagreeing: g132).
+- FTN's per-play flags `qb_sneak`, `drop`, `throw_away`, `out_of_pocket` (2022 on) were added after the first eval (g062 "how many QB sneaks" had to be approximated without them).
+- Participation (formation, personnel, coverage, man / zone, routes, pressure, `part_box`, `part_rushers`, `ON_FIELD`) is research data for 2018–2025 only, on plays where `p.part`; FTN 2022 on where `p.ftn`. A rate over them divides by the plays that have them. A blitz is FTN's (2022 on); before that the closest measure is 5+ pass rushers from participation; the answer says which. The vocabularies change in 2023 (formations: i_form / singleback / shotgun / empty / jumbo / pistol / wildcat before, shotgun / under_center / pistol after; routes: go / out / hitch ... before, hitch_curl / quick_out / in_dig ... after).
+
+### 15.3 The templates and the golden questions
+
+11 templates (`config/ask_templates.yaml`, section 4), every one answering in **0.03 s or less once warm** on the real graph (the first, cold run 0.08–0.66 s):
+
+| Template | First example → the real answer |
+|---|---|
+| `history_qb_receivers_situation` | "Who has caught the most 3rd-down passes from Patrick Mahomes?" → Travis Kelce, 194 |
+| `history_team_targets_situation` | "Who gets the most red-zone targets for the Chiefs since 2023?" → Kelce, 68 |
+| `history_team_carries_situation` | Philadelphia on 3rd and short → Jalen Hurts, 119 |
+| `history_defense_pass_rush` | Pittsburgh on 3rd and long → blitz 27.3% (FTN), 5+ rushers 25.4%, pressure 36.3% |
+| `history_defense_coverage` | San Francisco on 3rd and long → Cover 3, 31.9% |
+| `history_qb_vs_coverage` | Josh Allen → +0.226 EPA per play against zone, +0.139 against man |
+| `history_receiver_routes` | Justin Jefferson → go routes, 93 targets |
+| `history_snaps_together` | Kelce and Mahomes → 8,372 snaps |
+| `history_player_snaps_vs_team` | Aaron Donald against Seattle → 535 snaps |
+| `history_team_personnel` | the Rams → 11 personnel on 80.6% of snaps |
+| `history_drive_results` | Baltimore since 2019 → 30.9% of drives ended in a punt |
+
+They share one list of situations (any, each down, 3rd short / medium / long, 3rd or 4th, red zone, goal to go, the two-minute drill) and one games choice (all, regular season, playoffs); leaders keep every row tied at the cut (the cut's value is read from the sorted rows; no `LIMIT`); the participation templates stop at 2025 (raise their season cap after the 2026 rebuild).
+
+**Golden questions g117–g133** (11 template questions with `source: history`, 6 free-form in the new category `history`), every reference a hand-written Cypher run on the real graph. When the history graph isn't available, `nfl ask eval` skips them (listed under `skipped`; the run is marked partial). Accuracy with them: §15.4.
+
+### 15.4 How accurate it is with history on (2026-10-19)
+
+The router now sees a third source for every question, so the whole golden set was run again with the model in use (DeepSeek V4.1 Flash 1017 at "max"); Rishi allowed up to $1, and ~$0.58 was spent.
+
+| Run | Main set | History questions (g117-g133) | The original questions | Held-out |
+|---|---|---|---|---|
+| AE00 / AE01 (no history) | 94.0-96.4% | | | 88.2-91.2% |
+| AE02 first run ([ezap0v76](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/ezap0v76)) | 91.2% | 15 of 17 | 78 of 85 | |
+| **AE02 reported** ([7t4ehqyk](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/7t4ehqyk), held-out [3bd39e5s](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/3bd39e5s)) | **97.1%** (99 of 102) | **17 of 17** | 82 of 85 | **85.3%** (29 of 34) |
+
+- **The first run found two gaps in the setup, not the model** (the D140 lesson again): the graph had no QB-sneak flag, so "How many QB sneaks did the Eagles run" had to be approximated (42 vs 41; FTN's `qb_sneak`, `drop`, `throw_away`, `out_of_pocket` were added), and the schema text said a snap is a scrimmage play while the snaps-together template and g132's reference count every snap (one rule now, §15.2). After them: 17 of 17 history questions; three of the original questions were answered from the history graph, all right.
+- **Held-out 85.3%**, 2-6 points under AE00 / AE01's runs: g216, g223 and g229 are missed by every run so far; g232 was a malformed model reply (87 s); g233 a 9-vs-8-row SQL difference. None of the 40 went to the history graph. Held-out misses aren't tuned on (D140).
+- **12 fresh play-level questions**, written before any was asked and checked by hand against my own queries: 10 right (Diggs's 29 red-zone touchdowns from Josh Allen since 2020, Brady and Evans's 3,146 snaps together, the Ravens' 41.9% 5+ rushers on 3rd down in 2021, CeeDee Lamb's routes, the Bills' 2025 drive results, Hurts's 99 3rd-and-short carries, the 49ers' 11 personnel at 40.4%, Kyzir White's 6 4th-down tackles, the Lions' 72 plays with 6+ linemen), one right with the generic fallback sentence ("What coverage did the Chiefs play most in the 2023 playoffs?": Cover 2, 55 dropbacks; the number check refused the model's prose), one missing a tie ("most 3rd-down scrambles in 2024": Baker Mayfield 22, but Patrick Mahomes also had 22; a generated `LIMIT 1`).
+- **Two snap definitions:** "snaps together" counts every snap by default (special teams and penalty snaps too), "snaps against a team" counts scrimmage snaps by default (T.J. Watt against the Browns: 787 scrimmage snaps; 908 with special teams). Each template says so in its description; making the defaults agree is a follow-up.

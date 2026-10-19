@@ -6,6 +6,7 @@ that later phases fill in.
 
 from __future__ import annotations
 
+import contextlib
 import math
 import random
 import time
@@ -2366,7 +2367,9 @@ def _ask_model(model: str | None) -> str:
 @ask_app.command("question")
 def ask_question(
     question: str = typer.Argument(..., help="The question, in quotes."),
-    source: str = typer.Option("auto", help="graph | sql | auto."),
+    source: str = typer.Option(
+        "auto", help="graph | sql | history (the history graph, AE02) | auto."
+    ),
     show_query: bool = typer.Option(False, "--show-query", help="Print the query that ran."),
     model: str | None = typer.Option(None, help="An OpenRouter model id (default ask.llm.model)."),
     json_out: bool = typer.Option(False, "--json", help="Print the whole result as JSON."),
@@ -2381,8 +2384,8 @@ def ask_question(
     from nflengine.ask.show import print_result
     from nflengine.safetext import scrub_bounded as scrub
 
-    if source not in ("graph", "sql", "auto"):
-        raise typer.BadParameter("--source must be graph, sql or auto")
+    if source not in ("graph", "sql", "history", "auto"):
+        raise typer.BadParameter("--source must be graph, sql, history or auto")
     try:
         engine = AskEngine.build(make_llm(model=_ask_model(model)))
     except AskLLMError as e:
@@ -2540,6 +2543,227 @@ def ask_pick(
         f"in ask.llm: {escape(str(llm.model))} (effort {escape(str(llm.reasoning_effort))})"
         + ("" if same else " - set by hand, not by the rule (see the decisions log)")
     )
+
+
+history_app = typer.Typer(
+    help="The history graph: every play since 2018 in its own Neo4j (AE02; Bolt 7688, "
+    "Browser http://localhost:7475). The weekly graph is never touched.",
+    no_args_is_help=True,
+)
+app.add_typer(history_app, name="history-graph")
+
+
+def _history_counts_table(title: str, counts: dict[str, int] | None) -> Table:
+    from nflengine.history_graph import schema as HS
+
+    t = Table(title=title)
+    t.add_column("label / type")
+    t.add_column("count", justify="right")
+    for name in (*HS.NODES, *HS.RELATIONSHIPS):
+        if counts and name in counts:
+            t.add_row(name, f"{counts[name]:,}")
+    return t
+
+
+@contextlib.contextmanager
+def _history_lock(command: str):
+    """The history graph's lock around a start or a stop (Sol, AE02): never while a build
+    replaces the store or an append writes."""
+    from nflengine.history_graph.state import lock_path
+    from nflengine.ops.lock import LockHeld, run_lock
+    from nflengine.paths import ensure_data_root
+
+    try:
+        with run_lock(lock_path(ensure_data_root(create_dirs=False)), command):
+            yield
+    except LockHeld as e:
+        console.print(
+            f"[red]a history-graph build or append is running (pid {e.holder.get('pid')}): "
+            "try again when it's done[/]"
+        )
+        raise typer.Exit(2) from None
+
+
+@history_app.command("build")
+def history_build(
+    through_season: int | None = typer.Option(
+        None,
+        help="The last finished season to bulk-import (default: the season before the "
+        "current one).",
+    ),  # fmt: skip
+    first_season: int | None = typer.Option(None, help="Default: history_graph.first_season."),
+    no_append: bool = typer.Option(
+        False, "--no-append", help="Don't append the current season after the import."
+    ),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
+    smoke: bool = typer.Option(
+        False, "--smoke", help="W&B: a logging check (group history-graph-smoke, tag smoke)."
+    ),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Build the history graph from scratch: export -> CSVs -> neo4j-admin bulk import ->
+    the new store on D: -> constraints -> count check -> append the current season.
+
+    Stops and restarts only the history container (`nfl-neo4j-history`). Refuses while the
+    weekly lock is held. Writes neo4j-history/build.json; logs a W&B run."""
+    from rich.markup import escape
+
+    from nflengine.history_graph.build import HistoryBuildError, run_build
+
+    try:
+        doc = run_build(
+            through_season,
+            first_season=first_season,
+            append_current=not no_append,
+            use_wandb=not no_wandb,
+            launched_by=launched_by,
+            smoke=smoke,
+            log=console.print,
+        )
+    except HistoryBuildError as e:
+        console.print(f"[red]history graph build failed at {e.stage}: {escape(str(e))}[/]")
+        raise typer.Exit(2) from e
+    console.print(_history_counts_table("history graph", doc.get("counts_after_append")
+                                        or doc.get("counts")))  # fmt: skip
+    secs = doc.get("seconds") or {}
+    console.print(
+        "time: " + ", ".join(f"{k} {v:.0f} s" for k, v in secs.items())
+        + (f"; store {doc['store_mb']:,.0f} MB" if doc.get("store_mb") else "")
+    )  # fmt: skip
+    if doc.get("dropped"):
+        console.print(f"dropped: {doc['dropped']}")
+    if doc.get("wandb_url"):
+        console.print(f"W&B: {doc['wandb_url']}")
+
+
+@history_app.command("append")
+def history_append(
+    season: int | None = typer.Option(None, help="Default: seasons.current."),
+    through_week: int | None = typer.Option(
+        None, help="Default: the newest week with curated plays."
+    ),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
+    smoke: bool = typer.Option(False, "--smoke", help="W&B: a logging check."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Sync the current season's games, drives, plays, roles, rosters and coaches into the
+    history graph (idempotent: a re-run writes nothing). Run after Tuesday's weekly run."""
+    from rich.markup import escape
+
+    from nflengine.history_graph.append import HistoryAppendError, run_append
+    from nflengine.history_graph.config import history_config
+
+    cfg = history_config()
+    try:
+        doc = run_append(
+            season,
+            through_week,
+            cfg=cfg,
+            start=True,  # under the history lock (Sol): never while a build swaps the store
+            use_wandb=not no_wandb,
+            launched_by=launched_by,
+            smoke=smoke,
+            log=console.print,
+        )
+    except HistoryAppendError as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(2) from e
+    writes = sum(sum(v.values()) for v in doc["changes"].values())
+    console.print(
+        f"[green]{doc['season']} weeks {doc['weeks'][0]}-{doc['weeks'][-1]}: {doc['games']} "
+        f"games, {doc['plays']:,} plays; {writes:,} writes ({doc['seconds']['total']:.0f} s)[/]"
+    )
+    if doc.get("wandb_url"):
+        console.print(f"W&B: {doc['wandb_url']}")
+
+
+@history_app.command("status")
+def history_status_cmd() -> None:
+    """The history container, Bolt, the last build and append, the counts in the graph."""
+    from rich.markup import escape
+
+    from nflengine.history_graph.status import history_status
+
+    st = history_status()
+    up = "[green]up[/]" if st["up"] else "[yellow]down[/]"
+    console.print(f"container {escape(st['container'])}, Bolt {up} ({st['bolt_uri']}); "
+                  f"Browser {st['browser_url']}")  # fmt: skip
+    if st.get("running"):
+        r = st["running"]
+        console.print(f"[yellow]running now: `{escape(str(r.get('command')))}` "
+                      f"(since {escape(str(r.get('started')))})[/]")  # fmt: skip
+    if st.get("unfinished") is not None:
+        from nflengine.history_graph.state import unfinished_advice
+
+        note = st["unfinished"]
+        if not st.get("running"):
+            console.print(f"[red]unfinished: {escape(unfinished_advice(note))} "
+                          "(until then Ask doesn't read the history graph)[/]")  # fmt: skip
+    elif st["busy"] and not st.get("running"):
+        console.print("[yellow]a build or append is running[/]")
+    b = st["build"]
+    if b:
+        console.print(
+            f"build {b['build_id']}: {b['first_season']}-{b['through_season']}, "
+            f"{(b.get('seconds') or {}).get('total', 0):.0f} s, store "
+            f"{st['store_mb'] or 0:,.0f} MB"
+        )
+    else:
+        console.print("[yellow]no build yet: `uv run nfl history-graph build`[/]")
+    if st["last_failed_build"]:
+        f = st["last_failed_build"]
+        console.print(f"[red]last build failed at {f.get('failed_stage')}: "
+                      f"{escape(str(f.get('error')))}[/]")  # fmt: skip
+    a = st["append"]
+    if a:
+        console.print(f"append: {a['season']} through week {a['through_week']} "
+                      f"({a['plays']:,} plays, {a['appended_at']})")  # fmt: skip
+    if st["asof"]:
+        console.print(f"Ask's label: {st['asof']['label']}")
+    if st["counts"]:
+        console.print(_history_counts_table("in the graph", st["counts"]))
+
+
+@history_app.command("start")
+def history_start() -> None:
+    """Start the history container (`docker compose --profile history up -d neo4j-history`)
+    and wait for Bolt. Never starts or restarts the weekly graph."""
+    from rich.markup import escape
+
+    from nflengine.history_graph.config import history_config
+    from nflengine.history_graph.docker import start
+    from nflengine.history_graph.state import read_unfinished, unfinished_advice
+    from nflengine.paths import ensure_data_root
+
+    cfg = history_config()
+    with _history_lock("nfl history-graph start"):
+        left = read_unfinished(ensure_data_root(create_dirs=False))
+        if left is not None and left.get("what") != "append":
+            # a build that died mid-install may have left a copy running and a half-written
+            # store: never start Neo4j on it (Sol); the next build replaces it
+            console.print(f"[red]not started: {escape(unfinished_advice(left))}[/]")
+            raise typer.Exit(2)
+        res = start(cfg, console.print)
+    if not res.ok:
+        console.print(f"[red]{escape(res.detail)}[/]")
+        raise typer.Exit(2)
+    console.print(f"{res.detail}; Browser {cfg.browser_url}")
+
+
+@history_app.command("stop")
+def history_stop() -> None:
+    """Stop the history container (`docker compose --profile history stop neo4j-history`)."""
+    from rich.markup import escape
+
+    from nflengine.history_graph.config import history_config
+    from nflengine.history_graph.docker import stop
+
+    with _history_lock("nfl history-graph stop"):
+        res = stop(history_config())
+    if not res.ok:
+        console.print(f"[red]{escape(res.detail)}[/]")
+        raise typer.Exit(2)
+    console.print(res.detail)
 
 
 PLACEHOLDERS: dict[str, tuple[str, str]] = {}

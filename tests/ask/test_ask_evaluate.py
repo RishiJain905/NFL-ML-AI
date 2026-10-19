@@ -308,7 +308,7 @@ class TestLoadGolden:
 
     def test_an_answer_question_needs_a_source_and_a_reference(self, tmp_path):
         bad_golden(tmp_path, q(source=None), match="needs source and reference")
-        bad_golden(tmp_path, q(source="history"), match="needs source and reference")
+        bad_golden(tmp_path, q(source="nosuch"), match="needs source and reference")
         bad_golden(tmp_path, q(reference=None), match="needs source and reference")
         bad_golden(tmp_path, q(reference="   "), match="needs source and reference")
 
@@ -334,7 +334,7 @@ class TestLoadGolden:
         assert "questions[1]" in str(exc.value) and "g002" in str(exc.value)
 
     def test_the_constants(self):
-        assert CATEGORIES == ("template", "sql", "graph", "trick")
+        assert CATEGORIES == ("template", "sql", "graph", "history", "trick")
         assert EXPECTS == ("answer", "refuse", "clarify")
         assert BOUNDS == {"p95_latency_s": 8.0, "cost_per_question": 0.002}
 
@@ -354,7 +354,7 @@ def golden():
 
 class TestRealGoldenSet:
     def test_loads_and_has_the_agreed_size_and_mix(self, golden):
-        assert 60 <= len(golden) <= 100
+        assert 60 <= len(golden) <= 130  # AE02 added the history questions
         by = {c: [g for g in golden if g.category == c] for c in CATEGORIES}
         assert all(len(v) >= 4 for v in by.values())
         assert any(g.expect == "refuse" for g in golden) and any(
@@ -365,7 +365,7 @@ class TestRealGoldenSet:
         templates = load_templates(current_season=2026)
         for g in golden:
             if g.expect == "answer":
-                assert g.reference and g.source in ("sql", "graph"), g.id
+                assert g.reference and g.source in ("sql", "graph", "history"), g.id
             else:
                 assert g.reference is None, g.id
             if g.template:
