@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 
 # Neo4j bulk-import types (neo4j-admin normalises int to long)
 LONG, DOUBLE, BOOL, STRING, LONGS = "long", "double", "boolean", "string", "long[]"
+STRINGS = "string[]"
 
 
 @dataclass(frozen=True)
@@ -237,6 +238,101 @@ RELATIONSHIPS: dict[str, RelSpec] = {
         RelSpec("ST_COORD", "Coach", "Team", {"season": LONG}),
     )
 }
+
+# ---- derived relationships (AE03, `nfl history-graph derive`) ---------------------------------
+# Computed from the relationships above (and curated snap counts for the coaching links) and
+# synced into the graph after a build or an append (`derive.py`); never bulk-imported, never
+# read by the weekly graph. Person -> person only (Player / Coach), so "six degrees" never runs
+# through a Team, a Season or a Play. TEAMMATE and WORKED_WITH are symmetric: stored once,
+# from the smaller key to the larger. A stint is one (season, team) of the link: the parallel
+# `stint_*` lists hold them in season order, so evidence ("teammates on 2019 KC, 612 snaps
+# together") needs no second query. `snaps` is every link's strength (the "strongest" path and
+# the communities weigh links by it).
+DERIVED: dict[str, RelSpec] = {
+    r.type: r
+    for r in (
+        # on the field together on the same side (ON_FIELD: participation, 2018-2025)
+        RelSpec(
+            "TEAMMATE",
+            "Player",
+            "Player",
+            {
+                "snaps": LONG,
+                "seasons": LONGS,
+                "teams": STRINGS,
+                "first_season": LONG,
+                "last_season": LONG,
+                "stint_seasons": LONGS,
+                "stint_teams": STRINGS,
+                "stint_snaps": LONGS,
+            },
+        ),
+        # QB -> receiver: pass attempts the QB threw to him (PASSED + TARGETED on one play)
+        RelSpec(
+            "CONNECTION",
+            "Player",
+            "Player",
+            {
+                "targets": LONG,
+                "catches": LONG,
+                "yards": LONG,
+                "touchdowns": LONG,
+                "epa": DOUBLE,
+                "seasons": LONGS,
+                "teams": STRINGS,
+                "first_season": LONG,
+                "last_season": LONG,
+            },
+        ),
+        # offense -> defense on the same scrimmage plays, the classic matchups only (D147):
+        # skill (WR / TE / RB / FB) vs DB, OL vs DL, and the QB vs any defender
+        RelSpec(
+            "OPPONENT",
+            "Player",
+            "Player",
+            {"plays": LONG, "seasons": LONGS, "first_season": LONG, "last_season": LONG},
+        ),
+        # coach -> player: the head coach (his weeks) or a coordinator of the player's unit
+        # (OC offense, DC defense, ST special teams) while the player took snaps in it
+        # (curated snap counts, so the current season and linemen count too)
+        RelSpec(
+            "COACHED",
+            "Coach",
+            "Player",
+            {
+                "snaps": LONG,
+                "seasons": LONGS,
+                "teams": STRINGS,
+                "roles": STRINGS,
+                "first_season": LONG,
+                "last_season": LONG,
+                "stint_seasons": LONGS,
+                "stint_teams": STRINGS,
+                "stint_roles": STRINGS,
+                "stint_snaps": LONGS,
+            },
+        ),
+        # coaches on the same staff (head coach + coordinators) in the same season
+        RelSpec(
+            "WORKED_WITH",
+            "Coach",
+            "Coach",
+            {
+                "snaps": LONG,  # the team's snaps (all plays it was on the field for) together
+                "games": LONG,
+                "seasons": LONGS,
+                "teams": STRINGS,
+                "first_season": LONG,
+                "last_season": LONG,
+                "stint_seasons": LONGS,
+                "stint_teams": STRINGS,
+                "stint_roles": STRINGS,  # "HC|OC": the start coach's role | the end coach's
+            },
+        ),
+    )
+}
+PERSON_LINKS = ("TEAMMATE", "COACHED", "WORKED_WITH")  # what Connections walks (D147)
+SYMMETRIC = ("TEAMMATE", "WORKED_WITH")
 
 ROLE_TYPES = ("PASSED", "RUSHED", "TARGETED", "CAUGHT", "INTERCEPTED", "SACKED", "TACKLED")
 SEASON_TYPES = ("PLAYED_FOR", "HEAD_COACH", "OFF_COORD", "DEF_COORD", "ST_COORD")

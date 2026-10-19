@@ -53,6 +53,20 @@ CASES: list[tuple[str, dict]] = [
     ("history_drive_results", {"team": "Ravens", "first_season": 2019}),
     ("history_drive_results", {"team": "Jets", "first_season": 2023, "last_season": 2023,
                                "games": "regular"}),
+    # AE03: the person links (`nfl history-graph derive`)
+    ("history_connection", {"person": "Tom Brady", "other": "Aaron Rodgers"}),
+    ("history_connection", {"person": "Patrick Mahomes", "other": "Bill Belichick"}),
+    ("history_connection", {"person": "Andy Reid", "other": "Bill Belichick"}),
+    ("history_most_snaps_with", {"player": "Patrick Mahomes"}),
+    ("history_qb_chemistry", {}),
+    ("history_qb_chemistry", {"player": "Joe Burrow", "min_targets": 50,
+                              "rank_by": "touchdowns"}),
+    ("history_coach_players", {"coach": "Andy Reid"}),
+    ("history_coach_players", {"coach": "Steve Spagnuolo", "role": "defensive_coordinator",
+                               "limit": 5}),
+    ("history_coach_colleagues", {"coach": "Andy Reid"}),
+    ("history_opponents_faced", {"player": "Justin Jefferson", "position": "cornerback"}),
+    ("history_opponents_faced", {"player": "Aaron Donald", "position": "offensive_line"}),
 ]  # fmt: skip
 
 

@@ -34,10 +34,11 @@ from nflengine.app.ask_service import BODY_SECONDS as ASK_BODY_SECONDS
 from nflengine.app.ask_service import ERRORS as ASK_ERRORS
 from nflengine.app.ask_service import MAX_BODY as ASK_MAX_BODY
 from nflengine.app.ask_service import AskRefused, AskService
+from nflengine.app.connections_service import ConnectionsRefused, ConnectionsService
 from nflengine.app.health import SystemChecks, get_health
 from nflengine.app.jsonsafe import SafeJSONResponse
 from nflengine.app.preflight import get_preflight, rehearsal_target
-from nflengine.app.readers import mlops, playbrowser
+from nflengine.app.readers import graphlab, mlops, playbrowser
 from nflengine.app.readers import playcalling as playcall
 from nflengine.app.readers.alerts import get_alerts
 from nflengine.app.readers.common import strip_root, use_data_root
@@ -162,6 +163,10 @@ class AppSettings:
     # AE01: Ask the Engine (the free-text endpoint). Tests inject a service whose engine runs
     # on a scripted LLM and fake sources; the default builds the real engine on first use.
     ask: AskService | None = None
+    # AE03: Connections (the history graph's person links); tests inject a service with a fake
+    # driver / connect function
+    connections: ConnectionsService | None = None
+    warm_connections: bool = False  # `nfl app` warms the history graph in the background
 
 
 class _Context:
@@ -177,6 +182,9 @@ class _Context:
         self.checks = settings.system_checks or SystemChecks()
         self.live = settings.live or LiveService(now=settings.now, replay=settings.live_replay)
         self.ask = settings.ask or AskService(now=settings.now)
+        self.connections = settings.connections or ConnectionsService(
+            check=getattr(self.ask, "_history", None), warm=settings.warm_connections
+        )
         self._sched: tuple[float, Any] | None = None
         self._lock = threading.Lock()
 
@@ -257,6 +265,7 @@ def create_app(settings: AppSettings) -> FastAPI:
             ctx.services.stop()
             ctx.live.close()
             ctx.ask.close()
+            ctx.connections.close()
 
     app = FastAPI(
         title="NFL Control Room",
@@ -821,6 +830,103 @@ def create_app(settings: AppSettings) -> FastAPI:
                 resp.headers["retry-after"] = str(e.retry_after)
             return resp
         return week_json(paths, answer)
+
+    # ---- AE03: Connections and the Graph lab (the history graph's person links). Read-only
+    # GETs: the name search and the lab views read files (`readers/graphlab.py`); only
+    # Connections asks Neo4j (`connections_service.py`: ids validated, two at a time).
+    def person_id() -> Any:  # one Query object per parameter: a shared one aliases them
+        return Query(..., min_length=8, max_length=72, pattern=r"^(player|coach):[a-z0-9-]+$")
+
+    def no_lab(job: str) -> SafeJSONResponse:
+        return _error(
+            404, "not_built", f"No {job} results yet: run `uv run nfl history-graph lab`."
+        )
+
+    @app.get("/api/ask/graph-lab")
+    def graph_lab_status_route() -> SafeJSONResponse:
+        paths = ctx.paths()
+        body = graphlab.get_status(paths)
+        body["history_state"] = ctx.connections.history_state()
+        ctx.connections.warm_if_up(paths)
+        return week_json(paths, graphlab.clean_tree(body, paths))
+
+    @app.get("/api/ask/people")
+    def ask_people_route(
+        q: str = Query(..., min_length=1, max_length=60),
+        kind: str | None = Query(None, pattern="^(player|coach)$"),
+        limit: int = Query(10, ge=1, le=20),
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        ctx.connections.warm_if_up(paths)
+        body = graphlab.get_people(paths, q, kind, limit)
+        body["query"] = None  # never echo the input back
+        return week_json(paths, graphlab.clean_tree(body, paths))
+
+    @app.get("/api/ask/connections")
+    async def ask_connections_route(
+        a: str = person_id(),  # noqa: B008
+        b: str = person_id(),  # noqa: B008
+        k: int = Query(1, ge=1, le=5),
+        mode: str = Query("fewest", pattern="^(fewest|strongest)$"),
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        try:
+            body = await run_in_threadpool(ctx.connections.connect, paths, a, b, k, mode)
+        except ConnectionsRefused as e:
+            return _error(e.status, e.code, e.message)
+        return week_json(paths, body)
+
+    @app.get("/api/ask/lab/neighbours")
+    def lab_neighbours_route(
+        player: str = Query(..., pattern=r"^player:00-[0-9]{7}$"),
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        body = graphlab.get_neighbours(paths, player.split(":", 1)[1])
+        if body is None:
+            return no_lab("neighbours")
+        return week_json(paths, graphlab.clean_tree(body, paths))
+
+    @app.get("/api/ask/lab/neighbours/map")
+    def lab_map_route() -> SafeJSONResponse:
+        paths = ctx.paths()
+        body = graphlab.get_neighbours_map(paths)
+        if body is None:
+            return no_lab("neighbours")
+        return week_json(paths, graphlab.clean_tree(body, paths))
+
+    @app.get("/api/ask/lab/families")
+    def lab_families_route(
+        family: int | None = Query(None, ge=0, le=10_000_000),
+        person: str | None = Query(
+            None, max_length=72, pattern=r"^(player|coach):[a-z0-9-]+$"
+        ),  # fmt: skip
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        body = graphlab.get_families(paths, family, person)
+        if body is None:
+            return no_lab("families")
+        return week_json(paths, graphlab.clean_tree(body, paths))
+
+    @app.get("/api/ask/lab/chemistry")
+    def lab_chemistry_route(
+        min_targets: int = Query(100, ge=100, le=2000),
+        limit: int = Query(50, ge=1, le=200),
+        qb: str | None = Query(None, pattern=r"^00-[0-9]{7}$"),
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        body = graphlab.get_chemistry(paths, min_targets, limit, qb)
+        if body is None:
+            return no_lab("chemistry")
+        return week_json(paths, graphlab.clean_tree(body, paths))
+
+    @app.get("/api/ask/lab/benchmark")
+    def lab_benchmark_route() -> SafeJSONResponse:
+        paths = ctx.paths()
+        body = graphlab.get_benchmark(paths)
+        if body is None:
+            return _error(404, "not_built", "No benchmark yet: run `uv run nfl history-graph "
+                          "bench-paths`.")  # fmt: skip
+        return week_json(paths, graphlab.clean_tree(body, paths))
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def api_not_found(rest: str) -> SafeJSONResponse:

@@ -1257,6 +1257,109 @@ questions:
       RETURN round(avg(p.epa), 3) AS epa_per_play
     notes: "FTN charting (2022 on): motion on charted scrimmage plays"
 
+  # ---- AE03: the person links (TEAMMATE, CONNECTION, OPPONENT, COACHED, WORKED_WITH) ----
+  - id: g134
+    question: "How are Tom Brady and Aaron Rodgers connected?"
+    category: template
+    source: history
+    template: history_connection
+    reference: |
+      MATCH (a:Player {player_id: '00-0019596'}), (b:Player {player_id: '00-0023459'})
+      MATCH p = SHORTEST 1 (a)-[:TEAMMATE|COACHED|WORKED_WITH]-+(b)
+      UNWIND range(1, length(p)) AS step
+      RETURN step, length(p) AS links
+    notes: >-
+      several chains tie at two links (a player who was a teammate of both), so the reference
+      checks the chain's length and its steps, not who is in the middle
+
+  - id: g135
+    question: "What's the shortest connection between Andy Reid and Bill Belichick?"
+    category: template
+    source: history
+    template: history_connection
+    reference: |
+      MATCH (a:Coach {coach_id: 'andy-reid'}), (b:Coach {coach_id: 'bill-belichick'})
+      MATCH p = SHORTEST 1 (a)-[:TEAMMATE|COACHED|WORKED_WITH]-+(b)
+      UNWIND range(1, length(p)) AS step
+      RETURN step, length(p) AS links
+    notes: "two coaches, so the chain runs through a player both coached (several tie at two links)"
+
+  - id: g136
+    question: "Who has Patrick Mahomes played the most snaps with?"
+    category: template
+    source: history
+    template: history_most_snaps_with
+    reference: |
+      MATCH (:Player {player_id: '00-0033873'})-[t:TEAMMATE]-(:Player)
+      WITH max(t.snaps) AS top
+      MATCH (:Player {player_id: '00-0033873'})-[t:TEAMMATE]-(b:Player)
+      WHERE t.snaps = top
+      RETURN b.name AS teammate
+    notes: "on the field together, same side (participation 2018-2025); Travis Kelce, 8,372"
+
+  - id: g137
+    question: "Which quarterback-receiver duo has the best EPA per target since 2018, with at least 300 targets together?"
+    category: template
+    source: history
+    template: history_qb_chemistry
+    reference: |
+      MATCH (:Player)-[c:CONNECTION]->(:Player)
+      WHERE c.targets >= 300
+      WITH max(c.epa / c.targets) AS top
+      MATCH (q:Player)-[c:CONNECTION]->(r:Player)
+      WHERE c.targets >= 300 AND c.epa / c.targets = top
+      RETURN q.name AS qb, r.name AS receiver
+    notes: "CONNECTION = PASSED + TARGETED on one play; playoffs count"
+
+  - id: g138
+    question: "Which player has Andy Reid coached for the most snaps?"
+    category: template
+    source: history
+    template: history_coach_players
+    reference: |
+      MATCH (:Coach {coach_id: 'andy-reid'})-[k:COACHED]->(:Player)
+      WITH max(k.snaps) AS top
+      MATCH (:Coach {coach_id: 'andy-reid'})-[k:COACHED]->(p:Player)
+      WHERE k.snaps = top
+      RETURN p.name AS player
+    notes: "COACHED from snap counts (2018 on); Patrick Mahomes"
+
+  - id: g139
+    question: "Which coach has Andy Reid shared a coaching staff with for the most seasons?"
+    category: template
+    source: history
+    template: history_coach_colleagues
+    reference: |
+      MATCH (:Coach {coach_id: 'andy-reid'})-[w:WORKED_WITH]-(:Coach)
+      WITH max(size(w.seasons)) AS top
+      MATCH (:Coach {coach_id: 'andy-reid'})-[w:WORKED_WITH]-(o:Coach)
+      WHERE size(w.seasons) = top
+      RETURN o.name AS colleague
+    notes: "head coach and coordinators of the same team-season (2018 on); Dave Toub"
+
+  - id: g140
+    question: "Which cornerback has Justin Jefferson faced the most?"
+    category: template
+    source: history
+    template: history_opponents_faced
+    reference: |
+      MATCH (:Player {player_id: '00-0036322'})-[o:OPPONENT]-(:Player {position: 'CB'})
+      WITH max(o.plays) AS top
+      MATCH (:Player {player_id: '00-0036322'})-[o:OPPONENT]-(b:Player {position: 'CB'})
+      WHERE o.plays = top
+      RETURN b.name AS cornerback
+    notes: "OPPONENT on scrimmage plays (participation 2018-2025)"
+
+  - id: g141
+    question: "How many different quarterbacks has Davante Adams caught a pass from since 2018?"
+    category: history
+    source: history
+    reference: |
+      MATCH (q:Player)-[c:CONNECTION]->(r:Player {player_id: '00-0031381'})
+      WHERE c.catches > 0 AND q.position = 'QB'
+      RETURN count(DISTINCT q) AS quarterbacks
+    notes: "free-form; 11 quarterbacks (12 passers: Jakobi Meyers, a WR, threw him 2 on trick plays in 2023, D151); CONNECTION or PASSED + CAUGHT on one play, the passer a QB"
+
   # ==== trick: clarify (ambiguous names) and refuse =========================================
   - id: g100
     question: "How many receiving yards did Mike Williams have in 2022?"

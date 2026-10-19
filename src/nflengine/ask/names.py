@@ -380,6 +380,27 @@ class NameIndex:
             LAST_NAME_MIN_GAMES,
         )
 
+    def person(self, text: str) -> Resolution:
+        """A player or a coach (AE03's `person` parameters), by the rule a question's names
+        follow: a coach beats a never-played namesake ("Andy Reid"); a prominent player (8+
+        games) and a coach with the same name is "which one?"; else the player, else the coach.
+        An ambiguous result can mix players (GSIS ids) and coaches (names)."""
+        res_p, res_c = self.player(text), self.coach(text)
+        played = [
+            self._by_id[m.value]
+            for m in res_p.matches
+            if m.value in self._by_id and self._by_id[m.value].games >= MIN_GAMES
+        ]
+        if res_c.status == "unique" and res_p.status != "none" and played:
+            matches = [Match(p.gsis_id, p.label) for p in self._ranked(played)]
+            matches += list(res_c.matches)
+            return Resolution("player", "ambiguous", tuple(matches[:MAX_CHOICES]))
+        if res_c.status == "unique" and res_p.status != "none":
+            return res_c
+        if res_p.status != "none":
+            return res_p
+        return res_c
+
     def player_label(self, gsis_id: str) -> str | None:
         p = self._by_id.get(gsis_id)
         return p.label if p else None

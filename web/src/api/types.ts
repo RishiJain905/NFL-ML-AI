@@ -1548,6 +1548,279 @@ export interface AskExamplesResponse extends AskStatusInfo {
   groups: { source: AskDataSource; label: string; examples: AskExample[] }[];
 }
 
+// ---------------------------------------------------------------- AE03: Connections and the Graph lab
+// (Before PC01's header, like AE01's block: the PC contract tests read their blocks to the next
+// PC header or the end of the file.)
+// Explore -> Ask the Engine -> Connections and Graph lab (documentation/ask-the-engine/
+// AE03-connections-and-graph-ml.md). Read-only GETs on the history graph's person links:
+// GET /api/ask/graph-lab, /api/ask/people?q=&kind=&limit=, /api/ask/connections?a=&b=&k=&mode=
+// (the only one that asks Neo4j), /api/ask/lab/{neighbours,neighbours/map,families,chemistry,
+// benchmark}. A lab view that hasn't run answers 404 `not_built`. Every string is cleaned on the
+// server.
+
+export type GraphLabPersonKind = 'player' | 'coach';
+export type ConnectionMode = 'fewest' | 'strongest';
+export type PersonLinkType = 'TEAMMATE' | 'COACHED' | 'WORKED_WITH';
+
+/** The person links as of (`nfl history-graph derive`): "person links 2018-2025 + 2026 week 5". */
+export interface PersonLinksAsOf {
+  derive_id: string;
+  first_season: number | null;
+  through_season: number;
+  season: number | null; // the appended current season
+  week: number | null;
+  derived_at: string | null;
+  counts: Record<string, number> | null; // TEAMMATE, CONNECTION, OPPONENT, COACHED, WORKED_WITH
+  label: string;
+}
+
+/** A lab job's run (`nfl history-graph lab`): `current` = made on today's person links. */
+export interface LabAsOf {
+  ran_at: string | null;
+  derive_id: string | null;
+  current: boolean;
+  params: Record<string, unknown> | null; // the job's parameters (seed, k, gamma, ...)
+  wandb_url: string | null;
+  summary: {
+    players?: number;
+    explained_variance_2d?: number[]; // neighbours: the two PCA axes' shares (~0.08 + 0.05)
+    communities?: number;
+    families?: number;
+    modularity?: number;
+    largest?: number;
+    median_size?: number;
+    duos?: number;
+    ranked?: number;
+  };
+}
+
+export interface GraphLabStatus {
+  history: {
+    first_season: number;
+    through_season: number;
+    season: number | null;
+    week: number | null;
+    built_at: string | null;
+    appended_at: string | null;
+    label: string; // "history graph 2018-2025 + 2026 week 5"
+  } | null; // null before the first build
+  busy: boolean; // a build / append is running or didn't finish
+  unfinished: string | null;
+  links: PersonLinksAsOf | null; // null before the first derive
+  lab: { neighbours: LabAsOf | null; families: LabAsOf | null; chemistry: LabAsOf | null };
+  benchmark: { ran_at: string | null; derive_id: string | null } | null;
+  history_state: 'up' | 'down' | 'checking' | string; // the app's cached Bolt check
+}
+
+/** One match of the name search. */
+export interface PersonMatch {
+  id: string; // "player:00-0033873" | "coach:andy-reid": what Connections takes
+  kind: GraphLabPersonKind;
+  name: string;
+  position: string | null; // "QB" | "coach"
+  team: string | null; // the latest
+  seasons: string | null; // "2018-2026"
+  links: number | null; // how many person links
+}
+export interface PeopleResponse {
+  query: null; // never echoed
+  people: PersonMatch[];
+  links: PersonLinksAsOf | null;
+  ready: boolean; // false: no people index yet (run the derive)
+}
+
+export interface ConnectionPerson {
+  kind: GraphLabPersonKind;
+  id: string; // without the kind: "00-0033873" / "andy-reid"
+  name: string;
+  position: string | null; // "coach" for a coach
+  team: string | null;
+  seasons: string | null;
+  links?: number; // a / b only
+}
+export interface ConnectionStint {
+  season: number;
+  team: string;
+  snaps: number | null;
+  roles: string | null; // COACHED: "HC" / "OC/DC"; WORKED_WITH: "HC|ST"
+}
+export interface ConnectionLink {
+  type: PersonLinkType | string;
+  snaps: number | null;
+  seasons: number[];
+  teams: string[];
+  stints: ConnectionStint[];
+  best?: ConnectionStint | null;
+  roles?: string[]; // COACHED
+  games?: number | null; // WORKED_WITH
+  text: string; // "teammates on 2018 KC, 1,164 snaps together (8,372 in all: KC 2018-2025)"
+  from: number; // index into people
+  to: number;
+}
+export interface ConnectionPath {
+  hops: number;
+  people: ConnectionPerson[];
+  links: ConnectionLink[];
+  weakest_snaps: number | null;
+  cost: number | null; // the sum of 1 / snaps (strongest: lower wins)
+}
+export interface ConnectionsResponse {
+  a: ConnectionPerson;
+  b: ConnectionPerson;
+  mode: ConnectionMode;
+  k: number;
+  paths: ConnectionPath[];
+  note: string | null; // "no chain of person links joins them" / "X has no person links yet ..."
+  found: boolean;
+  ms: number; // the search's time
+  asof: PersonLinksAsOf;
+}
+
+export interface NeighbourRow {
+  rank: number;
+  neighbour_id: string; // GSIS id
+  neighbour_name: string;
+  neighbour_position: string;
+  neighbour_team: string | null;
+  similarity: number; // cosine, 0-1
+  snaps_together: number; // 0 = never on the field together
+}
+export interface NeighboursResponse {
+  player_id: string;
+  found: boolean; // false: not in the map (too few snaps)
+  player: {
+    player_id: string;
+    name: string;
+    position: string;
+    grp: string; // QB RB WR TE OL DL LB DB SPEC
+    team: string | null;
+    snaps: number;
+    x: number;
+    y: number;
+  } | null;
+  position: NeighbourRow[]; // same position, 10
+  overall: NeighbourRow[]; // anyone, 10
+  asof: LabAsOf | null;
+}
+export interface MapPoint {
+  player_id: string;
+  name: string;
+  grp: string;
+  team: string | null;
+  x: number;
+  y: number;
+}
+export interface NeighboursMapResponse {
+  points: MapPoint[]; // ~4.3k
+  asof: LabAsOf | null;
+}
+
+export interface Family {
+  community: number;
+  name: string; // "2021-2025 KC offense"
+  size: number;
+  players: number;
+  coaches: number;
+  team: string | null;
+  first_season: number | null;
+  last_season: number | null;
+  unit: 'offense' | 'defense' | 'core' | string;
+  top_players: string[] | null;
+  top_coaches: string[] | null;
+}
+export interface FamilyMember {
+  kind: GraphLabPersonKind;
+  id: string;
+  name: string;
+  position: string | null;
+  snaps: number | null; // a player's snaps in the family's era (its team, its seasons); null for a coach
+  snaps_total: number | null; // all his snaps since 2018, every team; null for a coach
+}
+export interface FamiliesResponse {
+  families: Family[]; // biggest first
+  family: number | null; // the picked one (family= or person=)
+  members: FamilyMember[] | null; // players then coaches, most snaps first
+  person_found: boolean | null; // null without person=
+  asof: LabAsOf | null;
+}
+
+export interface ChemistryDuo {
+  qb_id: string;
+  qb: string;
+  receiver_id: string;
+  receiver: string;
+  position: string;
+  targets: number;
+  catches: number;
+  yards: number;
+  touchdowns: number;
+  epa: number;
+  epa_per_target: number;
+  catch_rate: number; // 0-1
+  yards_per_target: number;
+  first_season: number;
+  last_season: number;
+  teams: string[];
+}
+export interface PageRankRow {
+  rank: number;
+  player_id: string;
+  name: string;
+  position: string;
+  score: number;
+  receivers: number; // how many receivers he threw to
+  qbs: number; // how many QBs threw to him
+}
+export interface ChemistryResponse {
+  min_targets: number;
+  duos: ChemistryDuo[]; // by EPA per target, up to `limit`
+  receivers: PageRankRow[]; // 25
+  qbs: PageRankRow[]; // 15
+  asof: LabAsOf | null;
+}
+
+export type BenchmarkFamily = 'pair' | 'source' | 'all';
+export interface BenchmarkRow {
+  algorithm: string; // a slug: "cypher-shortest", "gds-dijkstra-pair", "bmssp", "floyd-warshall-numba", ...
+  family: BenchmarkFamily | string;
+  size_n: number; // people
+  size_m: number; // links
+  runs: number; // 0 = skipped (see `note`)
+  median_ms: number | null; // null when skipped
+  p90_ms: number | null;
+  min_ms: number | null;
+  agrees: boolean | null; // the same path lengths as the reference; null = not checkable / skipped
+  note: string | null;
+}
+export interface BenchmarkSize {
+  label: string; // "1000" | "full"
+  n: number;
+  m: number;
+  requested: number | null; // null for the full graph
+}
+/** `nfl history-graph bench-paths`'s path_benchmark.json (all but its table, `gds_procedures` and `times_ms`) + `rows`. */
+export interface BenchmarkResponse {
+  version?: number;
+  derive_id: string | null;
+  seed: number | null;
+  pairs?: number;
+  sources?: number;
+  repeats?: number;
+  budget_s?: number; // an all-pairs run predicted to take longer is skipped
+  smoke?: boolean; // a quick check run, not the real one
+  started_at?: string | null;
+  ran_at?: string | null;
+  seconds?: number | null;
+  sizes: BenchmarkSize[];
+  machine: Record<string, string | number | null> | null; // cpu_count, ram_gb, platform, neo4j, gds, ...
+  jit_compile_s?: number | null;
+  failures?: unknown[];
+  agrees_all?: boolean | null;
+  wandb_url?: string | null;
+  rows: BenchmarkRow[];
+  setup?: { size_n: number; step: string; ms: number }[]; // the preparation steps (sent, not drawn)
+}
+
 // ---- PC01: Play calling (documentation/play-calling/PC01-play-calling-pages.md) ------------
 // GET /api/playcalling/teams?season=, /api/playcalling/teams/{team}?season=&side=,
 // /api/playcalling/teams/{team}/history?side= and /api/weeks/{season}/{week}/play-calls.

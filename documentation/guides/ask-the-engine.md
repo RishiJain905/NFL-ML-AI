@@ -436,3 +436,40 @@ The router now sees a third source for every question, so the whole golden set w
 - **Held-out 85.3%**, 2-6 points under AE00 / AE01's runs: g216, g223 and g229 are missed by every run so far; g232 was a malformed model reply (87 s); g233 a 9-vs-8-row SQL difference. None of the 40 went to the history graph. Held-out misses aren't tuned on (D140).
 - **12 fresh play-level questions**, written before any was asked and checked by hand against my own queries: 10 right (Diggs's 29 red-zone touchdowns from Josh Allen since 2020, Brady and Evans's 3,146 snaps together, the Ravens' 41.9% 5+ rushers on 3rd down in 2021, CeeDee Lamb's routes, the Bills' 2025 drive results, Hurts's 99 3rd-and-short carries, the 49ers' 11 personnel at 40.4%, Kyzir White's 6 4th-down tackles, the Lions' 72 plays with 6+ linemen), one right with the generic fallback sentence ("What coverage did the Chiefs play most in the 2023 playoffs?": Cover 2, 55 dropbacks; the number check refused the model's prose), one missing a tie ("most 3rd-down scrambles in 2024": Baker Mayfield 22, but Patrick Mahomes also had 22; a generated `LIMIT 1`).
 - **Two snap definitions:** "snaps together" counts every snap by default (special teams and penalty snaps too), "snaps against a team" counts scrimmage snaps by default (T.J. Watt against the Browns: 787 scrimmage snaps; 908 with special teams). Each template says so in its description; making the defaults agree is a follow-up.
+
+## 16. The person links as a source (AE03)
+
+AE03 added **person links** to the history graph (`nfl history-graph derive`, [history-graph.md](history-graph.md) §15): TEAMMATE, CONNECTION (QB → receiver), OPPONENT, COACHED and WORKED_WITH. Ask reads them through the same `history` source, the same guard and the same READ transactions; nothing about the source, the stop rules or the page changes.
+
+### 16.1 What's new for a question
+
+- **Six templates** (section 5 of `config/ask_templates.yaml`), each **0.2 s or less warm** on the real graph:
+
+| Template | First example → the real answer (2026-10-19) |
+|---|---|
+| `history_connection` | "How are Tom Brady and Aaron Rodgers connected?" → 2 links: Brady and Scott Miller (TB 2020–2022, 945 snaps together), Miller and Rodgers (PIT 2025, 154). Of the shortest chains, the one with the most shared snaps (the first 2,000 ranked) |
+| `history_most_snaps_with` | "Who has Patrick Mahomes played the most snaps with?" → Travis Kelce, 8,372 |
+| `history_qb_chemistry` | "Which quarterback-receiver duos have the best EPA per target since 2018?" (150+ targets) → Brock Purdy → George Kittle 0.672, Russell Wilson → Tyler Lockett 0.637 |
+| `history_coach_players` | "Which players has Andy Reid coached the most?" → Mahomes 9,971 snaps, Kelce 8,761, Chris Jones 7,268 |
+| `history_coach_colleagues` | "Which coaches has Andy Reid worked with?" → Dave Toub (9 seasons), Steve Spagnuolo (8), Eric Bieniemy (6), Matt Nagy (3), Bob Sutton (1) |
+| `history_opponents_faced` | "Which cornerbacks has Justin Jefferson faced the most?" → Amani Oruwariye 293 plays, Kindle Vildor 268 |
+
+- **A `person` parameter** (a player or a coach): `history_connection` takes two, so "How are Andy Reid and Bill Belichick connected?" works. It follows the name index's own rule (`NameIndex.person`): a coach beats a never-played namesake ("Andy Reid"), a prominent player and a coach with the same name is "which one?" (the card groups the choices by kind: players, then coaches), otherwise the player, otherwise the coach. Since the phase's review (D151) the question's own card is grouped the same way, a pick is kept with the kind it was picked as (picking the coach answers for the coach; before, the card came back, or the player was answered), and the template is given the picked person, not the name again.
+- **`HISTORY_SCHEMA`** now lists the person links and how to walk them (no direction for TEAMMATE / WORKED_WITH; `SHORTEST` over TEAMMATE | COACHED | WORKED_WITH for "how are X and Y connected"), so a free-form question can use them (g141, "How many different quarterbacks has Davante Adams caught a pass from since 2018?" → **11**: 12 players threw him a catch, but Jakobi Meyers is a WR who did it on two 2023 trick plays; the reference first counted every passer, fixed in D151, and the schema now says a CONNECTION's start is any passer). That changed `prompt_hash` (twice: AE03, then D151's wording): `nfl ask pick` compares only runs made after it.
+- **A coach's players by role:** COACHED keeps one stint per season, team and role (D151), so `history_coach_players` with a role ("as defensive coordinator") sums that role's own snaps, and `any` takes the link's total, where a snap he coached in two roles counts once. Raheem Morris → A.J. Terrell: 3,020 snaps in all, 2,811 as head coach.
+- **Conventions:** a link already sums every game, playoffs included, so these templates have no `games` choice; a "who ... the most" question is `limit: 1` (both templates' `limit` say so; ties at the cut are kept); TEAMMATE and OPPONENT are 2018–2025 (participation), CONNECTION / COACHED / WORKED_WITH include the current season's appended weeks.
+
+### 16.2 How accurate it is (2026-10-19)
+
+**Golden g134–g141** (7 template questions, 1 free-form). Rishi allowed up to $0.30 for the new ids only (the paid-evals rule: one targeted run, re-check only what a fix touches):
+
+| Run | Result | Cost |
+|---|---|---|
+| g134–g141 ([vhte9q3g](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/vhte9q3g)) | 6 of 8: g136 ("who has Mahomes played the most snaps with?") and g139 ("which coach has Reid worked with for the most seasons?") got the whole list, not one row | $0.011 |
+| g136, g139 after the fix ([ya2a6he0](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/ya2a6he0)) | 2 of 2 | $0.001 |
+| g138, g141 after the review's fixes ([rtzgymoj](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/rtzgymoj)) | g138 right; g141 answered 11 (a generated query that kept only QBs), scored against the old 12: the reference was the one at fault (fixed) | $0.007 |
+| g141 on the fixed reference ([wz7pamtv](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/wz7pamtv)) | wrong: routed to `history_qb_chemistry` and listed the 12 passers (the answer said one isn't a quarterback) instead of counting them | $0.003 |
+
+**The fix was the templates', not the model's:** `history_coach_colleagues` had no `limit` at all, and `history_most_snaps_with`'s description didn't say a single answer is `limit: 1`. Template answers took 1.4–2.3 s (the router call), the free-form one 18 s. The rest of the golden set wasn't re-run (nothing in its path changed but the schema text; the live tests ran every reference and every template through the guard: `uv run pytest -m integration tests/ask/test_ask_history_live.py`).
+
+**g141 is the unstable one:** three runs took three routes (a generated count of every passer, a generated count of QBs, a template list). Not re-run again (the paid-evals rule); total spent on the new ids $0.021 of the $0.30.

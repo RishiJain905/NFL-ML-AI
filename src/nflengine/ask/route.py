@@ -50,7 +50,14 @@ from nflengine.ask.guard import QueryFailed, QueryResult, Refused, Sources
 from nflengine.ask.llm import AskLLM, AskLLMError, OutOfCredits
 from nflengine.ask.names import Match, Mention, NameIndex, Resolution, ambiguous, norm
 from nflengine.ask.schema import graph_schema, history_schema, sql_schema
-from nflengine.ask.templates import Rendered, Template, TemplateError, load_templates, render
+from nflengine.ask.templates import (
+    Rendered,
+    Template,
+    TemplateError,
+    is_gsis,
+    load_templates,
+    render,
+)
 
 PROMPT_DIR = Path(__file__).resolve().parent / "prompts"
 REFUSE_REASONS = ("write", "no_data", "out_of_range", "not_nfl")
@@ -99,6 +106,66 @@ _STOP_RULES = {
     "source.history_busy": "history_busy",
 }
 PICK_KINDS = ("team", "player", "coach")
+
+
+def _picked_value(picked: dict[tuple[str, str], str], ptype: str, v: str) -> str:
+    """A template value the user picked in a "which one?" (a `person` is a player or a
+    coach, AE03)."""
+    kinds = ("player", "coach") if ptype == "person" else (ptype,)
+    for kind in kinds:
+        hit = picked.get((kind, norm(v)))
+        if hit is not None:
+            return hit
+    return v
+
+
+def _option_kind(kind: str, value: str) -> str:
+    """What a "which one?" option really is: a player-kind name can offer a coach too (a
+    prominent player and a coach with the same name, AE03), and a GSIS id is the player."""
+    if kind == "team":
+        return kind
+    return "player" if is_gsis(value) else "coach"
+
+
+def _choice_groups(
+    text: str, values: list[str], labels: list[str], kinds: list[str]
+) -> list[dict[str, Any]]:
+    """A name's "which one?" entries: one per kind (player, coach or team), options in the
+    order offered, so a pick carries the kind its option really is (PICK_KINDS)."""
+    groups: dict[str, list[dict[str, str]]] = {}
+    for v, c, kd in zip(values, labels, kinds, strict=False):
+        groups.setdefault(kd, []).append({"value": v, "label": c})
+    return [{"text": text, "kind": kd, "options": opts} for kd, opts in groups.items()]
+
+
+def _clarify_text(groups: list[dict[str, Any]], text: str, kind: str) -> str:
+    """The card's sentence: "player or coach" when the name is both."""
+    if len(groups) > 1:
+        kind = "player or coach"
+    elif groups:
+        kind = groups[0]["kind"]
+    return FIXED["clarify"].format(kind=kind, text=text)
+
+
+class _PickedNames:
+    """The name index, with a `person` value the user picked in a "which one?" (AE03) kept as
+    what was picked: a coach's name stays the coach although a prominent player shares it
+    (`NameIndex.person` would ask again). Everything else is the real index."""
+
+    def __init__(self, names: NameIndex, picked: dict[tuple[str, str], str]):
+        self._names = names
+        self._players = {v for (kind, _), v in picked.items() if kind == "player"}
+        self._coaches = {norm(v) for (kind, _), v in picked.items() if kind == "coach"}
+
+    def person(self, text: str) -> Resolution:
+        if str(text).strip() in self._players:
+            return self._names.player(text)
+        if norm(text) in self._coaches:
+            return self._names.coach(text)
+        return self._names.person(text)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._names, name)
 
 
 @dataclass
@@ -468,8 +535,10 @@ class AskEngine:
 
     def _apply_picks(self, mentions: list[Mention], picks: list[dict[str, str]]) -> list[Mention]:
         """The question's names with each picked "which one?" settled. A pick counts only
-        when its value is one of the choices the engine offered for that name (or names one
-        entity on its own); anything else is ignored, so the card simply comes back."""
+        when its value is one of the choices the engine offered for that name, with the kind
+        that choice really is (or names one entity on its own); anything else is ignored, so
+        the card simply comes back. The settled name takes the pick's kind: a coach picked for
+        a name a prominent player shares is a coach from then on (AE03)."""
         chosen: dict[str, dict[str, str]] = {}
         for p in picks[:5]:
             # whitespace collapsed like the question's: a pick can't add lines to a prompt
@@ -483,12 +552,26 @@ class AskEngine:
         out, used = [], set()
         for m in mentions:
             p = chosen.get(norm(m.text))
-            if p and m.resolution.status == "ambiguous" and p["kind"] == m.kind:
-                match = next((x for x in m.resolution.matches if x.value == p["value"]), None)
-                if match is not None:
-                    out.append(replace(m, resolution=Resolution(m.kind, "unique", (match,))))
-                    used.add(norm(m.text))
-                    continue
+            if p is None:
+                out.append(m)
+                continue
+            offered: tuple[Match, ...] = ()
+            if m.resolution.status == "ambiguous":
+                offered = m.resolution.matches
+            elif {m.kind, p["kind"]} <= {"player", "coach"} and hasattr(self.names, "person"):
+                # a name the question resolved alone, which a `person` value's "which one?"
+                # offered as both a player and a coach (the template's own rule, AE03)
+                both = self.names.person(m.text)
+                offered = both.matches if both.status == "ambiguous" else ()
+            match = next(
+                (x for x in offered
+                 if x.value == p["value"] and _option_kind(m.kind, x.value) == p["kind"]),
+                None,
+            )  # fmt: skip
+            if match is not None:
+                out.append(replace(m, resolution=Resolution(p["kind"], "unique", (match,))))
+                used.add(norm(m.text))
+                continue
             out.append(m)
         for key, p in chosen.items():
             if key in used or any(norm(m.text) == key for m in mentions):
@@ -527,29 +610,35 @@ class AskEngine:
                 return self._refuse(res, "source", "source.history_busy", FIXED["history_busy"])
 
         t = time.monotonic()
-        mentions = self._apply_picks(self.names.mentions(q), picks)
+        found = self.names.mentions(q)
+        mentions = self._apply_picks(found, picks)
         res.mentions = [m.prompt_line() for m in mentions]
-        # (kind, name) -> the picked value, for template values that repeat the name
+        # (kind, name) -> the picked value, for template values that repeat the name: only the
+        # names a pick settled (`_apply_picks` returns those as new objects); an ignored pick
+        # mustn't turn a name into its first resolution (a coach's pick into the player, AE03)
+        kept = {id(m) for m in found}
         picked = {
             (m.kind, norm(m.text)): m.resolution.value
             for m in mentions
-            if m.resolution.status == "unique"
-            and any(norm(p.get("text") or "") == norm(m.text) for p in picks)
+            if id(m) not in kept and m.resolution.status == "unique"
         }
         res.timings["names"] = round(time.monotonic() - t, 3)
         amb = ambiguous(mentions)
         if amb:
-            m = amb[0]
             res.status, res.route = "clarify", "clarify"
-            res.choices = [
-                {
-                    "text": a.text,
-                    "kind": a.kind,
-                    "options": [{"value": o.value, "label": o.label} for o in a.resolution.matches],
-                }
+            # a name a prominent player and a coach share is one group per kind (AE03), like
+            # the template's card, so picking the coach comes back as a coach
+            cards = [
+                _choice_groups(
+                    a.text,
+                    [o.value for o in a.resolution.matches],
+                    [o.label for o in a.resolution.matches],
+                    [_option_kind(a.kind, o.value) for o in a.resolution.matches],
+                )
                 for a in amb
             ]
-            res.answer = FIXED["clarify"].format(kind=m.kind, text=m.text)
+            res.choices = [c for card in cards for c in card]
+            res.answer = _clarify_text(cards[0], amb[0].text, amb[0].kind)
             return None
 
         # the router
@@ -654,13 +743,19 @@ class AskEngine:
         params = decision.get("params") if isinstance(decision.get("params"), dict) else {}
         if picked:  # a name the user picked: the router may still write it as the question did
             params = {
-                k: picked.get(((p.type if (p := t.param(k)) else ""), norm(v)), v)
+                k: _picked_value(picked, p.type if (p := t.param(k)) else "", v)
                 if isinstance(v, str)
                 else v
                 for k, v in params.items()
             }
+        # a person the user picked stays what was picked (a coach a player shares a name with)
+        names = (
+            _PickedNames(self.names, picked)
+            if picked and hasattr(self.names, "person")
+            else self.names
+        )
         try:
-            r: Rendered = render(t, params, self.names, asof=self.asof)
+            r: Rendered = render(t, params, names, asof=self.asof)
         except TemplateError as e:
             self._record(
                 res, "template", t.source, "", {}, "bad_values", template=t.id, code=e.code
@@ -670,10 +765,11 @@ class AskEngine:
                 res.template_id = t.id
                 kind = p.type if (p := t.param(e.param or "")) else "name"
                 text = str(params.get(e.param, ""))[:80]
-                res.choices = [{"text": text, "kind": kind, "options": [
-                    {"value": v, "label": c} for v, c in zip(e.values, e.choices, strict=False)
-                ]}]  # fmt: skip
-                res.answer = FIXED["clarify"].format(kind=kind, text=text)
+                # a `person` (AE03) may be a player or a coach: one group per kind, so a pick
+                # carries a kind the engine knows (PICK_KINDS)
+                kinds = e.kinds or [kind] * len(e.values)
+                res.choices = _choice_groups(text, e.values, e.choices, kinds)
+                res.answer = _clarify_text(res.choices, text, kind)
                 return "done"
             return (
                 f"Template {t.id} can't use those values: {e.message}. Fix the values, pick "

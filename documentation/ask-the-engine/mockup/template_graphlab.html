@@ -1,0 +1,38 @@
+<meta charset="utf-8">
+<title>Connections &amp; Graph Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+{{CSS}}
+</style>
+<style>
+{{ASKCSS}}
+</style>
+<style>
+{{GLCSS}}
+</style>
+
+<div class="mockbar" id="mockbar" aria-label="Mockup controls">
+  <span class="tag">MOCKUP CONTROLS · not part of the app</span>
+  <div class="grp"><span class="lbl">Connections</span><span class="seg wrap" id="cxPick"></span></div>
+  <div class="grp"><span class="lbl">Lab results</span><span class="seg" id="labPick"><button type="button" data-v="current">Current</button><button type="button" data-v="older">Older person links *</button><button type="button" data-v="none">Not run yet *</button></span></div>
+  <div class="grp"><span class="lbl">Neighbours</span><span class="seg" id="nbPick"><button type="button" data-v="found">In the map</button><button type="button" data-v="missing">Not in the map</button></span></div>
+  <div class="grp"><span class="lbl">Benchmark</span><span class="seg" id="benchPick"><button type="button" data-v="real">The real run</button><button type="button" data-v="none">Not run yet *</button></span></div>
+  <span class="hint">* mockup-only, made from a real answer and labelled on the page. Everything else is a real answer from the app's API (2026-10-19). Theme and mode: the gear by "Control Room".</span>
+</div>
+
+<div class="app">
+  <aside class="side" id="side"></aside>
+  <main>
+    <header class="top" id="top"></header>
+    <section class="view" id="view"></section>
+  </main>
+</div>
+
+<div id="tip" role="tooltip" hidden></div>
+
+<script id="data" type="application/json">{{DATA}}</script>
+<script>
+{{JS}}
+</script>

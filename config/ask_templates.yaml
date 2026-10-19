@@ -1662,3 +1662,240 @@ templates:
       RETURN $team AS team, x.result AS result, x.drives AS drives,
              round(toFloat(x.drives) / total, 3) AS share
       ORDER BY drives DESC, result
+
+  # ---- (5) The person links (AE03, `nfl history-graph derive`): who played with, coached,
+  # worked with or faced whom. TEAMMATE / OPPONENT come from participation (2018-2025);
+  # CONNECTION (QB -> receiver) every season; COACHED / WORKED_WITH from snap counts and the
+  # coaching staffs (2018 on). A `person` is a player (GSIS id) or a coach (his name).
+  - id: history_connection
+    source: history
+    title: How two people are connected (six degrees)
+    description: >-
+      The shortest chain of person links between two players or coaches: teammates on the
+      field, a coach and a player he coached, coaches on the same staff (2018 on). One row per
+      link, in order, with the evidence (snaps, seasons, teams). The chain never runs through a
+      team, a game or a play. Of the shortest chains, the one with the strongest links (the
+      most snaps shared) is shown.
+    examples:
+      - How are Tom Brady and Aaron Rodgers connected?
+      - What's the shortest connection between Patrick Mahomes and Bill Belichick?
+      - How many steps is Cam Ward from Tom Brady?
+    params:
+      person: {type: person, description: the first player or coach}
+      other: {type: person, description: the second player or coach}
+    query: |
+      OPTIONAL MATCH (pa:Player {player_id: $person})
+      OPTIONAL MATCH (ca:Coach) WHERE toLower(ca.name) = toLower($person)
+      WITH coalesce(pa, ca) AS a
+      OPTIONAL MATCH (pb:Player {player_id: $other})
+      OPTIONAL MATCH (cb:Coach) WHERE toLower(cb.name) = toLower($other)
+      WITH a, coalesce(pb, cb) AS b
+      WHERE a IS NOT NULL AND b IS NOT NULL AND a <> b
+      MATCH p = ALL SHORTEST (a)-[:TEAMMATE|COACHED|WORKED_WITH]-+(b)
+      WITH p LIMIT 2000
+      WITH p, reduce(cost = 0.0, r IN relationships(p) | cost + 1.0 / r.snaps) AS cost
+      ORDER BY cost LIMIT 1
+      UNWIND range(0, length(p) - 1) AS i
+      WITH length(p) AS links, i, nodes(p)[i] AS x, nodes(p)[i + 1] AS y,
+           relationships(p)[i] AS r
+      RETURN i + 1 AS step, links, x.name AS from_person, y.name AS to_person,
+             CASE type(r) WHEN 'TEAMMATE' THEN 'teammates on the field'
+                          WHEN 'COACHED' THEN startNode(r).name + ' coached ' + endNode(r).name
+                          ELSE 'on the same coaching staff' END AS link,
+             r.snaps AS snaps, r.seasons AS seasons, r.teams AS teams
+      ORDER BY step
+
+  - id: history_most_snaps_with
+    source: history
+    title: The teammates a player shared the most snaps with
+    description: >-
+      The players someone was on the field with most, on the same side of the ball
+      (participation, 2018-2025; special-teams snaps included), with the seasons and teams.
+      One answer ("who has he played the most snaps with?") is limit 1; a list ("which
+      teammates ...") the top 10.
+    examples:
+      - Who has Patrick Mahomes played the most snaps with?
+      - Which teammates has Aaron Donald been on the field with most?
+    params:
+      player: {type: player}
+      limit: {type: int, min: 1, max: 50, default: 10,
+              description: 1 for a single answer ("who ... the most"), else how many}
+    query: |
+      MATCH (a:Player {player_id: $player})-[t:TEAMMATE]-(b:Player)
+      WITH a, b, t ORDER BY t.snaps DESC, b.name
+      WITH a, collect({teammate: b.name, position: b.position, snaps: t.snaps,
+                       seasons: t.seasons, teams: t.teams}) AS rows
+      WITH a, rows, [x IN rows | x.snaps][$limit - 1] AS cut
+      UNWIND rows AS x
+      WITH a, x WHERE cut IS NULL OR x.snaps >= cut
+      RETURN a.name AS player, x.teammate AS teammate, x.position AS position,
+             x.snaps AS snaps_together, x.seasons AS seasons, x.teams AS teams
+      ORDER BY snaps_together DESC, teammate
+
+  - id: history_qb_chemistry
+    source: history
+    title: Quarterback-receiver chemistry
+    description: >-
+      Quarterback -> receiver duos ranked by EPA per target (or targets, yards, touchdowns or
+      catch rate) with at least a minimum number of targets together (2018 on, playoffs
+      included); optionally one player's duos (a quarterback or a receiver) or one team's.
+    examples:
+      - Which quarterback-receiver duos have the best EPA per target since 2018?
+      - Which QB-receiver pairs have the most touchdowns together?
+      - Who has Joe Burrow had the best chemistry with?
+    params:
+      player: {type: player, default: null, description: a quarterback or a receiver}
+      team: {type: team, default: null}
+      min_targets: {type: int, min: 1, max: 2000, default: 150,
+                    description: the fewest targets a duo needs}
+      rank_by: {type: choice, default: epa_per_target, description: the measure to rank by,
+                choices: {epa_per_target: epa_per_target, targets: targets, yards: yards,
+                          touchdowns: touchdowns, catch_rate: catch_rate}}
+      limit: {type: int, min: 1, max: 50, default: 10}
+    query: |
+      MATCH (q:Player)-[c:CONNECTION]->(r:Player)
+      WHERE c.targets >= $min_targets AND ($team IS NULL OR $team IN c.teams)
+        AND ($player IS NULL OR q.player_id = $player OR r.player_id = $player)
+      WITH q.name AS qb, r.name AS receiver, r.position AS position, c.targets AS targets,
+           c.catches AS catches, c.yards AS yards, c.touchdowns AS touchdowns,
+           round(c.epa / c.targets, 3) AS epa_per_target,
+           round(toFloat(c.catches) / c.targets, 3) AS catch_rate, c.seasons AS seasons
+      WITH qb, receiver, position, targets, catches, yards, touchdowns, epa_per_target,
+           catch_rate, seasons, {rank_by} AS m
+      ORDER BY m DESC, qb, receiver
+      WITH collect({qb: qb, receiver: receiver, position: position, targets: targets,
+                    catches: catches, yards: yards, touchdowns: touchdowns,
+                    epa_per_target: epa_per_target, catch_rate: catch_rate, seasons: seasons,
+                    m: m}) AS rows
+      WITH rows, [x IN rows | x.m][$limit - 1] AS cut
+      UNWIND rows AS x
+      WITH x WHERE cut IS NULL OR x.m >= cut
+      RETURN x.qb AS qb, x.receiver AS receiver, x.position AS position, x.targets AS targets,
+             x.catches AS catches, x.yards AS yards, x.touchdowns AS touchdowns,
+             x.epa_per_target AS epa_per_target, x.catch_rate AS catch_rate,
+             x.seasons AS seasons
+      ORDER BY {rank_by} DESC, qb, receiver
+
+  - id: history_coach_players
+    source: history
+    title: The players a coach coached most
+    description: >-
+      The players a coach coached for the most snaps (2018 on, from snap counts): as head
+      coach every player who took a snap for him, as a coordinator his unit's players; or only
+      one role. With the seasons and teams.
+    examples:
+      - Which players has Andy Reid coached the most?
+      - Who has Steve Spagnuolo coached the most snaps as defensive coordinator?
+    params:
+      coach: {type: coach}
+      role:
+        type: choice
+        default: any
+        description: every role, or only one
+        choices:
+          any: "'ANY'"
+          head_coach: "'HC'"
+          offensive_coordinator: "'OC'"
+          defensive_coordinator: "'DC'"
+          special_teams_coordinator: "'ST'"
+      limit: {type: int, min: 1, max: 50, default: 10}
+    query: |
+      MATCH (c:Coach)-[k:COACHED]->(p:Player)
+      WHERE toLower(c.name) = toLower($coach)
+      WITH c, p, k, {role} AS rc
+      WITH c, p, k, rc, [i IN range(0, size(k.stint_roles) - 1)
+                         WHERE rc = 'ANY' OR k.stint_roles[i] = rc] AS idx
+      WHERE size(idx) > 0
+      WITH c, p, CASE WHEN rc = 'ANY' THEN k.snaps
+                      ELSE reduce(s = 0, i IN idx | s + k.stint_snaps[i]) END AS snaps,
+           reduce(acc = [], i IN idx | CASE WHEN k.stint_seasons[i] IN acc THEN acc
+                                            ELSE acc + k.stint_seasons[i] END) AS seasons,
+           reduce(acc = [], i IN idx | CASE WHEN k.stint_teams[i] IN acc THEN acc
+                                            ELSE acc + k.stint_teams[i] END) AS teams
+      ORDER BY snaps DESC, p.name
+      WITH c, collect({player: p.name, position: p.position, snaps: snaps, seasons: seasons,
+                       teams: teams}) AS rows
+      WITH c, rows, [x IN rows | x.snaps][$limit - 1] AS cut
+      UNWIND rows AS x
+      WITH c, x WHERE cut IS NULL OR x.snaps >= cut
+      RETURN c.name AS coach, x.player AS player, x.position AS position, x.snaps AS snaps,
+             x.seasons AS seasons, x.teams AS teams
+      ORDER BY snaps DESC, player
+
+  - id: history_coach_colleagues
+    source: history
+    title: The coaches someone shared a staff with
+    description: >-
+      The coaches who were on the same staff (head coach and coordinators) as a coach in the
+      same season (2018 on), with the seasons, teams, games together and the colleague's
+      roles; the longest partnerships first. One answer ("who has he worked with the
+      longest?") is limit 1; "which coaches" lists them all.
+    examples:
+      - Which coaches has Andy Reid worked with?
+      - Who has Kyle Shanahan shared a coaching staff with?
+      - Which coach has Andy Reid worked with for the most seasons?
+    params:
+      coach: {type: coach}
+      limit: {type: int, min: 1, max: 100, default: 100,
+              description: 1 for a single answer ("the most seasons"), else how many}
+    query: |
+      MATCH (c:Coach)-[w:WORKED_WITH]-(o:Coach)
+      WHERE toLower(c.name) = toLower($coach)
+      WITH c, o, w, CASE WHEN startNode(w) = c THEN 1 ELSE 0 END AS side
+      WITH c, o, w, side ORDER BY size(w.seasons) DESC, w.games DESC, o.name
+      WITH c, collect({colleague: o.name, seasons_together: size(w.seasons),
+                       seasons: w.seasons, teams: w.teams, games: w.games,
+                       colleague_roles: reduce(acc = [], x IN w.stint_roles |
+                         CASE WHEN split(x, '|')[side] IN acc THEN acc
+                              ELSE acc + split(x, '|')[side] END)}) AS rows
+      WITH c, rows, [x IN rows | x.seasons_together][$limit - 1] AS cut
+      UNWIND rows AS x
+      WITH c, x WHERE cut IS NULL OR x.seasons_together >= cut
+      RETURN c.name AS coach, x.colleague AS colleague, x.seasons_together AS seasons_together,
+             x.seasons AS seasons, x.teams AS teams, x.games AS games,
+             x.colleague_roles AS colleague_roles
+      ORDER BY seasons_together DESC, games DESC, colleague
+
+  - id: history_opponents_faced
+    source: history
+    title: The players someone faced most (matchups)
+    description: >-
+      The opponents a player was on the field against most on scrimmage plays (participation,
+      2018-2025), within the classic matchups: skill players (WR, TE, RB) against defensive
+      backs, offensive against defensive linemen, the quarterback against any defender (and a
+      defender against the offensive players he faced); optionally one position group.
+    examples:
+      - Which cornerbacks has Justin Jefferson faced the most?
+      - Which offensive linemen has Aaron Donald faced most?
+      - Which defenders has Patrick Mahomes seen the most?
+    params:
+      player: {type: player}
+      position:
+        type: choice
+        default: any
+        description: the opponents' position group
+        choices:
+          any: "true"
+          cornerback: "b.position = 'CB'"
+          safety: "b.position IN ['S', 'SS', 'FS', 'SAF']"
+          defensive_back: "b.position_group = 'DB'"
+          defensive_line: "b.position_group = 'DL'"
+          linebacker: "b.position_group = 'LB'"
+          offensive_line: "b.position_group = 'OL'"
+          wide_receiver: "b.position_group = 'WR'"
+          tight_end: "b.position_group = 'TE'"
+          running_back: "b.position_group = 'RB'"
+          quarterback: "b.position_group = 'QB'"
+      limit: {type: int, min: 1, max: 50, default: 10}
+    query: |
+      MATCH (a:Player {player_id: $player})-[o:OPPONENT]-(b:Player)
+      WHERE {position}
+      WITH a, b, o ORDER BY o.plays DESC, b.name
+      WITH a, collect({opponent: b.name, position: b.position, plays: o.plays,
+                       seasons: o.seasons}) AS rows
+      WITH a, rows, [x IN rows | x.plays][$limit - 1] AS cut
+      UNWIND rows AS x
+      WITH a, x WHERE cut IS NULL OR x.plays >= cut
+      RETURN a.name AS player, x.opponent AS opponent, x.position AS position,
+             x.plays AS plays, x.seasons AS seasons
+      ORDER BY plays DESC, opponent

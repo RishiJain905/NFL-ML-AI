@@ -83,7 +83,10 @@ W&B also records the exact command line, the full git commit and the machine on 
 | `ask-the-engine-smoke` | `ask-eval` | `ask-eval-<model>-<effort>` | `nfl ask eval --smoke` (a logging check on a few questions) |
 | `history-graph` | `history-graph-build` | `history-graph-build-<first>-<through>` | `nfl history-graph build` (AE02, §6.12): the history graph from scratch, stage times and counts |
 | `history-graph` | `history-graph-append` | `history-graph-append-<season>-w<NN>` | `nfl history-graph append` (AE02, §6.12): the current season synced in, what it wrote |
-| `history-graph-smoke` | `history-graph-build` / `-append` | as above | `--smoke` (a logging check) |
+| `history-graph` | `history-graph-derive` | `history-graph-derive-<derive_id>` | `nfl history-graph derive` (AE03, §6.13): the person links synced, counts and writes (a build's or an append's own derive is logged in that run instead) |
+| `history-graph` | `history-graph-lab` | `history-graph-lab-<job>` | `nfl history-graph lab` (AE03, §6.13): one run per job (neighbours, families, chemistry): tables, the 2-D map, family sizes |
+| `history-graph` | `path-benchmark` | `path-benchmark` | `nfl history-graph bench-paths` (AE03, §6.14): shortest-path timings by algorithm and graph size, the log-log chart |
+| `history-graph-smoke` | `history-graph-build` / `-append` / `-derive` / `-lab` / `path-benchmark` | as above | `--smoke` (a logging check) |
 
 Run names aren't unique: re-running a week makes a second `train-2026-w04`. The **run id** (8 characters, in the URL) is unique. When several runs share a name, the newest one is the one that counts, and PROGRESS.md lists which ids were final.
 
@@ -625,6 +628,42 @@ Smoke runs (group `play-calling-smoke`, 2026 week 4): forecast [`j2076lzq`](http
 | append: `writes/<label or type>`, `time/export`, `time/sync`, `time/total`; summary `status`, `plays`, `games`, `writes`, `count/<name>` | what the append changed | a Tuesday append writes the new week (plus nflverse's corrections); a re-run writes 0 |
 
 **Ask with the history source on (AE02, `ask-eval` runs, `launched-by: agent`):** main [ezap0v76](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/ezap0v76) 91.2% (before the FTN flags and the snap rule), the reported main [7t4ehqyk](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/7t4ehqyk) 97.1% and held-out [3bd39e5s](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/3bd39e5s) 85.3% ([the Ask guide §15.4](ask-the-engine.md)). **AE02's history-graph runs (2026-10-18 / 19, `launched-by: agent`).** The final build after the FTN flags [sx0sl85u](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/sx0sl85u) (386 s, a busier Docker); before it [bz131yeb](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/bz131yeb) (253 s). The first full build [`x27v679p`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/x27v679p) (2018-2025, 355 s: export 4 s, csv 5 s, import 81 s, stop 8 s, install 74 s, start 131 s, schema 22 s, check 1 s, append 18 s; every count matching; store 1,136 MB); the smoke builds (2025 only, group `history-graph-smoke`): [`5o5dq8u7`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/5o5dq8u7) failed at the import (a blank GSIS id, fixed) and [`wgeykrej`](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/wgeykrej) passed (301 s).
+
+
+### 6.13 The person links and the Graph lab (group `history-graph`, job types `history-graph-derive` and `history-graph-lab`, AE03)
+
+**`nfl history-graph derive`** logs `history-graph-derive-<derive_id>` (config: `build_id`, the appended `season` / `through_week`, `version`, `git_commit`). A build or an append that derives at its end logs the same numbers **in its own run** instead (summary `derive/count/<type>`, `derive/writes`, `derive/time/<stage>`).
+
+| Panel / field | What it shows | What to look for |
+|---|---|---|
+| `time/inputs`, `time/compute`, `time/sync`, `time/total` | seconds: the export read, the DuckDB aggregation, the sync with Neo4j | inputs ~3 s, compute ~15-18 s; sync ~125 s when everything is new (after a build), well under a minute when little changed |
+| summary `derive/count/<type>` | TEAMMATE, CONNECTION, OPPONENT, COACHED, WORKED_WITH | 2026-10-19: 237,136 / 5,743 / 383,743 / 35,273 / 920 (927 before the review's tenure fix, D151); CONNECTION and COACHED grow a little each Tuesday |
+| summary `derive/writes` | links created + updated + deleted | everything after a build (662,822), the week's new links after an append, **0 on a re-run** |
+| summary `dropped/snaps_rows_unknown` | snap-count rows of players or teams the graph doesn't hold | small (10) |
+
+**`nfl history-graph lab`** logs one run per job, `history-graph-lab-<job>` (tags `history-graph`, `lab`, the job; config: the job's parameters, the seed, the `derive_id`):
+
+| Job | Panels | What to look for |
+|---|---|---|
+| neighbours | `neighbours/neighbours` (table: each player's 10 nearest, both scopes), `neighbours/map` (table) and `neighbours/map_2d` (scatter: the PCA map by position group); summary `players`, `rows`, `time/fastrp`, `time/knn` (the map's kept variance is in `lab.json`) | 4,272 players; the same top neighbours as last time (seed 42, one thread) unless the person links changed |
+| families | `families/families` (table: name, size, players, coaches, seasons, top members), `families/members`, `families/sizes` (bar: the 40 biggest); summary `communities`, `families`, `modularity`, `largest`, `median_size` | 164 communities / 132 families at resolution 16, median ~42; names that read like eras ("2018-2021 KC offense") |
+| chemistry | `chemistry/duos` (table: EPA per target, 100+ targets), `chemistry/pagerank` (table); summary `duos`, `ranked`, `time/pagerank` | 339 duos; Purdy → Kittle at the top with 300+ targets; Davante Adams the most central receiver |
+
+**AE03's runs (2026-10-19, `launched-by: agent`).** Derive: the first, writing everything [q4u8rp32](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/q4u8rp32) (smoke group; 662,822 writes, 148 s), the re-run [7uhhx6pi](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/7uhhx6pi) (0 writes, 67 s), the stint-team fix [tr0g9gw7](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/tr0g9gw7) (56,685 TEAMMATE updates, 69 s), the review's fixes [d3by1b6g](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/d3by1b6g) (D151: COACHED 318 and WORKED_WITH 69 updates, 7 deletes, 69 s; the current `derive_id` 20261019T162931Z). Lab, final (on that derive): neighbours [pa4ya1mm](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/pa4ya1mm), families [it3cijgu](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/it3cijgu), chemistry [l88z1sr2](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/l88z1sr2); before the review's fixes: neighbours [pkbyqwwu](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/pkbyqwwu), families [d91akpn4](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/d91akpn4), chemistry [xk908wsh](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/xk908wsh); earlier: the smoke runs [b6ichb9h](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/b6ichb9h), [c9y7andt](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/c9y7andt) (families at resolution 1: 23 franchise-sized groups), [zjd4vesh](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/zjd4vesh), then [f8gzkh2o](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/f8gzkh2o), [qbl6j2sm](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/qbl6j2sm), [p8ntrhpo](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/p8ntrhpo) (before the stint-team fix), [292q6udw](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/292q6udw) (families before the era snaps). Ask's new golden ids (`ask-eval`): [vhte9q3g](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/vhte9q3g) (6 of 8), [ya2a6he0](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/ya2a6he0) (the two fixed, 2 of 2). The reader's guide: [history-graph.md](history-graph.md) §15-§17.
+
+
+### 6.14 The path benchmark (group `history-graph`, job type `path-benchmark`, AE03)
+
+`nfl history-graph bench-paths` logs one run, `path-benchmark` (`--smoke`: group `history-graph-smoke`, tag `smoke`; tags `history-graph`, `path-benchmark`; config: the sizes, pairs, sources, repeats, budget, seed, `derive_id`, the machine's facts). It isn't a model: it records how long shortest-path algorithms take on the person graph and its samples, and whether each agreed with scipy.
+
+| Panel / field | What it shows | What to look for |
+|---|---|---|
+| `median_ms/<family>/<algorithm>` (live, x = `size_n`) | the median per algorithm as each size finishes | one pair flat in milliseconds; all pairs climbing steeply |
+| `results` (table) | every row: algorithm, family (pair / source / all), size, arcs, runs, median / p90 / min ms, agrees, note | `agrees` true on every checkable row (`gds-delta-stats` returns no distances: null); "skipped" rows past the budget |
+| `chart_log_log_svg` (HTML) | median ms against people, both axes logarithmic, one line per algorithm | the slopes: ~3 for Floyd–Warshall, ~2 for a search per person |
+| summary `agrees_all`, `failures`, `jit_compile_s`, `seconds` | the run's outcome | `agrees_all` true, no failures, ~12 minutes |
+
+**AE03's runs (2026-10-19, `launched-by: agent`).** The canonical run on an idle machine [td5sftdt](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/td5sftdt) (713 s; numbers in [history-graph.md](history-graph.md) §18); the smoke run [5ryzrkkq](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/5ryzrkkq); not canonical: [h40flstf](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/h40flstf) (overlapped a weekly-graph rebuild: database rows up to 2.9x slower) and `zc1xkvqx` (aborted: a test suite shared the CPU; tagged `aborted`, `not-canonical`). Run it on an idle computer. Since the review (D151) a run with a failed step finishes **failed** (summary `ok`: every row agrees and no step failed), and a run whose person links changed meanwhile is aborted and writes nothing; td5sftdt ran on the derive before the review's fixes (7 of 546,672 arcs and some coaching weights differ since: the timings don't depend on them).
 
 ## 7. Season-long views
 

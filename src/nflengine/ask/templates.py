@@ -40,6 +40,8 @@ templates:
 
 Parameter types: `team` (a code, name, nickname or city -> the canonical code), `player` (a
 name or a GSIS id -> the GSIS id), `coach` (a name -> the name as the data spells it),
+`person` (AE03: a player or a coach -> a player's GSIS id or a coach's name; a GSIS id never
+equals a coach's name, so a query matches `Player {player_id: $x}` or `Coach {name: $x}`),
 `season` (min / max; `current` = `seasons.current`), `week` (1-22), `int` / `float` (min /
 max), `choice` (a list of allowed strings, bound as text; or a mapping of choice -> fixed
 fragment, substituted), `text` (a short search string, bound, at most 60 characters). A
@@ -59,7 +61,9 @@ import yaml
 from nflengine.settings import CONFIG_DIR
 
 TEMPLATES_PATH = CONFIG_DIR / "ask_templates.yaml"
-PARAM_TYPES = ("team", "player", "coach", "season", "week", "int", "float", "choice", "text")
+PARAM_TYPES = (
+    "team", "player", "coach", "person", "season", "week", "int", "float", "choice", "text",
+)  # fmt: skip
 _ID = re.compile(r"[a-z0-9_]{1,64}")
 _PLACEHOLDER = re.compile(r"\{([a-z0-9_]+)\}")
 _GSIS = re.compile(r"00-\d{7}")
@@ -87,6 +91,7 @@ class TemplateError(ValueError):
         self.message = message
         self.choices = choices or []  # labels
         self.values = values or []  # the matching ids / codes, same order
+        self.kinds: list[str] = []  # a `person`'s candidates: "player" | "coach", same order
         super().__init__(message)
 
 
@@ -352,6 +357,31 @@ def _resolved(p: Param, res: Any) -> Any:
     raise TemplateError("not_found", f"no {p.type} matches {p.name}", p.name)
 
 
+def _person(p: Param, text: str, resolver: Any) -> Any:
+    """A player or a coach (AE03): a player's GSIS id or a coach's name, by the name index's
+    own rule (`NameIndex.person`); "which one?" can mix both (`kinds` says which is which)."""
+    if hasattr(resolver, "person"):
+        res = resolver.person(text)
+    else:  # a resolver without the rule: a player, else a coach
+        res = resolver.player(text)
+        if getattr(res, "status", "none") == "none":
+            res = resolver.coach(text)
+    status = getattr(res, "status", "none")
+    if status == "unique":
+        return res.value
+    if status == "ambiguous":
+        err = TemplateError(
+            "ambiguous",
+            f"{p.name} matches more than one player or coach",
+            p.name,
+            [m.label for m in res.matches],
+            [m.value for m in res.matches],
+        )
+        err.kinds = ["player" if _GSIS.fullmatch(str(m.value)) else "coach" for m in res.matches]
+        raise err
+    raise TemplateError("not_found", f"no player or coach matches {p.name}", p.name)
+
+
 def normalise(p: Param, raw: Any, resolver: Resolver | None) -> Any:
     """One parameter's value, checked and normalised (raises TemplateError)."""
     if p.type in ("int", "season", "week"):
@@ -381,6 +411,8 @@ def normalise(p: Param, raw: Any, resolver: Resolver | None) -> Any:
         return _resolved(p, resolver.player(text))
     if p.type == "coach":
         return _resolved(p, resolver.coach(text))
+    if p.type == "person":
+        return _person(p, text, resolver)
     raise TemplateError("invalid", f"{p.name} has an unknown type", p.name)  # unreachable
 
 

@@ -326,3 +326,13 @@ You should see 22 nodes and 38 relationships, then Jaccard **1.0** for everyone 
 - **Early weeks are thin:** three games make a usage profile; the comparison says "so far" and the item is low confidence under four games.
 - **In the digest so far:** in 2025 backtests (weeks 5-14) the GDS items reach *More from the graph*, not the prose: Ja'Marr Chase out of the Bengals' network (week 13), Harold Fannin Jr. ~ Evan Engram 2022 (week 14). The strongest P05 stories (0.85-1.0) still win the two prose slots. On the 2026 week-4 graph, DeVonta Smith's hub story (0.84) would take the second prose slot.
 - **Next:** community detection on the coaching and player-movement graph (doc 05) now that the coaching seed exists (D86); Track 2 (Big Data Bowl) movement profiles could join the usage vectors.
+
+## 7. GDS on the history graph (AE03)
+
+The **history graph** (the second Neo4j, every play since 2018; [history-graph.md](history-graph.md)) has its own GDS jobs, separate from the weekly build's, on the **person links** (teammates on the field, QB → receiver, coached, same staff):
+
+- **Connections' "strongest" chains:** Dijkstra and Yen's k-shortest paths on a projection of the person graph weighted by 1 ÷ snaps (`persons-<derive_id>`, kept in memory for the app; [history-graph.md](history-graph.md) §16).
+- **The Graph lab** (`nfl history-graph lab`): **FastRP** embeddings + **KNN** ("players most like him by who he played with"), **Leiden** communities ("football families": the community detection this section's "Next" asked for, on the history graph instead of the weekly one) and **PageRank** on the QB ↔ receiver graph (the most central receivers); [history-graph.md](history-graph.md) §17.
+- **The path benchmark** (`nfl history-graph bench-paths`): GDS Dijkstra and Delta-Stepping timed against Cypher, scipy and our own implementations; [history-graph.md](history-graph.md) §18.
+
+Same ideas as above (project, run in stream mode, drop), but on a different server (Bolt 7688) and never written back: the lab's results are files. The weekly build's GDS (PageRank on the passing network, KNN on usage) is unchanged (D107).

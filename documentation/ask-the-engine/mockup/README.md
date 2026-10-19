@@ -75,3 +75,50 @@ Design changes start here:
 2. Republish to the same URL.
 3. Update `../AE01-ask-tab.md` (and `../README.md` §3 if a screen changed).
 4. Change the code (`web/src/pages/explore/AskPage.tsx`, `ask/`, `ask.css`).
+
+---
+
+# Connections and Graph lab (AE03)
+
+**Live mockup:** <https://claude.ai/artifact/JLpvtxrLwAvzxT9DzjzdeD> ("Connections & Graph Lab", published 2026-10-19, v1; private to Rishi's account, agents read it with the Artifact tool's `read` action; to update it: rebuild, copy the HTML to the session scratchpad, publish that copy to the same URL). **The file:** `graphlab.html`, built from this folder's sources and the real app's answers (2026-10-19; Rishi waived the ✋ approval step for AE03, so the React port followed straight away). The spec is [`../AE03-connections-and-graph-ml.md`](../AE03-connections-and-graph-ml.md) and [`../README.md`](../README.md) §3; what the history graph is lives in the [history-graph guide](../../guides/history-graph.md).
+
+Explore → Ask the Engine becomes three parts, a switch under the page title: **Ask** (AE01's page, unchanged, `/explore/ask`) · **Connections** (`/explore/ask/connections`) · **Graph lab** (`/explore/ask/lab/<view>`: `neighbours`, `families`, `chemistry`, `benchmark`). Every view's state is in its URL (`?a=&b=&mode=`, `?player=`, `?family=` / `?person=`, `?min=`), so a link can be shared.
+
+| File | What it is |
+|---|---|
+| `template_graphlab.html` | The skeleton with five placeholders (`{{CSS}}`, `{{ASKCSS}}`, `{{GLCSS}}`, `{{JS}}`, `{{DATA}}`) and the "Mockup controls" strip |
+| `graphlab.css` | The two parts' styles, on top of the control room's `styles.css` and AE01's `ask.css` (both inlined unchanged). Tokens only; every class starts with `gl-`. The React page's `web/src/pages/explore/graphlab/graphlab.css` is a copy: keep the two in step |
+| `graphlab.js` | The mockup in plain JavaScript: the shell, the switch, Connections, the four lab views, the map (canvas), the benchmark chart (SVG), tooltips |
+| `dump_graphlab.py` | Writes `graphlab.json`: the real app's answers, in-process (no model call, no cost, ~20 s to a minute; it needs the history graph up). Keys: `meta`, `weeks`, `team_info`, `status`, `people.<q>`, `connections.<pair>`, `connection_errors.<code>`, `lab.neighbours.<player>` (`shepley`: Dakoda Shepley, 99 snaps, not in the map), `lab.map`, `lab.families`, `lab.family_of_*`, `lab.chemistry`, `lab.chemistry_300`, `lab.benchmark`; each `{http_status, ms, body}` |
+| `build_graphlab.py` | Reads `graphlab.json`, checks every key the page draws (it stops and names what's missing), writes one HTML file |
+
+```powershell
+$env:PYTHONIOENCODING = "utf-8"
+uv run python documentation/ask-the-engine/mockup/dump_graphlab.py     # the answers -> cache/ask-mockup/graphlab.json
+uv run python documentation/ask-the-engine/mockup/build_graphlab.py    # -> cache/ask-mockup/graphlab.html
+```
+
+## What it shows
+
+- **The header:** "Explore · Ask the Engine", the three-part switch, and for the two new parts the history graph's label and state (`status.history_state`: up / down / checking / being rebuilt) and the person links' label, each with a tooltip (the links' counts by type, when they were made).
+- **Connections:** two person pickers (a combobox over `GET /api/ask/people?q=`: two letters at least, 200 ms after the last key; each match shows the name, position or "coach", team, seasons and how many links; arrows + Enter pick, Escape closes; a picked person becomes a card with ×), a swap button, **Fewest links** / **Strongest links** with one line on what each means, **Connect**. The answer card: "The shortest chain" (or "The strongest chain"), "A to B", the hop count big, chips (mode, the weakest link's snaps, the time, "as of" the person links), then **the chain**: people as pills (players solid, coaches dashed, the two ends ringed in the accent), each link an SVG line coloured and dashed by type (teammates solid `--s2`, coached dashed `--s1`, same staff dotted `--s3`) with its type in words and its evidence text (`links[i].text`). Up to 2 links (3 on a wide screen) the chain runs left to right; longer chains and phones run top to bottom with the evidence beside each link. **Show 3 more chains** (`k=4`) lists the chains compactly (hops, "via …", the link types as small swatches, the weakest link, the cost for strongest); a click draws that one.
+- **States:** nothing picked; running (dots, seconds, and for strongest the note that the first search after new links loads them into memory); no chain (`found: false` + the server's `note`); a person with no links (`note`); 503 `history_down` (a banner with the start command); 409 `busy` (Try again); 404 `not_found` / 422 `bad_id` / `same_person` (an inline error).
+- **Graph lab:** four tabs. Each view has its "Ran …" chip (tooltip: the derive it ran on, the job's parameters), the W&B run link, the seed, an amber "Made on older person links: re-run `uv run nfl history-graph lab`" when `asof.current` is false, and the not-run-yet card (404 `not_built`, the command in a copyable line).
+  - **Neighbours:** a player picker (`kind=player`), the player ("Travis Kelce · TE · KC · 8,761 snaps since 2018"), two ranked lists side by side (**Same position**, **Anyone**): rank, name (a button: picks him), position · team · "N snaps together" or "never on the field together", similarity as a neutral bar 0–1 and its value. Not in the map (`found: false`): a notice saying why. **The map:** 4,272 dots on one canvas (smooth; no SVG needed), coloured by unit (offense `--s2`, defense `--s1`, special teams `--s3`: three colours pass the colour-blind checks for every pair in all four themes, nine position colours wouldn't), a legend whose position-group buttons highlight one group; the picked player in ink with an accent ring and a label, his neighbours ringed; hovering or focusing a list row rings that player on the map; hover a dot for a tooltip, click one to pick him; **Zoom to <player>**; the note that the two PCA axes keep only ~13% of the variation, so the lists are the real answer.
+  - **Families:** what a family is (an algorithm grouped people who shared the most snaps: Leiden on the teammate and coaching links; named after the biggest team-era and unit), the counts, a filter box (name, team, top players, coaches), **Find someone's family** (`person=`), the list (name + unit, size, players / coaches, the top three players), and the picked family's card (chips, coaches, then the members table: players by their snaps in this era (the family's team and seasons) with all their snaps since 2018 beside it, then coaches with "—", the searched person highlighted).
+  - **Chemistry:** the duos table (QB, receiver, position, targets, catches, yards, TDs, EPA / target, catch rate, seasons, teams; every header sorts), **Min. targets** 100 · 200 · 300 · 500, and the PageRank lists (receivers: "N QBs threw to him"; QBs: "threw to N receivers"; score as a neutral bar).
+  - **Benchmark:** what it measures (the sample sizes from the answer) and why the 2026 sub-cubic APSP result saves nothing here; not run yet (404 `not_built`); the results: the run's time, seed, machine and W&B link, a "smoke run" chip and note for a quick check run, a red notice if any algorithm disagreed, a log-log chart of median time by graph size (one line per algorithm, coloured by kind: one pair `--s2`, one source `--s1`, all pairs `--s3`, dash patterns within a kind, a legend that highlights a line, a tooltip per point with median / p90 / fastest / runs) and the table of every run (algorithm slugs in words, "skipped" for a run predicted past the time budget, ✓ agrees with the reference's path lengths).
+
+## What's real and what's mockup-only
+
+- **Real:** every person, chain, evidence line, time, error message, lab row, map point, family, duo and as-of in the page, and the benchmark (the bench worker's smoke run, 2026-10-19; the full run replaces it).
+- **Mockup-only (each says so on the page, * in the controls):** "No chain" and "No person links" (real answers with their chains removed and the server's note wording), "Older person links" (`asof.current: false`), a lab view's "Not run yet" (the server's `not_built` text), the 200 / 500 target minimums (filtered from the 100 / 300 answers), and the benchmark's "Not run yet" (the server's text). The search finds only the people in the dump; the dump has neighbours for six players and members for one family.
+
+## What the real data changed
+
+- **People in a chain had no team**, and coaches' `position` was null there but "coach" in the search: the backend now sends `team` and `seasons` for every person, and "coach" everywhere.
+- **A stint's team on special-teams snaps** came from the possession team (a kick returner "teammates on ARI 2021" with a Rams player): the derive now takes the team a player was on the field for; 56,685 teammate links changed and the lab was re-run (132 families).
+- **The first searches are slow when the graph is cold:** in the dump the first fewest search took ~10 s and the first strongest search ~32 s (the GDS projection on a cold page cache); after that, 30–400 ms. The app now warms the graph up in the background (once per derive, when the page's status call finds it up), and the running card says a cold graph can take up to half a minute.
+- **The map's colours:** nine position groups can't be told apart by colour-blind readers in a scatter, so the dots are coloured by unit and a group is picked out by highlighting it; the bars are neutral, because the series colours mean offense / defense on this page.
+- **The benchmark's real answer** differed from the planned shape: `sizes` are objects (`{label, n, m, requested}`), algorithms are slugs (the page names them), a skipped run has null timings, `started_at` instead of `ran_at`; the reader now leaves out `gds_procedures` and `times_ms`.
+- **Family members' snaps** were each player's snaps since 2018 on every team (Mahomes 9,971 in "2021-2025 KC offense"): the backend now sends `snaps` (in the family's era) and `snaps_total`; a coach's are null ("—").

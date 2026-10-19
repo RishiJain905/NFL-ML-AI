@@ -29,6 +29,7 @@ from ask_fakes import (
     coach,
     make_index,
     make_sandbox,
+    player,
     result,
     standard_index,
 )
@@ -810,3 +811,163 @@ class TestLastCalls:
         with pytest.raises(RuntimeError):
             b.eng.ask("How many wins do the Cowboys have?")
         assert [c["purpose"] for c in b.eng.last_calls] == ["route"]
+
+
+# ---- a player and a coach with one name (AE03's `person`) ----------------------------------------
+
+PERSON_TEMPLATE = {
+    "id": "person_links",
+    "source": "graph",
+    "title": "A person's links",
+    "description": "A player's or a coach's links.",
+    "examples": ["Who has Mike Smith worked with?"],
+    "params": {"who": {"type": "person"}},
+    "query": "MATCH (p) WHERE p.id = $who RETURN p.id AS id",
+}
+MIKE = "00-0099999"  # Mike Smith the receiver; Mike Smith (or Mike Smyth) the coach
+MIKE_Q = "Who has Mike Smith worked with?"
+LINKS = result(["id"], [["x"]], source="graph")
+
+
+class TestPlayerOrCoach:
+    """A prominent player and a coach share a name: the card offers one group per kind, a
+    pick is applied with its own kind, and a coach picked stays the coach through the
+    template's `person` value (which `NameIndex.person` would ask about again)."""
+
+    def build(self, tmp_path, replies, runs=(), coach_name="Mike Smith"):
+        names = make_index(
+            players=[player(MIKE, "Mike Smith", "WR", "ATL", 2015, 2026, 120)],
+            coaches=[coach(coach_name, ["ATL"], 2008, 2014)],
+        )
+        b = build(tmp_path, replies, runs, names=names)
+        path = tmp_path / "person.yaml"
+        body = {"version": 1, "templates": [PERSON_TEMPLATE]}
+        path.write_text(yaml.safe_dump(body, sort_keys=False), encoding="utf-8")
+        b.eng.templates = {**b.eng.templates, **load_templates(path, current_season=2026)}
+        return b
+
+    def test_the_question_s_card_has_a_player_group_and_a_coach_group(self, tmp_path):
+        b = self.build(tmp_path, [])
+        res = b.eng.ask(MIKE_Q)
+        assert res.status == "clarify" and b.llm.requests == []
+        assert [(c["text"], c["kind"]) for c in res.choices] == [
+            ("Mike Smith", "player"),
+            ("Mike Smith", "coach"),
+        ]
+        values = [[o["value"] for o in c["options"]] for c in res.choices]
+        assert values == [[MIKE], ["Mike Smith"]]
+        assert res.answer == 'More than one player or coach matches "Mike Smith": which one?'
+
+    def test_a_name_of_one_kind_keeps_one_group_and_its_own_word(self, tmp_path):
+        res = build(tmp_path, []).eng.ask(ALLEN_Q)
+        assert [c["kind"] for c in res.choices] == ["player"]
+        assert res.answer == 'More than one player matches "Allen": which one?'
+
+    @pytest.mark.parametrize("written", ["Mike Smith", "mike smith"])
+    def test_picking_the_coach_answers_for_the_coach(self, tmp_path, written):
+        b = self.build(tmp_path, [template("person_links", who=written), ANSWER], [LINKS])
+        res = b.eng.ask(MIKE_Q, picks=[pick("Mike Smith", "Mike Smith", "coach")])
+        assert res.status == "answered" and res.choices == []
+        assert b.src.runs[0]["params"] == {"who": "Mike Smith"}
+        assert '"Mike Smith" -> coach Mike Smith' in b.llm.requests[0]["user"]
+        assert b.llm.purposes == ["route", "answer"]
+
+    def test_picking_the_player_answers_with_his_id(self, tmp_path):
+        b = self.build(tmp_path, [template("person_links", who="Mike Smith"), ANSWER], [LINKS])
+        res = b.eng.ask(MIKE_Q, picks=[pick("Mike Smith", MIKE, "player")])
+        assert res.status == "answered" and b.src.runs[0]["params"] == {"who": MIKE}
+        assert f'"Mike Smith" -> player {MIKE}' in b.llm.requests[0]["user"]
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            pick("Mike Smith", "Mike Smith", "player"),  # the coach under the player's kind
+            pick("Mike Smith", MIKE, "coach"),  # the player under the coach's kind
+            pick("Mike Smith", "Mike Smith", "team"),
+            pick("Mike Smith", "Andy Reid", "coach"),  # not offered
+            pick("Mike Smith", "00-0000001", "player"),
+            {"text": "Mike Smith", "kind": "person", "value": "Mike Smith"},  # not a pick kind
+        ],
+    )
+    def test_a_pick_the_card_did_not_offer_brings_the_card_back(self, tmp_path, bad):
+        b = self.build(tmp_path, [])
+        res = b.eng.ask(MIKE_Q, picks=[bad])
+        assert res.status == "clarify" and len(res.choices) == 2
+        assert b.llm.requests == [] and b.src.runs == []
+
+    def test_the_coach_pick_makes_a_coach_mention(self, tmp_path):
+        eng = self.build(tmp_path, []).eng
+        ms = eng.names.mentions(MIKE_Q)
+        (m,) = eng._apply_picks(ms, [pick("Mike Smith", "Mike Smith", "coach")])
+        assert m.kind == "coach" and m.resolution.status == "unique"
+        assert m.resolution.value == "Mike Smith" and "head coach" in m.resolution.label
+        (m,) = eng._apply_picks(ms, [pick("Mike Smith", MIKE, "player")])
+        assert m.kind == "player" and m.resolution.value == MIKE
+
+    # the question names the player alone (the coach "Mike Smyth" is only a near miss there),
+    # but the template's `person` value finds both: the "which one?" comes from the template
+
+    def test_the_template_s_card_when_the_question_named_one_player(self, tmp_path):
+        b = self.build(
+            tmp_path, [template("person_links", who="Mike Smith")], coach_name="Mike Smyth"
+        )
+        (m,) = b.eng.names.mentions(MIKE_Q)
+        assert m.kind == "player" and m.resolution.value == MIKE  # unique in the question
+        res = b.eng.ask(MIKE_Q)
+        assert res.status == "clarify" and res.template_id == "person_links"
+        assert [(c["kind"], [o["value"] for o in c["options"]]) for c in res.choices] == [
+            ("player", [MIKE]),
+            ("coach", ["Mike Smyth"]),
+        ]
+
+    def test_the_template_s_coach_pick_is_not_dropped_or_swapped_for_the_player(self, tmp_path):
+        b = self.build(
+            tmp_path,
+            [template("person_links", who="Mike Smith"), ANSWER],
+            [LINKS],
+            coach_name="Mike Smyth",
+        )
+        res = b.eng.ask(MIKE_Q, picks=[pick("Mike Smith", "Mike Smyth", "coach")])
+        assert res.status == "answered" and b.src.runs[0]["params"] == {"who": "Mike Smyth"}
+        assert '"Mike Smith" -> coach Mike Smyth' in b.llm.requests[0]["user"]
+
+    def test_the_template_s_player_pick_answers_for_the_player(self, tmp_path):
+        b = self.build(
+            tmp_path,
+            [template("person_links", who="Mike Smith"), ANSWER],
+            [LINKS],
+            coach_name="Mike Smyth",
+        )
+        res = b.eng.ask(MIKE_Q, picks=[pick("Mike Smith", MIKE, "player")])
+        assert res.status == "answered" and b.src.runs[0]["params"] == {"who": MIKE}
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            pick("Mike Smith", "Andy Reid", "coach"),  # not offered
+            pick("Mike Smith", "Mike Smyth", "player"),  # the coach under the player's kind
+            pick("Mike Smith", "Mike Smyth", "team"),
+        ],
+    )
+    def test_the_template_s_card_comes_back_for_a_pick_it_did_not_offer(self, tmp_path, bad):
+        b = self.build(
+            tmp_path, [template("person_links", who="Mike Smith")], coach_name="Mike Smyth"
+        )
+        res = b.eng.ask(MIKE_Q, picks=[bad])
+        assert res.status == "clarify" and res.template_id == "person_links"
+        assert {c["kind"] for c in res.choices} == {"player", "coach"} and b.src.runs == []
+
+    def test_a_template_s_coach_pick_for_a_name_the_question_lacks(self, tmp_path):
+        q = "Who has he worked with?"
+        b = self.build(
+            tmp_path,
+            [template("person_links", who="Mike Smith")] * 2 + [ANSWER],
+            [LINKS],
+        )
+        card = b.eng.ask(q)
+        assert card.status == "clarify" and {c["kind"] for c in card.choices} == {
+            "player",
+            "coach",
+        }
+        res = b.eng.ask(q, picks=[pick("Mike Smith", "Mike Smith", "coach")])
+        assert res.status == "answered" and b.src.runs[0]["params"] == {"who": "Mike Smith"}

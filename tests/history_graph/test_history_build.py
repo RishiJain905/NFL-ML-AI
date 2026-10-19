@@ -17,6 +17,7 @@ from history_fakes import (
     is_compose,
     is_import,
     is_install,
+    no_real_docker,  # noqa: F401  (the safety net)
 )
 from history_world import install_world, load
 
@@ -52,6 +53,8 @@ def written_from_dir(d):
 class Rig(SimpleNamespace):
     def run(self, **kw):
         kw.setdefault("use_wandb", False)
+        kw.setdefault("derive_after", False)  # these tests are about the import; AE03's derive
+        # has its own file (test_history_derive_run.py)
         kw.setdefault("log", self.logs.append)
         kw.setdefault("first_season", 2024)
         kw.setdefault("through_season", 2024)
@@ -168,7 +171,8 @@ class TestSuccessfulBuild:
         doc = rig.run(append_current=False)
         assert "append" not in doc and doc["counts_after_append"] is None
         assert "append" not in doc["seconds"]
-        assert rig.graphs[0].counts() == doc["counts"]
+        assert rig.graphs[0].bulk_counts() == doc["counts"]
+        assert not any(v for k, v in rig.graphs[0].counts().items() if k in S.DERIVED)
 
     def test_a_rebuild_drops_the_previous_builds_append(self, rig, monkeypatch):
         stamps = iter(

@@ -647,6 +647,19 @@ def real():
     return {t.id: t for t in load_templates(current_season=2026).values() if t.source == "history"}
 
 
+# AE03: the templates over the person links (`nfl history-graph derive`). A link already sums
+# every game (playoffs included), so they have no `games` choice, and each starts from its own
+# anchor: a player's id, a coach's name (298 Coach nodes), or the CONNECTION type (5.7k links)
+PERSON_LINK_TEMPLATES = {
+    "history_connection": "OPTIONAL MATCH (pa:Player {player_id: $person})",
+    "history_most_snaps_with": "MATCH (a:Player {player_id: $player})-[t:TEAMMATE]-(b:Player)",
+    "history_qb_chemistry": "MATCH (q:Player)-[c:CONNECTION]->(r:Player)",
+    "history_coach_players": "MATCH (c:Coach)-[k:COACHED]->(p:Player)",
+    "history_coach_colleagues": "MATCH (c:Coach)-[w:WORKED_WITH]-(o:Coach)",
+    "history_opponents_faced": "MATCH (a:Player {player_id: $player})-[o:OPPONENT]-(b:Player)",
+}
+
+
 class TestRealHistoryTemplates:
     def test_there_are_enough_and_they_are_documented(self, real):
         assert len(real) >= 8
@@ -679,7 +692,18 @@ class TestRealHistoryTemplates:
         )
         for t in real.values():
             first = t.query.strip().splitlines()[0]
+            if t.id in PERSON_LINK_TEMPLATES:
+                assert first == PERSON_LINK_TEMPLATES[t.id], t.id
+                continue
             assert first.startswith("MATCH") and any(a in first for a in anchors), t.id
+
+    def test_the_person_link_templates_are_all_there(self, real):
+        assert set(PERSON_LINK_TEMPLATES) <= set(real)
+        conn = real["history_connection"]
+        assert [p.type for p in conn.params] == ["person", "person"]
+        # never through a team: only the person links, ranked by strength among the shortest
+        assert "ALL SHORTEST (a)-[:TEAMMATE|COACHED|WORKED_WITH]-+(b)" in conn.query
+        assert "Team" not in conn.query.split("ALL SHORTEST", 1)[1]
 
     def test_scrimmage_and_situation_conventions(self, real):
         sit = real["history_qb_receivers_situation"].param("situation")
@@ -693,6 +717,9 @@ class TestRealHistoryTemplates:
             if p is not None:
                 assert p.fragments == frags, t.id
             g = t.param("games")
+            if t.id in PERSON_LINK_TEMPLATES:  # a link sums every game, playoffs included
+                assert g is None, t.id
+                continue
             assert g is not None and g.default == "all", t.id  # playoffs count by default
 
     def test_leaders_keep_ties_at_the_cut(self, real):

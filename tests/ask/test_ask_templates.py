@@ -654,6 +654,7 @@ class TestRealLibrary:
                     "team": "KC",
                     "player": "Patrick Mahomes",
                     "coach": "Andy Reid",
+                    "person": "Andy Reid",  # AE03: a player or a coach
                     "season": 2023,
                     "week": 5,
                     "int": int(p.min if p.min is not None else 1) or 1,

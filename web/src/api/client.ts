@@ -5,7 +5,17 @@ import type {
   AskExamplesResponse,
   AskRequest,
   AskResponse,
+  BenchmarkResponse,
+  ChemistryResponse,
+  ConnectionMode,
+  ConnectionsResponse,
   DigestResponse,
+  FamiliesResponse,
+  GraphLabPersonKind,
+  GraphLabStatus,
+  NeighboursMapResponse,
+  NeighboursResponse,
+  PeopleResponse,
   GamesResponse,
   GraphResponse,
   HealthResponse,
@@ -549,4 +559,118 @@ export function useAskExamples() {
  *  ask_unavailable, ...) or an `AbortError` when `signal` aborts (Cancel). */
 export function askQuestion(req: AskRequest, signal?: AbortSignal): Promise<AskResponse> {
   return apiPost<AskResponse>('/api/ask', req, signal);
+}
+
+// ---- AE03: Explore -> Ask the Engine -> Connections and the Graph lab. Read-only GETs: the lab
+// views read files (cached for 10 minutes: a lab run is rare), the name search reads the people
+// index, Connections asks the history graph (only when Connect is pressed or a shared link names
+// both people). A view that hasn't run answers 404 `not_built` (an ApiError the page shows).
+
+const LAB_STALE_MS = 10 * 60_000;
+/** The person ids the search hands out (the server checks them again). */
+export const PERSON_ID = /^(player|coach):[a-z0-9-]{1,64}$/;
+const PLAYER_ID = /^00-\d{7}$/;
+
+/** What Connections and the lab have to work with: the history graph's state, the person
+ *  links, each lab job's run. */
+export function useGraphLabStatus() {
+  return useQuery({
+    queryKey: ['graphlab', 'status'],
+    queryFn: () => apiGet<GraphLabStatus>('/api/ask/graph-lab'),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+}
+
+/** The name search: only from two characters (the caller debounces the text). */
+export function usePeopleSearch(q: string, kind?: GraphLabPersonKind) {
+  const text = q.trim();
+  const params = new URLSearchParams({ q: text });
+  if (kind) params.set('kind', kind);
+  return useQuery({
+    queryKey: ['graphlab', 'people', text.toLowerCase(), kind ?? 'any'],
+    queryFn: () => apiGet<PeopleResponse>(`/api/ask/people?${params.toString()}`),
+    enabled: text.length >= 2 && text.length <= 60,
+    staleTime: LAB_STALE_MS,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+/** The chains between two people; `enabled` only once the page has asked (Connect, or a shared
+ *  link). A refusal (422 / 404 / 409 / 503) arrives as an ApiError, never retried. */
+export function useConnections(a: string | null, b: string | null, mode: ConnectionMode, k: number, enabled: boolean) {
+  const ok = !!a && !!b && a !== b && PERSON_ID.test(a) && PERSON_ID.test(b);
+  return useQuery({
+    queryKey: ['graphlab', 'connections', a, b, mode, k],
+    queryFn: () =>
+      apiGet<ConnectionsResponse>(
+        `/api/ask/connections?${new URLSearchParams({ a: a ?? '', b: b ?? '', k: String(k), mode }).toString()}`,
+      ),
+    enabled: enabled && ok,
+    staleTime: LAB_STALE_MS,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+/** A player's neighbours (`player` is the GSIS id, without "player:"). */
+export function useNeighbours(player: string | null) {
+  return useQuery({
+    queryKey: ['graphlab', 'neighbours', player],
+    queryFn: () => apiGet<NeighboursResponse>(`/api/ask/lab/neighbours?player=player:${encodeURIComponent(player ?? '')}`),
+    enabled: !!player && PLAYER_ID.test(player),
+    staleTime: LAB_STALE_MS,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+/** Every player's point on the map (~4.3k): fetched once per visit. */
+export function useNeighboursMap() {
+  return useQuery({
+    queryKey: ['graphlab', 'map'],
+    queryFn: () => apiGet<NeighboursMapResponse>('/api/ask/lab/neighbours/map'),
+    staleTime: LAB_STALE_MS,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+/** Every family; with `family` (or `person`, whose family is picked) also its members. */
+export function useFamilies(family: number | null, person: string | null) {
+  const params = new URLSearchParams();
+  if (person && PERSON_ID.test(person)) params.set('person', person);
+  else if (family != null && Number.isInteger(family) && family >= 0) params.set('family', String(family));
+  const q = params.toString();
+  return useQuery({
+    queryKey: ['graphlab', 'families', q],
+    queryFn: () => apiGet<FamiliesResponse>(`/api/ask/lab/families${q ? `?${q}` : ''}`),
+    staleTime: LAB_STALE_MS,
+    refetchOnWindowFocus: false,
+    retry: false,
+    placeholderData: (prev) => prev, // keep the list while a family's members load
+  });
+}
+
+export const CHEMISTRY_MINS = [100, 200, 300, 500] as const;
+export function useChemistry(minTargets: number) {
+  return useQuery({
+    queryKey: ['graphlab', 'chemistry', minTargets],
+    queryFn: () => apiGet<ChemistryResponse>(`/api/ask/lab/chemistry?min_targets=${minTargets}`),
+    staleTime: LAB_STALE_MS,
+    refetchOnWindowFocus: false,
+    retry: false,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useBenchmark() {
+  return useQuery({
+    queryKey: ['graphlab', 'benchmark'],
+    queryFn: () => apiGet<BenchmarkResponse>('/api/ask/lab/benchmark'),
+    staleTime: LAB_STALE_MS,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
 }

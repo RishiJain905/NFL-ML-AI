@@ -403,7 +403,31 @@ Relationships:
   the question asks about plays, passes or runs rather than snaps
 - (Player)-[:PLAYED_FOR {season, weeks, first_week, last_week, games, status_last}]->(Team)
 - (Coach)-[:HEAD_COACH {season, games, first_week, last_week}]->(Team);
-  (Coach)-[:OFF_COORD|DEF_COORD|ST_COORD {season}]->(Team)"""
+  (Coach)-[:OFF_COORD|DEF_COORD|ST_COORD {season}]->(Team)
+
+Person links (AE03, derived from the plays; one link per pair, totals over every season;
+stint_* are parallel lists, one item per season and team, in season order):
+- (Player)-[:TEAMMATE {snaps (on the field together, same side), seasons, teams, first_season,
+  last_season, stint_seasons, stint_teams, stint_snaps}]-(Player): participation, 2018-2025;
+  stored once per pair, so match it without a direction: (a)-[t:TEAMMATE]-(b)
+- (Player)-[:CONNECTION {targets, catches, yards, touchdowns, epa (total), seasons, teams,
+  first_season, last_season}]->(Player): passer -> receiver (the quarterback, or a WR / RB on
+  a trick play: q.position = 'QB' for quarterbacks only), every season (the current one too);
+  EPA per target = c.epa / c.targets
+- (Player)-[:OPPONENT {plays, seasons, first_season, last_season}]->(Player): offense ->
+  defense on the same scrimmage plays, only skill players (WR, TE, RB, FB) vs defensive backs,
+  offensive linemen vs defensive linemen and the quarterback vs any defender, 2018-2025
+- (Coach)-[:COACHED {snaps (the player's snaps in the coach's units, each counted once),
+  seasons, teams, roles ('HC', 'OC', 'DC', 'ST'), stint_seasons, stint_teams, stint_roles,
+  stint_snaps}]->(Player): head coach (all units) or the coordinator of the player's unit,
+  from snap counts (2018 on); one stint item per season, team and role (stint_snaps: that
+  role's snaps), so one role's snaps = the sum of stint_snaps where stint_roles[i] = the role
+- (Coach)-[:WORKED_WITH {snaps (the team's, while both were there), games, seasons, teams,
+  stint_seasons, stint_teams, stint_roles ('HC|OC': the start coach's role | the end
+  coach's)}]-(Coach): on the same staff (head coach and coordinators) in a season, over the
+  weeks both were there; stored once per pair
+- "How are X and Y connected": MATCH p = SHORTEST 1 (a)-[:TEAMMATE|COACHED|WORKED_WITH]-+(b),
+  then one row per link (UNWIND range(0, length(p) - 1)); never through Team / Play nodes"""
 
 
 def history_schema(asof: dict | None = None) -> str:

@@ -11,7 +11,9 @@ Stages (each timed, in `build.json` and the W&B run):
 8. **check**: Neo4j's node and relationship counts must equal the frames' (a mismatch fails
    the build: `build.json` says so and Ask stops using the graph);
 9. **append**: the current season through its newest week (`append.run_append`), so a rebuild
-   never leaves the graph without this season's plays.
+   never leaves the graph without this season's plays;
+10. **derive**: the person links (TEAMMATE, CONNECTION, OPPONENT, COACHED, WORKED_WITH; AE03,
+   `derive.run_derive`), which the new store doesn't have.
 
 Takes the history lock (`state.lock_path`) and refuses while the weekly run holds its lock
 (Tuesday's run shares the disk and has a deadline). Writes `build.json` (status, seasons,
@@ -36,7 +38,7 @@ from nflengine.history_graph.config import HistoryConfig, history_config
 from nflengine.paths import DataPaths, ensure_data_root
 
 SCHEMA_VERSION = 1
-NEO4J_STAGES = ("schema", "check", "append")  # the stages that talk to Neo4j over Bolt
+NEO4J_STAGES = ("schema", "check", "append", "derive")  # the stages that talk to Neo4j
 SCHEMA_FILE = Path(__file__).resolve().parent / "schema.cypher"
 
 
@@ -71,7 +73,7 @@ def apply_schema(driver, timeout_s: float = 1800) -> float:
 
 def graph_counts(driver, names: list[str] | None = None) -> dict[str, int]:
     """Node counts per label and relationship counts per type (Neo4j's count store: instant)."""
-    names = names or [*S.NODES, *S.RELATIONSHIPS]
+    names = names or [*S.NODES, *S.RELATIONSHIPS, *S.DERIVED]
     out: dict[str, int] = {}
     with driver.session() as s:
         for n in names:
@@ -124,6 +126,7 @@ def run_build(
     *,
     first_season: int | None = None,
     append_current: bool = True,
+    derive_after: bool = True,
     use_wandb: bool = True,
     launched_by: str | None = None,
     smoke: bool = False,
@@ -165,8 +168,8 @@ def run_build(
         with run_lock(
             state.lock_path(paths), f"nfl history-graph build --through-season {through}"
         ):
-            return _build(paths, cfg, first, through, current, append_current, use_wandb,
-                          launched_by, smoke, log, runner, driver_factory)  # fmt: skip
+            return _build(paths, cfg, first, through, current, append_current, derive_after,
+                          use_wandb, launched_by, smoke, log, runner, driver_factory)  # fmt: skip
     except LockHeld as e:
         raise HistoryBuildError(
             "lock", "another history-graph build or append is running "
@@ -174,8 +177,8 @@ def run_build(
         ) from None  # fmt: skip
 
 
-def _build(paths, cfg, first, through, current, append_current, use_wandb, launched_by, smoke,
-           log, runner, driver_factory) -> dict[str, Any]:  # fmt: skip
+def _build(paths, cfg, first, through, current, append_current, derive_after, use_wandb,
+           launched_by, smoke, log, runner, driver_factory) -> dict[str, Any]:  # fmt: skip
     from nflengine.history_graph.export import build_frames, load_inputs, write_csvs
 
     t_all = time.monotonic()
@@ -253,7 +256,7 @@ def _build(paths, cfg, first, through, current, append_current, use_wandb, launc
 
         stage = "check"
         t = time.monotonic()
-        counts = graph_counts(driver)
+        counts = graph_counts(driver, [*S.NODES, *S.RELATIONSHIPS])
         times["check"] = round(time.monotonic() - t, 1)
         doc["counts"] = counts
         bad = {k: (counts.get(k), v) for k, v in expected.items() if counts.get(k) != v}
@@ -282,7 +285,8 @@ def _build(paths, cfg, first, through, current, append_current, use_wandb, launc
             if newest_week(paths, current):
                 try:
                     app = run_append(current, paths=paths, cfg=cfg, driver=driver,
-                                     use_wandb=False, log=log, locked=True)  # fmt: skip
+                                     use_wandb=False, log=log, locked=True,
+                                     derive=False)  # fmt: skip
                     keep = ("season", "through_week", "plays", "games")
                     doc["append"] = {k: app.get(k) for k in keep}
                 except Exception as e:
@@ -290,8 +294,20 @@ def _build(paths, cfg, first, through, current, append_current, use_wandb, launc
                     log(f"[yellow]history graph: the {current} append failed "
                         f"({doc['append_error']}); run `nfl history-graph append`[/]")  # fmt: skip
             times["append"] = round(time.monotonic() - t, 1)
+        if derive_after:
+            # like the append: reported, never a failed build (`nfl history-graph derive`)
+            from nflengine.history_graph.derive import derive_after as _derive
+
+            stage = "derive"
+            t = time.monotonic()
+            doc["derive"], err = _derive(paths, cfg, driver, log)
+            if err:
+                doc["derive_error"] = err
+            times["derive"] = round(time.monotonic() - t, 1)
         doc["seconds"] = {**times, "total": round(time.monotonic() - t_all, 1)}
-        doc["counts_after_append"] = graph_counts(driver) if "append" in times else None
+        doc["counts_after_append"] = (
+            graph_counts(driver) if ("append" in times or "derive" in times) else None
+        )
         doc["wandb_url"] = getattr(wb, "url", None) if wb else None
         _write_json(state.build_path(paths), doc)
         _wandb_finish(wb, doc, log)
@@ -371,6 +387,8 @@ def _wandb_finish(wb, doc: dict[str, Any], log) -> None:
         expected = doc.get("expected") or {}
         rows = [[k, expected.get(k), counts.get(k), counts.get(k) == expected.get(k)]
                 for k in expected]  # fmt: skip
+        from nflengine.history_graph.derive import wandb_metrics
+
         wb.log({"counts": wandb.Table(columns=["name", "expected", "neo4j", "match"], data=rows)})
         wb.summary.update(
             {
@@ -381,6 +399,7 @@ def _wandb_finish(wb, doc: dict[str, Any], log) -> None:
                 **{f"count/{k}": v for k, v in counts.items()},
                 **{f"time/{k}": v for k, v in (doc.get("seconds") or {}).items()},
                 **{f"dropped/{k}": v for k, v in (doc.get("dropped") or {}).items()},
+                **wandb_metrics(doc.get("derive")),
             }
         )
         wb.finish(exit_code=0 if doc.get("status") == "ok" else 1)

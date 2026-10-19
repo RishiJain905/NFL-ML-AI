@@ -85,6 +85,16 @@ PG_SCHEMA = {
     "season": pl.Int32,
     "week": pl.Int32,
 }
+SNAPS_SCHEMA = {
+    "gsis_id": pl.String,
+    "game_id": pl.String,
+    "team": pl.String,
+    "season": pl.Int32,
+    "week": pl.Int32,
+    "offense_snaps": pl.Int32,
+    "defense_snaps": pl.Int32,
+    "st_snaps": pl.Int32,
+}
 FTN_SCHEMA = {
     "ftn_game_id": pl.Int32,
     "nflverse_game_id": pl.String,
@@ -788,6 +798,38 @@ def ftn_rows() -> list[dict[str, Any]]:
     ]
 
 
+def snaps_rows() -> list[dict[str, Any]]:
+    """Curated snap counts (PFR) per player and game: what `derive.read_snaps` reads (AE03)."""
+
+    def sn(pid, gid, team, off=0, dfn=0, st=0):
+        season, week = GAME_META[gid]
+        return {
+            "gsis_id": pid,
+            "game_id": gid,
+            "team": team,
+            "season": season,
+            "week": week,
+            "offense_snaps": off,
+            "defense_snaps": dfn,
+            "st_snaps": st,
+        }
+
+    return [
+        sn(QB_KC, G19, "KC", 60),
+        sn(WR_KC, G19, "KC", 50),
+        sn(RB_KC, G19, "KC", 30, 0, 5),
+        sn(QB_KC, GA, "KC", 55),
+        sn(WR_KC, GA, "KC", 52),
+        sn(RB_LV, GA, "LV", 20, 0, 4),
+        sn(DT_LV, GA, "LV", 0, 40, 6),
+        sn(QB_KC, GB, "KC", 50),
+        sn(RB_LV, GB, "KC", 15),
+        sn(QB_KC, GC, "KC", 58),
+        sn(QB_KC, GD, "KC", 60),
+        sn("00-0777", GA, "KC", 10),  # a player the graph doesn't hold: dropped and counted
+    ]
+
+
 def seed_rows() -> list[dict[str, Any]]:
     return [
         {"coach": "Eric Bieniemy", "team": "KC", "season": 2019, "role": "OC"},
@@ -919,6 +961,7 @@ class World:
     seed: list[dict[str, Any]]
     fixes: list[dict[str, Any]]
     part: dict[str, dict[int, list[dict[str, Any]]]]  # snapshot date -> season -> rows
+    snaps: list[dict[str, Any]] = dataclasses.field(default_factory=list)  # AE03's derive
 
     @property
     def seed_csv(self) -> Path:
@@ -949,6 +992,7 @@ class World:
         frame(self.rosters, ROSTER_SCHEMA).write_parquet(cur / "rosters_weekly.parquet")
         frame(self.player_games, PG_SCHEMA).write_parquet(cur / "player_games.parquet")
         frame(self.ftn, FTN_SCHEMA).write_parquet(cur / "ftn_plays.parquet")
+        frame(self.snaps, SNAPS_SCHEMA).write_parquet(cur / "snaps.parquet")
         for date, seasons in self.part.items():
             d = self.paths.research / "nflverse" / "participation" / f"snapshot={date}"
             d.mkdir(parents=True, exist_ok=True)
@@ -991,6 +1035,7 @@ def make_world(root: Path) -> World:
             "2026-09-01": {2024: part_2024_older()},
             "2026-10-03": {2019: part_2019(), 2024: part_2024()},
         },
+        snaps=snaps_rows(),
     )
 
 

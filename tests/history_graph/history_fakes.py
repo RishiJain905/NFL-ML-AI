@@ -15,8 +15,40 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from nflengine.history_graph import schema as S
 from nflengine.history_graph.docker import Done
+
+# ---- a safety net ----------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def no_real_docker(monkeypatch):
+    """No unit test may reach Docker or the real history graph (2026-10-19: the container was
+    stopped from outside while tests ran; it wasn't a test, but the net stays). `subprocess.run`
+    of a `docker ...` command and a real Bolt driver fail loudly; everything else passes through.
+    Import this fixture into a test module (`from history_fakes import no_real_docker  # noqa:
+    F401`) and it applies to every test there."""
+    import subprocess
+
+    real_run = subprocess.run
+
+    def guarded(args, *a, **k):
+        first = args[0] if isinstance(args, (list, tuple)) and args else args
+        if isinstance(first, str) and first.strip().split(" ")[0].lower() in (
+            "docker",
+            "docker.exe",
+        ):
+            raise AssertionError(f"a test tried to run a docker command: {list(args)[:3]}")
+        return real_run(args, *a, **k)
+
+    def no_bolt(*_a, **_k):
+        raise AssertionError("a test tried to open a real Neo4j driver")
+
+    monkeypatch.setattr(subprocess, "run", guarded)
+    monkeypatch.setattr("neo4j.GraphDatabase.driver", no_bolt)
+
 
 # ---- Neo4j -----------------------------------------------------------------------------------
 
@@ -90,7 +122,9 @@ class FakeGraph:
 
     def __init__(self) -> None:
         self.nodes: dict[str, dict[Any, dict[str, Any]]] = {n: {} for n in S.NODES}
-        self.rels: dict[str, list[dict[str, Any]]] = {r: [] for r in S.RELATIONSHIPS}
+        # the bulk-imported types and the derived person links (AE03: `derive.py` syncs them)
+        self.rels: dict[str, list[dict[str, Any]]] = {r: [] for r in (*S.RELATIONSHIPS, *S.DERIVED)}
+        self.lossy_types: set[str] = set()  # CREATEs of these link types silently do nothing
         self.writes: list[tuple[str, int]] = []  # (kind, rows) per write transaction
         self.queries: list[str] = []
         self.seasons_asked: set[int] = set()  # every $season a query was given
@@ -100,7 +134,7 @@ class FakeGraph:
         self.fail_error: Exception = FakeNeo4jError()
 
     # ---- the driver surface ----
-    def session(self) -> _Session:
+    def session(self, **_kw: Any) -> _Session:  # `notifications_min_severity=...` etc.
         return _Session(self)
 
     def close(self) -> None:
@@ -178,10 +212,15 @@ class FakeGraph:
 
     # ---- inspection ----
     def counts(self) -> dict[str, int]:
+        """Every label and every type, derived ones too (`build.graph_counts`' default names)."""
         return {
             **{label: len(nodes) for label, nodes in self.nodes.items()},
             **{rtype: len(rels) for rtype, rels in self.rels.items()},
         }
+
+    def bulk_counts(self) -> dict[str, int]:
+        """What a bulk import stores: the labels and `S.RELATIONSHIPS` (not the derived links)."""
+        return {k: v for k, v in self.counts().items() if k not in S.DERIVED}
 
     def rel_multiset(self) -> Counter:
         return Counter(
@@ -256,6 +295,19 @@ class FakeGraph:
             return _Result([{"c": len(self.nodes[m.group(1)])}])
         if m := re.fullmatch(r"MATCH \(\)-\[r:(\w+)\]->\(\) RETURN count\(r\) AS c", q):
             return _Result([{"c": len(self.rels[m.group(1)])}])
+        if m := re.fullmatch(
+            r"MATCH \(a:(\w+)\)-\[x:(\w+)\]->\(b:(\w+)\) RETURN a\.(\w+) AS s, b\.(\w+) AS e, "
+            r"properties\(x\) AS p",
+            q,
+        ):  # `derive.have_index`: every link of a type with its properties
+            a, rtype, b, _sk, _ek = m.groups()
+            return _Result(
+                [
+                    {"s": r["s"], "e": r["e"], "p": dict(r["p"])}
+                    for r in self.rels[rtype]
+                    if r["s"] in self.nodes[a] and r["e"] in self.nodes[b]
+                ]
+            )
         return self._write(q, params)
 
     def _write(self, q: str, params: dict[str, Any]) -> _Result:
@@ -269,7 +321,7 @@ class FakeGraph:
             for k in rows:
                 if k in self.nodes[label]:
                     del self.nodes[label][k]
-                    for rtype, spec in S.RELATIONSHIPS.items():
+                    for rtype, spec in {**S.RELATIONSHIPS, **S.DERIVED}.items():
                         if spec.start == label:
                             self.rels[rtype] = [r for r in self.rels[rtype] if r["s"] != k]
                         if spec.end == label:
@@ -314,6 +366,8 @@ class FakeGraph:
         ):
             a, _sk, b, _ek, rtype = m.groups()
             for r in rows:
+                if rtype in self.lossy_types:
+                    break
                 if r["s"] in self.nodes[a] and r["e"] in self.nodes[b]:  # MATCH finds both
                     self.rels[rtype].append({"s": r["s"], "e": r["e"], "p": dict(r["p"])})
             self.writes.append((f"link {rtype}", len(rows)))

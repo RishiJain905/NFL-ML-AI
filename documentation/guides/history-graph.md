@@ -1,8 +1,8 @@
 # History graph guide (every play since 2018, in its own Neo4j)
 
-**What this is:** a plain-language guide to the **history graph**: a second, permanent Neo4j database that holds every NFL play since 2018 with the players on the field, the drives, the games, who passed, ran, caught and tackled, rosters and coaches. It's separate from the weekly knowledge graph (the one the digest uses), which it never touches. Built in AE02; AE03 adds connections ("six degrees"), graph experiments and a shortest-path benchmark on top of it.
+**What this is:** a plain-language guide to the **history graph**: a second, permanent Neo4j database that holds every NFL play since 2018 with the players on the field, the drives, the games, who passed, ran, caught and tackled, rosters and coaches. It's separate from the weekly knowledge graph (the one the digest uses), which it never touches. Built in AE02. AE03 added **person links** (who played with, coached, worked with or faced whom, §15), **Connections** ("six degrees" between any two players or coaches, §16), the **Graph lab** (player neighbourhoods, football families, QB → receiver chemistry, §17) and a **shortest-path benchmark** with a plain explanation of 2026's sub-cubic all-pairs result (§18).
 
-**Related docs:** the spec is [Ask the Engine README](../ask-the-engine/README.md) (§4, §6, §8 "As built in AE02") and the phase file [AE02](../ask-the-engine/AE02-history-graph.md); decisions D112 and D145–D146 in the [decisions log](../10-decisions-log.md). The weekly graph has its own guide: [knowledge-graph.md](knowledge-graph.md). Asking it questions in plain English: [ask-the-engine.md](ask-the-engine.md) §15. W&B runs: [weights-and-biases.md](weights-and-biases.md) §6.12. Agents use the `neo4j-graph` and `ask-the-engine` skills.
+**Related docs:** the spec is [Ask the Engine README](../ask-the-engine/README.md) (§4, §6, §8 "As built in AE02 / AE03") and the phase files [AE02](../ask-the-engine/AE02-history-graph.md) and [AE03](../ask-the-engine/AE03-connections-and-graph-ml.md); decisions D112, D145–D146 and D147–D151 in the [decisions log](../10-decisions-log.md). The control room's pages for it: [control-room.md](control-room.md) §2g. Graph Data Science in general: [graph-data-science.md](graph-data-science.md). The weekly graph has its own guide: [knowledge-graph.md](knowledge-graph.md). Asking it questions in plain English: [ask-the-engine.md](ask-the-engine.md) §15. W&B runs: [weights-and-biases.md](weights-and-biases.md) §6.12. Agents use the `neo4j-graph` and `ask-the-engine` skills.
 
 ---
 
@@ -39,10 +39,13 @@ So the history graph is a **research store**: built from scratch per finished se
 | Stop | `uv run nfl history-graph stop` | Frees its memory; the data stays on D: |
 | What's in it | `uv run nfl history-graph status` | Container, Bolt, the last build and append, the counts in the graph, the store's size, Ask's "as of" label |
 | Build from scratch | `uv run nfl history-graph build --through-season 2025` | Once per finished season, at the pre-season switch (it takes only seasons before `seasons.current`; by then nflverse has published the finished season's participation), or after a schema change. Then appends the current season |
-| Append the current season | `uv run nfl history-graph append` | **Tuesdays after the weekly run** (runbook). Starts the container if it's down |
+| Append the current season | `uv run nfl history-graph append` | **Tuesdays after the weekly run** (runbook). Starts the container if it's down; then syncs the person links (`--no-derive` skips that) |
+| Person links | `uv run nfl history-graph derive` | AE03 (§15): TEAMMATE, CONNECTION, OPPONENT, COACHED, WORKED_WITH. `build` and `append` run it at their end; run it alone after one failed. A re-run writes nothing |
+| Graph lab | `uv run nfl history-graph lab [--job neighbours,families,chemistry]` | AE03 (§17): the three GDS experiments, files in `neo4j-history/lab/`, a W&B run each. Run it after a build, or when you want this week's appended season in the lab views (seconds) |
+| Path benchmark | `uv run nfl history-graph bench-paths` | AE03 (§18): times shortest-path algorithms on the person graph; minutes; a W&B run |
 | Look at it | http://localhost:7475 | Connect URL `bolt://localhost:7688`, user `neo4j`, the password from your env file |
 
-`build`, `append`, `start` and `stop` take the history graph's own lock (`neo4j-history/.history.lock`), so none of them runs while another does; `build` and `append` also refuse while the **weekly** run holds its lock (Tuesday's run shares the disk and has a deadline). Ask's history questions refuse while a build or an append runs.
+`build`, `append`, `derive`, `start` and `stop` take the history graph's own lock (`neo4j-history/.history.lock`), so none of them runs while another does; `build` and `append` also refuse while the **weekly** run holds its lock (Tuesday's run shares the disk and has a deadline). Ask's history questions refuse while a build or an append runs.
 
 **If a build or an append stops halfway** (an error, a crash, a reboot), the graph may be half-written. Before a build replaces the store, and before an append's first write, a marker file is written (`neo4j-history/.history.unfinished`, with what was running, the season and the build); it's removed only once the result has been checked. While it's there, Ask doesn't read the history graph ("the last build or append didn't finish"), `nfl history-graph status` says **unfinished** and what to run, `append` refuses after an unfinished build, and `start` refuses too (a build that died mid-copy may have left the store half-copied). The fix is to run the same thing again: `uv run nfl history-graph build` for a build, `uv run nfl history-graph append --season <S>` for an append (only the same season's append on the same build clears it).
 
@@ -103,6 +106,7 @@ A build makes the graph **from scratch**. Neo4j's `neo4j-admin database import f
 | 7. schema | `schema.cypher`: uniqueness constraints on every key, indexes on `Play(season, week)`, `Play(season)`, `Play(offense)`, `Play(defense)`, `Player(name)`, `Game(season, week)`, `Drive(game_id)`, `Drive(season)` (the importer makes none) | 22–31 s |
 | 8. check | every label's and relationship type's count in Neo4j must equal the export's; a mismatch fails the build | 1 s |
 | 9. append | the current season, through its newest week (§6) | 18–20 s |
+| 10. derive | the person links (§15): every one is new after a bulk import, so ~663k writes | ~150 s |
 | **total** | | **253–386 s** (the builds of 2026-10-19, swinging with Docker's load; the first, 2026-10-18: 355 s) |
 
 **Why the Docker volume (D145).** The D: drive is a spinning disk shared into Docker through Windows file sharing, and the importer writes the relationship store in many small random writes. Measured on one season (1.0 million relationships): the relationship stage took **2 min 43 s** straight onto D:, 1 min 28 s with the importer's HDD setting, **13.6 s** onto the SSD and **3.6 s** into a Docker volume. Copying the finished store to D: is one long sequential write (~75 s for 1.1 GB), so the store still lives on D: (CLAUDE.md: data on D:) and the build stays well under the 15-minute target.
@@ -120,7 +124,7 @@ Participation for a season is published only after it ends, so the current seaso
 - A season that's in the bulk import (2025 and earlier) is refused: rebuild instead.
 - 2026's plays have no participation (no `ON_FIELD`, formation, personnel, coverage, routes) until the rebuild after the season.
 
-Run it on Tuesdays after the weekly run (runbook). It starts the history container if it's down, refuses while the weekly lock is held, and writes `append.json` (the season, the weeks, the counts, what changed, the time) and a W&B run.
+Run it on Tuesdays after the weekly run (runbook). It starts the history container if it's down, refuses while the weekly lock is held, and writes `append.json` (the season, the weeks, the counts, what changed, the time) and a W&B run. Then it syncs the person links (§15): the week's new QB → receiver targets and this season's coaching links; `append.json` gets a `derive` section and the W&B run its counts.
 
 ## 7. How we know it's right
 
@@ -223,6 +227,8 @@ ORDER BY season
 
 The published `graph_results.json` was unchanged (same SHA-256 before and after), and the week's projections and published insights were put back afterwards (the `neo4j-graph` skill §6). The two servers share only the disk and the memory; the times are within the weekly build's usual range (its wipe alone took 140 s on the 15th).
 
+**Again for AE03 (2026-10-19, after the review's fixes), on an idle computer,** with the history graph up and holding the person links and the Connections projection (`persons-20261019T162931Z`) in GDS memory: week 6 rebuilt in **132 s**; counts, the 116 candidates and the picks identical to the published file **in order**; every query's rows identical as sets. Two raw query lists (`q3_qb_change`'s receivers, `q6_former_teammates`) came back in another order: they `collect()` without an `ORDER BY`, in the weekly graph's own queries (older than AE03, untouched by the no-touch rule); nothing downstream reads that order (the candidates were identical in order). `graph_results.json` unchanged (SHA-256), the weekly graph back to 22,154 nodes / 609,528 relationships with its 4,226 projections and published insights. (A first run of the check overlapped the benchmark and took ~17 minutes: the reason `lab` and `bench-paths` refuse while the weekly lock is held, D150.)
+
 **Disk** (`D:/nfl-ml-data/neo4j-history/`): `data/` **1.6 GB** (the store itself 1.1 GB, 2018–2025 + 2026 weeks 1–5, plus its transaction logs and the system database), the last build's CSVs ~550 MB (`import/`, safe to delete: the next build writes them again), the plugins 69 MB (`plugins/`), logs a few MB. The staging volume (`nfl-neo4j-history-staging`, inside Docker's own disk on C:) holds the new store only during a build and is removed after it. Unlike the weekly graph's store (5.2 GB for 22k nodes on 2026-10-08, because a wipe-and-reload never gives space back), the history store doesn't grow across rebuilds: each build is a fresh store.
 
 **Memory:** heap 512 MB–1 GB, page cache 1.5 GB (`docker-compose.yml`), so the store fits in the cache once it's warm. Measured with both up after the walkthrough: the history container 1.8 GB, the weekly one 4.2 GB, and 8.7 GB of the PC's 31 GB free (other programs included); `nfl history-graph stop` frees it when you're done.
@@ -274,4 +280,192 @@ Each build logs a run `history-graph-build-<first>-<through>` (group `history-gr
 - **2018–2022 positions on `ON_FIELD` are roster positions,** not the spot on that play (participation has no per-play positions before 2023).
 - **No as-of rules.** The history graph holds what happened. Nothing in it may feed a weekly model or the digest (D107, D112); questions about this week belong to the weekly graph.
 - **FTN and participation disagree a little** where both exist (2022–2025): FTN's `rushers` / `box` vs participation's `part_rushers` / `part_box`. [play-calling.md §2](play-calling.md#2-which-data-covers-what-and-when) says which source covers what, and when.
-- **AE03** builds on it: derived relationships (teammates by shared snaps, QB → receiver chemistry), Connections ("six degrees" between any two players or coaches), GDS experiments (embeddings, communities) and the shortest-path benchmark.
+- **AE03 built on it** (§15–§18): the person links, Connections, the Graph lab and the path benchmark. TEAMMATE and OPPONENT come from participation, so they reach 2026 only after the rebuild that adds 2026's participation (about February 2027); this season's CONNECTION and COACHED / WORKED_WITH links are there from the weekly append.
+
+## 15. The person links (AE03, `nfl history-graph derive`)
+
+The history graph's own relationships run between a person and a **play** (Mahomes `PASSED` a play, Kelce was `ON_FIELD` for it). To ask "how are these two people connected?" you'd have to hop person → play → person every time, through millions of plays. The derive adds **person → person** links, each one a summary of everything the two did together, with the evidence on it.
+
+| Type | From → to | What it means | How many (2026-10-19) |
+|---|---|---|---|
+| `TEAMMATE` | Player – Player | on the field together, **same side**, on at least one snap (participation, 2018–2025; special teams and penalty snaps count) | 237,136 |
+| `CONNECTION` | QB → receiver | pass attempts the QB threw to him (PASSED + TARGETED on one play; every season, this one too) | 5,743 |
+| `OPPONENT` | offense → defense | on opposite sides of the same **scrimmage** plays, in the classic matchups only: skill players (WR / TE / RB / FB) vs defensive backs, offensive vs defensive linemen, the QB vs any defender | 383,743 |
+| `COACHED` | Coach → Player | the head coach (in his own weeks) or the coordinator of the player's unit (OC offense, DC defense, ST special teams) while the player took snaps in it | 35,273 |
+| `WORKED_WITH` | Coach – Coach | on the same staff (head coach and coordinators) in the same season, **while both were there** (a head coach's own weeks) | 920 |
+
+**What's on a link.** Totals over every season (`snaps`, `seasons`, `teams`; CONNECTION: `targets`, `catches`, `yards`, `touchdowns`, `epa`; OPPONENT: `plays`), plus, for TEAMMATE, COACHED and WORKED_WITH, **stints**: parallel lists with one item per season and team (COACHED: per season, team **and role**, each with that role's snaps; `stint_seasons`, `stint_teams`, `stint_snaps`, `stint_roles`), so the evidence "teammates on 2018 KC, 1,164 snaps together" needs no second query. TEAMMATE and WORKED_WITH are stored once per pair (from the smaller id): match them without an arrow, `(a)-[t:TEAMMATE]-(b)`. `schema.py` (`DERIVED`) lists every property.
+
+**`snaps` is every link's strength:** snaps together on the field (TEAMMATE); the player's snaps in the coach's units, each snap counted once (COACHED); the team's snaps, both sides, while both coaches were on the staff (WORKED_WITH: a full season is ~2,800). Connections' "strongest" chains (§16) and the families (§17) weigh links by it.
+
+**Where each comes from, and why:**
+- TEAMMATE / OPPONENT from **participation** (who was on the field), so 2018–2025 only. A stint's team is the team the player was on the field for most often **in that game**: on a few special-teams snaps participation's side and nflverse's possession team disagree, and the first derive credited about a quarter of all pairs with a stray team ("teammates on ARI 2021" for two Rams); the rule fixed 56,685 links (D147).
+- COACHED from the curated **snap counts** (`snaps`, PFR), not the box score: only 176 of 468 linemen on 2026 rosters had a box-score game by week 5, but all of them have snap counts, every season including this one.
+- **Two fixes from the phase's review (D151).** WORKED_WITH counts only the weeks both coaches were there: a fired head coach and an interim who wasn't already on the staff never overlapped, so 7 such pairs have no link (Frank Reich and Jeff Saturday, IND 2022; Josh McDaniels and Antonio Pierce, LV 2023), while an interim who was a coordinator keeps his (Dan Quinn and Raheem Morris, ATL 2020: Morris was the DC). And a coach with two roles in one season (an interim who stays coordinator, a head coach who took over his own defense: Marvin Lewis, CIN 2018; Ron Rivera, WAS 2023) has a stint per role: Morris → Foyesade Oluokun shows ATL 2020 DC 896 snaps, HC 775 (weeks 6-17), 964 in all (each snap once), so "as head coach" counts his head-coach weeks only (318 links changed).
+- OPPONENT is restricted on purpose: all offense-vs-defense pairs on scrimmage plays are 1.85M links (43.8M pair-events), five times the rest put together, for questions nobody asks ("how often did that guard face that safety?").
+- The size: participation has 7.96M ON_FIELD links, about 40M teammate pair-events; a player has about 93 different teammates on the field (the most: Christopher Ezeala, a special-teamer, 498), so they collapse to 237k pairs, not the 1–2M the spec guessed.
+
+**The strongest of each kind:**
+
+| | |
+|---|---|
+| Teammates | Dion Dawkins – Josh Allen 8,969 snaps (BUF), Travis Kelce – Patrick Mahomes 8,372 (KC), Jake Matthews – Chris Lindstrom 7,203 (ATL), Quenton Nelson – Braden Smith 7,065 (IND) |
+| Coached | Andy Reid → Mahomes 9,971 snaps, Sean McDermott → Dawkins 9,831, McDermott → Allen 9,108, Kyle Shanahan → Fred Warner 8,898 |
+| Same staff | Reid – Dave Toub 9 seasons, Reid – Steve Spagnuolo 8, Mike Tomlin – Danny Smith 8 (PIT), Zac Taylor – Darrin Simmons 8 (CIN); the most colleagues: Chris Tabor 18 |
+| QB → receiver | Mahomes → Kelce 1,240 targets, 913 catches, 10,933 yards, 79 TDs; Jared Goff → Amon-Ra St. Brown 816; Aaron Rodgers → Davante Adams 770 |
+| Opponents | Baker Mayfield vs Jessie Bates 757 plays, Mahomes vs Justin Simmons 744, Tyler Lockett vs Budda Baker 709 |
+
+**How a derive works.** It reads the same export the bulk import and the append use (the build's seasons plus the appended weeks; ~3 s), aggregates it in an in-memory DuckDB (~18 s), then **syncs**: it reads each type's links from the graph, compares them with the computed ones and writes only the difference (a changed link is deleted and created again; a stale one deleted). The first derive after a build writes everything (662,822 links: ~150 s over Bolt); a re-run with nothing new writes nothing (the read-back check is skipped for a type with no writes). Until the result is checked, the unfinished marker says `derive` and Ask doesn't read the history graph; `nfl history-graph status` says what to run. An append that starts over half-written links carries that in its own marker (`derive_pending`) and hands the marker back to the derive when its plays check out, so the links stay marked until a derive finishes (D151). It writes `neo4j-history/derive.json` (the counts, the changes, the times, the build and the appended week it covers, the W&B run) and `neo4j-history/people.parquet` (7,389 people, 5,665 with links: the name search's index). `derive_id` changes only when something was written, so the Connections projection and the lab files stay current across Tuesday re-runs; a derive that finishes one that didn't always takes a new id (the half-done one may have written links after the last `derive.json`).
+
+**In the Browser** (http://localhost:7475):
+
+```cypher
+// Mahomes' most frequent teammates on the field (0.02 s warm)
+MATCH (a:Player {name: 'Patrick Mahomes'})-[t:TEAMMATE]-(b:Player)
+RETURN b.name AS teammate, t.snaps AS snaps, t.stint_seasons AS seasons
+ORDER BY snaps DESC LIMIT 5
+```
+
+Kelce 8,372, Creed Humphrey 6,333, Trey Smith 5,852, Joe Thuney 5,061, Andrew Wylie 4,677.
+
+```cypher
+// Draw one chain: return the path itself and the Browser draws people and links
+MATCH (a:Player {name: 'Tom Brady'}), (b:Player {name: 'Aaron Rodgers'})
+MATCH p = SHORTEST 1 (a)-[:TEAMMATE|COACHED|WORKED_WITH]-+(b)
+RETURN p
+```
+
+## 16. Connections ("six degrees", AE03)
+
+**The question:** what's the shortest chain of people between any two players or coaches? Each link is a person link (§15): teammates on the field, a coach and a player he coached, two coaches on one staff. **Never a team**: through `PLAYED_FOR` every two players of one season would be two steps apart and the answer would mean nothing (the README's pitfall).
+
+**How small the world is.** 300 random pairs of players with links: 10 one link apart, 144 two, 145 three, 1 four. Almost everyone is within three links of everyone, because one journeyman (Christopher Ezeala: 498 teammates) joins dozens of locker rooms.
+
+**Two ways to rank chains:**
+- **Fewest links** (the default): Cypher's `SHORTEST` (a breadth-first search from both ends at once). Several chains usually tie at the shortest length (Brady and Mahomes share Joe Thuney, Donovan Smith, Josh Gordon, Justin Watson ...); when there are at most 2,000 of them they're ranked by strength (the sum of 1 ÷ snaps, so the chain through the most shared snaps comes first), else Neo4j's own order. "Show 3 more" adds the next ones, then the next length.
+- **Strongest links:** every link costs 1 ÷ its snaps and the chain with the lowest total wins, **however long it is** (GDS Dijkstra for one chain, Yen's algorithm for k). Because a coordinator spends every one of a quarterback's snaps with him, and two coaches on a staff share the team's whole season, strongest chains often run through coaching staffs: Brady → Rodgers is 2 links by fewest (Brady – Scott Miller, TB 2020–2022, 945 snaps – Rodgers, PIT 2025, 154) and 5 by strongest (Byron Leftwich → Todd Bowles → Brant Boyer → Nathaniel Hackett).
+
+**Real chains (2026-10-19):**
+
+| From → to | Fewest links |
+|---|---|
+| Mahomes → Kelce | 1: teammates, 8,372 snaps (KC 2018–2025) |
+| Brady → Mahomes | 2: via Joe Thuney (NE 2018–2019, 2,565 snaps; KC 2021–2024, 5,061) |
+| Andy Reid → Bill Belichick | 2: Reid coached Thuney (KC 2021–2024, 5,187 snaps), Belichick coached Thuney (NE 2018–2020, 3,690) |
+| Mahomes → Belichick | 2: via Thuney (or JuJu Smith-Schuster, Tyquan Thornton, Josh Gordon) |
+| Cam Ward → Belichick | 3: e.g. Ward – Kevin Zeitler – Joe Judge – Belichick |
+| Cam Ward → Tom Brady | 3: Brian Callahan coached Ward (TEN 2025) and Alex Cappa (CIN 2022–2023); Cappa and Brady were teammates (TB 2020–2021, 2,374 snaps) |
+
+**How fast:** warm, on the full graph, 50 random pairs: fewest 16 ms median (31 ms p90 for four chains), strongest 47 ms (110 ms p90 for four). The strongest search needs the person graph in GDS's memory (a "projection", `persons-<derive_id>`: 5,665 people, 546,672 directed links): 0.5 s to make on a warm graph, but up to ~30 s on a cold one right after the container starts, so `nfl app` makes it (and reads every link once) in the background as soon as the page sees the history graph up. (Windows' clock ticks every ~16 ms, so the small times above are rounded to 0 / 16 / 31 ms.)
+
+**Where:** Explore → Ask the Engine → **Connections** in the control room (two name searches, the mode, the chain drawn with each link's evidence; [control-room.md](control-room.md) §2g), `GET /api/ask/connections?a=player:<GSIS id>&b=coach:<slug>&k=1..5&mode=fewest|strongest`, Ask ("How are Tom Brady and Aaron Rodgers connected?": the `history_connection` template, [ask-the-engine.md](ask-the-engine.md) §16), or the Browser (§15's query).
+
+**Limits:** a 2026 rookie has only coaching links until 2026's participation arrives (his teammates come with the February rebuild); a player who never took a snap with anyone linked (no participation, no snap counts) has no chain; coaches before 2018 aren't in the history graph.
+
+## 17. The Graph lab (AE03, `nfl history-graph lab`)
+
+Three experiments with Neo4j's **Graph Data Science** library (GDS; a primer is in [graph-data-science.md](graph-data-science.md) §1) on the person links. Each job copies the part of the graph it needs into GDS's memory (a projection, named after the job and the derive), runs an algorithm in **stream** mode (results come back to Python; nothing is written to the database), writes its answers to `{NFL_DATA_ROOT}/neo4j-history/lab/` and logs a W&B run (`job_type: history-graph-lab`). The random parts (FastRP, KNN, Leiden) use seed 42 on one thread, so a run can be repeated exactly. Each finishes in seconds. Research only: nothing here feeds a weekly model or the digest (D107).
+
+### 17.1 Neighbours: "players most like him by who he played with"
+
+**How:** each player with at least 100 snaps since 2018 (4,272) gets a **fingerprint** of 128 numbers from **FastRP** (fast random projection: start every player at a random vector, then repeatedly mix in his neighbours' vectors, weighted by the link's strength, so players whose teammates overlap end up with similar vectors). The links are TEAMMATE weighted by log10(1 + snaps) and CONNECTION (a target counts like three snaps). Then **KNN** (k-nearest neighbours) finds the 10 closest fingerprints by cosine similarity (1 = the same direction): over everyone (GDS KNN), and an exact search within the player's position group.
+
+**What it finds:** players who shared the same field, in the same role. Travis Kelce's nearest tight ends are Noah Gray (0.92; 1,910 snaps together), Joseph Fortson, Jared Wiley, Nick Keizer, Blake Bell: the Chiefs' other tight ends. His nearest anyone: Mahomes (0.999), then the KC offense of his years. Mahomes' nearest quarterbacks are his backups (Chad Henne, Chris Oladokun, Matt Moore: "never on the field together", the same teammates). Justin Jefferson's: Jordan Addison, Jalen Nailor, K.J. Osborn, Adam Thielen. That's what "by who he played with" means: it's a map of football's social network, not of playing style.
+
+**The map:** the fingerprints squeezed to two dimensions with PCA. The two axes keep only 13% of the variation (8.2% + 5.1%), so near on the map doesn't always mean similar; the lists are the answer. Files: `neighbours.parquet` (both scopes, rank, similarity, snaps together), `neighbours_map.parquet` (x, y, position group, team).
+
+### 17.2 Families: "football families"
+
+**How:** **Leiden** community detection (it groups nodes so there are many strong links inside each group and few between them; a refinement of Louvain that guarantees each group is connected) on TEAMMATE + COACHED + WORKED_WITH, players and coaches together, weighted by log10(1 + snaps). Each family is named after its **biggest team-era**: the team with the most member snaps, the seasons where the members had at least a quarter of that team's best season, and the side of the ball most of it played on ("core" when both).
+
+**The resolution decides what a family is.** Leiden's `gamma` sets how big groups are; read on the real names: at 1–4 the communities are whole franchises (23–34 of them: "2018-2025 KC core"), at 8 a franchise's offense and defense, at **16 its eras**, which is what "family" should mean here, so 16 it is (D149). 164 communities, 132 with 5+ people, median 42, the biggest 91.
+
+**Real families:** "2018-2021 KC offense" (Tyreek Hill, Andrew Wylie; Eric Bieniemy) and "2021-2025 KC offense" (Mahomes, Kelce, Humphrey, Trey Smith; Andy Reid), "2018-2022 GB offense" (Aaron Rodgers, David Bakhtiari, Davante Adams; Joe Philbin) and "2021-2025 GB defense", "2018-2022 NE offense" (Joe Thuney, Shaq Mason, David Andrews; Josh McDaniels), "2018-2023 TB offense" (Donovan Smith, Mike Evans, Tristan Wirfs; Bruce Arians, Byron Leftwich), "2020-2025 TB defense" (Lavonte David, Antoine Winfield Jr.; Todd Bowles). Members carry their snaps **in the era** and since 2018 (Mahomes 6,237 in "2021-2025 KC offense", 9,971 in all). Files: `families.parquet`, `family_members.parquet`.
+
+### 17.3 Chemistry: QB → receiver
+
+**Duos:** every CONNECTION with 100+ targets (339), ranked by **EPA per target** (expected points added each time that QB threw to that receiver). The top with 300+ targets: Brock Purdy → George Kittle 0.672 (305 targets, 77% caught), Russell Wilson → Tyler Lockett 0.637 (420), C.J. Stroud → Nico Collins 0.544 (344). The most targets: Mahomes → Kelce 1,240.
+
+**Who's central:** **PageRank** on the QB ↔ receiver graph weighted by targets (a receiver scores high when many quarterbacks, and central ones, threw to him a lot): Davante Adams first (12 QBs threw to him), then Travis Kelce, Keenan Allen, Stefon Diggs, Tyreek Hill; among QBs Mahomes, Josh Allen, Matthew Stafford, Jared Goff, Baker Mayfield (84 receivers). Files: `chemistry_duos.parquet`, `chemistry_pagerank.parquet`.
+
+### 17.4 Running and reading it
+
+`uv run nfl history-graph lab` (all three) or `--job families` (one or several, comma-separated); `lab.json` records each job's run time, the derive it read, the parameters and the W&B run. The control room's **Graph lab** reads these files (they answer with the container stopped) and says "made on older person links" when a derive wrote something after the lab ran: run the lab again. **One lab or path benchmark runs at a time** (their own lock, `neo4j-history/.lab.lock`: Ask and Connections keep answering meanwhile), each job's projection is dropped even when the job fails, and a job's files are written only if the person links held still while it ran (the same `derive_id`, no build, append or derive): otherwise nothing is written and the command says to run it again (D151). The W&B runs (`history-graph-lab-<job>`) hold the tables and, for neighbours, the 2-D map as a scatter chart; for families, the sizes as a bar chart ([weights-and-biases.md](weights-and-biases.md) §6.13).
+
+## 18. The path benchmark, and 2026's sub-cubic all-pairs result (AE03, `nfl history-graph bench-paths`)
+
+How fast are shortest-path algorithms on our own graph, and does a celebrated new theory result change anything? The benchmark answers the first with real timings; §18.4 answers the second. Every number below is from the canonical run ([td5sftdt](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/td5sftdt), 713 s on this PC: 16 threads, 31 GB; Python 3.12, numba 0.62.1, scipy 1.18.1, Neo4j 5.26.31, GDS 2.13.13; seed 42; files `neo4j-history/lab/path_benchmark.{json,parquet,svg}`).
+
+### 18.1 Three kinds of "shortest path" question
+
+The graph is the **person graph** of §16: 5,665 players and coaches, 273,336 links (546,672 arcs, each link counted both ways), ~96 links a person. "Shortest" is either the fewest links, or the strongest chain where a link costs 1 ÷ snaps together (600 snaps shared cost 0.0017, 3 snaps 0.33).
+
+| Question | Example | The answer | Who asks it here |
+|---|---|---|---|
+| **One pair** | "How is Patrick Mahomes connected to Tom Brady?" | one chain | Connections |
+| **One source** | "How far is Andy Reid from everyone?" | a distance for each of 5,665 people | nothing yet (a "closest people" view could) |
+| **All pairs** (APSP) | "How far is everyone from everyone?" | 32,092,225 distances (257 MB as 64-bit numbers) | nothing: the expensive one |
+
+One pair can be answered by searching from both ends until the searches meet (a bidirectional breadth-first search, BFS). One source needs the whole graph explored once: **Dijkstra's algorithm** (1959) always settles the closest unsettled person next, from a priority queue. All pairs is a Dijkstra from every person, or **Floyd–Warshall** (1962): three nested loops, n³ steps.
+
+### 18.2 What we timed
+
+Samples are seeded "snowballs" (a BFS from a random person, the first n people it reaches and every link between them: 1,000 people / 63,706 arcs, 2,000 / 157,718, 5,000 / 517,030) plus the whole graph. The contenders: Cypher's `SHORTEST 1` (hops, in the database, whole graph only); GDS Dijkstra (one pair, weighted), Delta-Stepping (one source; `.stream` returns the distances, `.stats` only computes) and `allShortestPaths.stream` (all pairs), each on an in-memory projection (`bench-<n>-<derive id>`, dropped after use); scipy's `dijkstra` and `floyd_warshall` (C, one thread); **Dijkstra on a binary heap in pure Python**; **BMSSP**, our own pure-Python implementation of Duan et al. 2025 (§18.5), on the graph as it is and after the paper's constant-degree transformation; and **Floyd–Warshall compiled with numba** on 16 threads (compiling took 0.59 s, not counted). **Every timed run is checked:** the distances must equal scipy's to 1e-9 (GDS's all-pairs: the count and the sum of its distances); every one agreed. Times are what a caller sees (the database rows include the Bolt round trip). An algorithm is skipped at a size when, scaled up from the last one, it would pass the 150 s budget; Floyd–Warshall ran fewer repeats at the largest sizes for the same reason.
+
+Median time per question (20 random pairs, 10 random sources, up to 3 all-pairs runs):
+
+| Question | Algorithm | 1,000 | 2,000 | 5,000 | 5,665 (all) |
+|---|---|---:|---:|---:|---:|
+| one pair | Cypher `SHORTEST 1` (hops, bidirectional BFS) | | | | **3.6 ms** |
+| one pair | GDS Dijkstra, source → target (weighted) | 20.7 ms | 22.4 ms | 20.3 ms | 29.7 ms |
+| one source | scipy Dijkstra (C) | 0.28 ms | 0.59 ms | 1.75 ms | **1.82 ms** |
+| one source | Dijkstra on a heap, pure Python | 4.57 ms | 11.7 ms | 48.1 ms | 54.4 ms |
+| one source | BMSSP (Duan et al. 2025), pure Python | 18.2 ms | 39.1 ms | 156 ms | 157 ms |
+| one source | BMSSP after the constant-degree transformation | 625 ms | 1.65 s | 6.36 s | 6.24 s |
+| one source | GDS Delta-Stepping `.stream` | 26.0 ms | 60.2 ms | 114 ms | 124 ms |
+| one source | GDS Delta-Stepping `.stats` (no distances back) | 8.7 ms | 11.2 ms | 17.7 ms | 17.7 ms |
+| all pairs | scipy Dijkstra from every person (C, 1 thread) | 239 ms | 1.14 s | 8.44 s | 9.62 s |
+| all pairs | GDS `allShortestPaths` (4 threads) | 178 ms | 822 ms | 6.39 s | **8.33 s** |
+| all pairs | Floyd–Warshall, numba (16 threads) | 36 ms | 426 ms | 35.0 s | 51.1 s |
+| all pairs | scipy Floyd–Warshall (C, 1 thread) | 410 ms | 3.72 s | 58.5 s | 84.7 s |
+
+**Reading the chart** (`path_benchmark.svg`, and the W&B run's `chart_log_log_svg` panel: both axes logarithmic, so a power law is a straight line whose slope is its exponent):
+
+- **One pair is milliseconds, at any size we have.** A random pair is 2.48 links apart on average (5 at most), so two searches that each go a link or two deep meet at once: 3.6 ms. The weighted GDS Dijkstra is 8× slower (it settles people by cost, and it's a procedure call) and still ~30 ms. That's all Connections needs.
+- **One source is a couple of milliseconds in C, tens in Python.** scipy 1.82 ms; the same algorithm in pure Python 54.4 ms (30×: just Python against C); GDS Delta-Stepping 17.7 ms computing, 124 ms when it streams all 5,665 distances back.
+- **All pairs is where it explodes.** From 1,000 to 2,000 people the numba Floyd–Warshall's time grows 11.8× and scipy's 9.1× (a cubic algorithm: 8×); a Dijkstra from every person 4.8×, GDS 4.6×. From 2,000 to 5,000 the work grows 15.6× but the numba time 82× (its matrix grows from 32 MB to 200 MB and probably outgrows the CPU caches; not tested). On the whole graph a search from every person (9.6 s, or GDS 8.3 s on 4 threads) beats Floyd–Warshall on 16 threads (51 s) by 5×: Floyd–Warshall always does n³ steps, a search per person about n × m, and this graph is sparse next to n².
+- **Spread:** a first complete run that overlapped a weekly-graph rebuild ([h40flstf](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/h40flstf)) had local rows within 1–20% of these but database rows up to 2.9× slower; a run sharing the CPU with a test suite (aborted, `zc1xkvqx`) showed numba's Floyd–Warshall at 1,000 people taking 189 ms instead of 36. The order of the algorithms never changed. Run it on an idle computer; it refuses while the weekly run holds its lock, but it can't see other work.
+
+**The bottom line:** answer a person-to-person question by search, never precompute all pairs, and even the full all-pairs table is a ten-second job at our size.
+
+### 18.3 What APSP and 3SUM are, and the hypotheses about them
+
+**APSP** is the all-pairs problem. For a dense graph (every pair linked) the textbook cost is about n³; decades of work saved only factors smaller than any power of n. The **APSP hypothesis** says that no algorithm runs in n^(3−ε) for any ε > 0. **3SUM** asks whether any three of n numbers add to zero; sorting plus a two-pointer sweep takes n², and the **3SUM hypothesis** says n^(2−ε) is impossible. These beliefs are the base of *fine-grained complexity*: dozens of problems in geometry, graphs, strings and data structures are proven "at least as hard as" 3SUM or APSP by reductions, which reads as "don't expect a fast algorithm for this". They're a map of which problems are probably stuck.
+
+### 18.4 The new result: Alman and Vassilevska Williams (arXiv 2610.06783, 5 October 2026)
+
+"Truly Subquadratic 3SUM and Truly Subcubic APSP via Triangles in Sparse Lopsided Graphs" by Josh Alman and Virginia Vassilevska Williams ([arXiv](https://arxiv.org/abs/2610.06783); checked on the abstract page and the paper's HTML text, 2026-10-19):
+
+- **The first polynomial improvements** over the textbook algorithms: 3SUM on n integers of polynomial size in O(n^1.9992), deterministic, and APSP on directed n-vertex graphs with polynomially bounded integer weights in O(n^2.9995). That **refutes both hypotheses** (and, the paper says, the Exact Triangle hypothesis with them).
+- How: a new algorithm for multiplying "thin" integer matrices when only some entries of the product are needed, built on a modified rectangular matrix-multiplication method.
+- **The paper's abstract says Claude (Anthropic's model) discovered the algorithm** and verified the main results in the Lean 4 proof assistant (with Mathlib); the authors then understood, simplified, strengthened and extended it. (We read that statement; we didn't check the Lean proofs.)
+- The paper itself calls the algorithms "potentially impractical in their current form" and says the constants hidden in the O( ) are enormous. We found no released implementation.
+
+**Why it's called "galactic":** a galactic algorithm beats the standard one only on inputs too large to exist, because its hidden constant is astronomical. Here the saving is a factor of n^0.0005: at our n = 5,665 that's 1.0043, **0.43%**, before the constant; even at a million vertices 0.69%. For theory it's a landmark (the belief was wrong in principle); for practice, nothing changes. **For us, nothing twice over:** the bound competes with cubic methods on near-complete graphs, but the person graph has 546,672 arcs against 32 million pairs, so the baseline that matters is a search from every person (9.6 s above); and the table shows that the real costs of all-pairs are the memory and the n² answers, not the exponent.
+
+### 18.5 Duan et al. 2025, "Breaking the Sorting Barrier", and our implementation
+
+Dijkstra costs O(m + n log n) with a good heap, and its n log n part is **sorting**: settling people in distance order sorts them. Duan, Mao, Mao, Shu and Yin ([arXiv 2504.17033](https://arxiv.org/abs/2504.17033), STOC 2025's best paper) run single-source shortest paths in O(m log^(2/3) n) (deterministic, directed graphs, real non-negative weights), faster than Dijkstra's bound on sparse graphs, by not sorting everything: a recursion over distance ranges that mixes Dijkstra with a few rounds of Bellman–Ford and orders only a few "pivot" vertices (the roots of big shortest-path trees).
+
+**Ours** (`history_graph/sssp.py`, explained in plain words in its docstring) was written from the paper alone (Rishi's choice: no third-party port downloaded or run). It equals scipy on every graph tested (tens of thousands of random cases: equal and zero weights, unreachable vertices, directed and undirected, and the real person graph). The tests found one place where, as we read it, the paper's pseudocode needs a fix: after a deeper call completes a vertex, its old queue entry stays and the vertex is later returned twice; deleting completed vertices from the queue (the data structure's own Delete) repairs it.
+
+**In practice it's 2.9× slower than a heap Dijkstra** in the same language on the same inputs (157 ms vs 54 ms on the whole graph), and 40× slower again after the paper's constant-degree transformation (which turns each person into a cycle of zero-cost nodes, one per link). Why theory's win doesn't show, in numbers:
+
+- Dijkstra's bound here is m + n log₂ n ≈ 617k steps, BMSSP's m · (log₂ n)^(2/3) ≈ 2.94M: **4.8× more**. With 96 links a person, Dijkstra's sorting term is already small next to m; there's little sorting to save. The bounds cross at ~16k arcs (2.8 a person) at this n; at our density BMSSP's bound would win only beyond n = 2^898,630.
+- With n = 5,665 the parameters are k = 2 (a pivot only has to beat a 2-vertex tree) and t = 5 (3 levels). In the measured run 69 pivot searches took 5,604 vertices in and kept 3 as pivots; 3 searches gave up at once (one Bellman–Ford round from a hub touches more than k × its sources): the pivot step saved nothing.
+- A sweep of k (1–64) and t (2–8) on the whole graph never beat 3.5× the heap's time; the worst (k = 1, t = 2) was 15×.
+- Constant factors: each BMSSP step builds tuples, sorts blocks and walks a 3-level recursion; a heap step is a push and a pop.
+
+### 18.6 Running it
+
+`uv run nfl history-graph bench-paths` (~12 minutes with the defaults: samples of 1,000, 2,000 and 5,000 people plus the whole graph, 20 pairs, 10 sources, 3 repeats, a 150 s budget per algorithm and size; options `--sizes`, `--pairs`, `--sources`, `--repeats`, `--budget`, `--seed`, `--no-wandb`, `--smoke`). The history container must be up, with no build, append or derive running, and it refuses while the weekly lock is held. It writes `lab/path_benchmark.json` (the run's facts, every row, the machine), `.parquet` (the rows) and `.svg` (the chart), and a W&B run (`job_type: path-benchmark`: a live `median_ms/<family>/<algorithm>` point per size, the `results` table, the log-log chart as `chart_log_log_svg`; [weights-and-biases.md](weights-and-biases.md) §6.14). The control room's **Graph lab → Benchmark** draws the file. Nothing is written to the database; the GDS projections are dropped after use (only `bench-*` names).

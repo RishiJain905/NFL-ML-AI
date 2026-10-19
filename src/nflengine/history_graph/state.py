@@ -22,6 +22,7 @@ LOCK_FILE = ".history.lock"
 # the result is verified (Sol, AE02): a crash, a reboot or a failed write leaves it behind,
 # and while it's there Ask doesn't read the graph and `append` refuses after a build
 UNFINISHED_FILE = ".history.unfinished"
+LAB_LOCK_FILE = ".lab.lock"
 
 
 def build_path(paths: DataPaths) -> Path:
@@ -42,6 +43,13 @@ def unfinished_path(paths: DataPaths) -> Path:
     return paths.neo4j_history / UNFINISHED_FILE
 
 
+def lab_lock_path(paths: DataPaths) -> Path:
+    """The lab's and the path benchmark's own lock (AE03): one GDS experiment at a time, so two
+    never drop each other's projections (Sol). Not the history lock: Ask, Connections and the
+    pages keep answering while one runs."""
+    return paths.neo4j_history / LAB_LOCK_FILE
+
+
 def unfinished_next_to(lock: Path) -> bool:
     """Is there an unfinished marker beside this lock file? (Ask's guard holds the lock's path,
     not the data paths.)"""
@@ -49,21 +57,29 @@ def unfinished_next_to(lock: Path) -> bool:
 
 
 def mark_unfinished(
-    paths: DataPaths, what: str, build_id: str | None = None, season: int | None = None
+    paths: DataPaths,
+    what: str,
+    build_id: str | None = None,
+    season: int | None = None,
+    derive_pending: bool = False,
 ) -> None:
-    """`what`: build | append (with the build it appends onto and the season it writes: an
+    """`what`: build | append | derive (with the build it appends onto and the season it writes: an
     append of another season mustn't clear it, Sol). Written and flushed before the store or
-    the graph changes."""
+    the graph changes. `derive_pending`: an append that started over a half-written derive (or
+    over an append that did) carries it, and hands the marker back to the derive when it's
+    done (AE03 review, Sol): the person links stay marked until a derive finishes."""
     import datetime as dt
     import os
 
-    doc = {
+    doc: dict[str, Any] = {
         "what": what,
         "build_id": build_id,
         "season": season,
         "pid": os.getpid(),
         "started": dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat(),
     }
+    if derive_pending:
+        doc["derive_pending"] = True
     path = unfinished_path(paths)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
@@ -78,6 +94,8 @@ def clear_unfinished(paths: DataPaths) -> None:
 
 def unfinished_advice(note: dict[str, Any]) -> str:
     """What to run after an unfinished build / append (fixed wording, from the marker's note)."""
+    if note.get("what") == "derive":
+        return "the last derive didn't finish: run `uv run nfl history-graph derive`"
     if note.get("what") == "append" and note.get("season"):
         return (
             f"the {note['season']} append didn't finish: run `uv run nfl history-graph append "

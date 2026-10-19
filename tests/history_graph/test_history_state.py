@@ -6,7 +6,12 @@ from __future__ import annotations
 import json
 
 import pytest
-from history_fakes import FakeDocker, FakeGraph, write_state
+from history_fakes import (
+    FakeDocker,
+    FakeGraph,
+    no_real_docker,  # noqa: F401  (the safety net)
+    write_state,
+)
 
 from nflengine.history_graph import state
 from nflengine.history_graph.build import graph_counts, store_mb

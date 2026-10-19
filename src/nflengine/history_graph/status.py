@@ -24,6 +24,12 @@ def _running(paths: DataPaths) -> dict[str, Any] | None:
         return None
 
 
+def _derive_doc(paths: DataPaths, build: dict[str, Any] | None) -> dict[str, Any] | None:
+    from nflengine.history_graph.derive import read_derive
+
+    return read_derive(paths, build) if build else None
+
+
 def history_status(
     paths: DataPaths | None = None,
     cfg: HistoryConfig | None = None,
@@ -62,6 +68,7 @@ def history_status(
         if failed and (not build or failed.get("build_id", "") > build.get("build_id", ""))
         else None,  # fmt: skip
         "append": state.read_append(paths, build),
+        "derive": _derive_doc(paths, build),
         "counts": counts,
         "store_mb": store_mb(paths),
         "busy": state.history_busy(paths),  # running or unfinished: Ask refuses either way

@@ -413,6 +413,7 @@ _POLARS = {
     S.BOOL: pl.Boolean,
     S.STRING: pl.String,
     S.LONGS: pl.List(pl.Int64),
+    S.STRINGS: pl.List(pl.String),
 }
 
 

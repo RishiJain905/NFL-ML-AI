@@ -5,6 +5,7 @@ reach Docker, Neo4j, W&B or the data root."""
 from __future__ import annotations
 
 import pytest
+from history_fakes import no_real_docker  # noqa: F401  (the safety net)
 from typer.testing import CliRunner
 
 from nflengine import cli
@@ -193,7 +194,7 @@ def test_start_and_stop_refuse_while_a_build_or_append_holds_the_lock(
     lock = lock_path(_tmp_data_root)
     with run_lock(lock, "nfl history-graph build --through-season 2025"):
         r = invoke(command)
-    assert r.exit_code == 2 and "a history-graph build or append is running" in r.output
+    assert r.exit_code == 2 and "a history-graph build, append or derive is running" in r.output
 
 
 def test_start_holds_the_lock_while_it_starts(monkeypatch, _tmp_data_root):

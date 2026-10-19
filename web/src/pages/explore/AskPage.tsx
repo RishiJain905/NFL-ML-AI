@@ -2,7 +2,8 @@
 // question box with example chips; the answer (sentences, the rows, the query, the source, the
 // route, time and cost) or a refusal / which-one / no-rows / error card; this session's questions
 // (localStorage `cr.askSession`, browser only). One question at a time: Cancel (or Escape) only
-// stops waiting, the server finishes the question.
+// stops waiting, the server finishes the question. AE03: the header's switch leads to
+// Connections and the Graph lab (graphlab/).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, askQuestion, useAskExamples } from '../../api/client';
@@ -13,7 +14,7 @@ import { AnswerCard } from './ask/AnswerCard';
 import { AskBox } from './ask/AskBox';
 import { SessionList } from './ask/SessionList';
 import { loadSession, newId, saveSession, SESSION_MAX, type SessionItem } from './ask/session';
-import { ExploreHeader } from './common';
+import { AskHeader } from './graphlab/AskHeader';
 import './ask.css';
 
 const DEFAULT_MAX = 500;
@@ -262,7 +263,7 @@ export function AskPage() {
 
   return (
     <>
-      <ExploreHeader eyebrow="Explore" title="Ask the Engine" chips={ex ? <StatusLine ex={ex} /> : undefined} />
+      <AskHeader status={ex ? <StatusLine ex={ex} /> : undefined} />
       <section className="view">
         {ex ? <Banners ex={ex} /> : null}
         <div className="ask-layout">

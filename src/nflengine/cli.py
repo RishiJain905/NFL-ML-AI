@@ -11,6 +11,7 @@ import math
 import random
 import time
 from pathlib import Path
+from typing import NoReturn
 
 import typer
 from rich.console import Console
@@ -2559,7 +2560,7 @@ def _history_counts_table(title: str, counts: dict[str, int] | None) -> Table:
     t = Table(title=title)
     t.add_column("label / type")
     t.add_column("count", justify="right")
-    for name in (*HS.NODES, *HS.RELATIONSHIPS):
+    for name in (*HS.NODES, *HS.RELATIONSHIPS, *HS.DERIVED):
         if counts and name in counts:
             t.add_row(name, f"{counts[name]:,}")
     return t
@@ -2578,8 +2579,8 @@ def _history_lock(command: str):
             yield
     except LockHeld as e:
         console.print(
-            f"[red]a history-graph build or append is running (pid {e.holder.get('pid')}): "
-            "try again when it's done[/]"
+            f"[red]a history-graph build, append or derive is running (pid "
+            f"{e.holder.get('pid')}): try again when it's done[/]"
         )
         raise typer.Exit(2) from None
 
@@ -2594,6 +2595,9 @@ def history_build(
     first_season: int | None = typer.Option(None, help="Default: history_graph.first_season."),
     no_append: bool = typer.Option(
         False, "--no-append", help="Don't append the current season after the import."
+    ),
+    no_derive: bool = typer.Option(
+        False, "--no-derive", help="Don't derive the person links (AE03) after it."
     ),
     no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
     smoke: bool = typer.Option(
@@ -2615,6 +2619,7 @@ def history_build(
             through_season,
             first_season=first_season,
             append_current=not no_append,
+            derive_after=not no_derive,
             use_wandb=not no_wandb,
             launched_by=launched_by,
             smoke=smoke,
@@ -2642,12 +2647,16 @@ def history_append(
     through_week: int | None = typer.Option(
         None, help="Default: the newest week with curated plays."
     ),
+    no_derive: bool = typer.Option(
+        False, "--no-derive", help="Don't sync the person links (AE03) after it."
+    ),
     no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
     smoke: bool = typer.Option(False, "--smoke", help="W&B: a logging check."),
     launched_by: str | None = LAUNCHED_BY,
 ) -> None:
     """Sync the current season's games, drives, plays, roles, rosters and coaches into the
-    history graph (idempotent: a re-run writes nothing). Run after Tuesday's weekly run."""
+    history graph (idempotent: a re-run writes nothing), then the person links (`derive`).
+    Run after Tuesday's weekly run."""
     from rich.markup import escape
 
     from nflengine.history_graph.append import HistoryAppendError, run_append
@@ -2660,6 +2669,7 @@ def history_append(
             through_week,
             cfg=cfg,
             start=True,  # under the history lock (Sol): never while a build swaps the store
+            derive=not no_derive,
             use_wandb=not no_wandb,
             launched_by=launched_by,
             smoke=smoke,
@@ -2668,11 +2678,135 @@ def history_append(
     except HistoryAppendError as e:
         console.print(f"[red]{escape(str(e))}[/]")
         raise typer.Exit(2) from e
+    except Exception as e:
+        _history_failed("append", e)
     writes = sum(sum(v.values()) for v in doc["changes"].values())
     console.print(
         f"[green]{doc['season']} weeks {doc['weeks'][0]}-{doc['weeks'][-1]}: {doc['games']} "
         f"games, {doc['plays']:,} plays; {writes:,} writes ({doc['seconds']['total']:.0f} s)[/]"
     )
+    _print_derive(doc.get("derive"), doc.get("derive_error"))
+    if doc.get("wandb_url"):
+        console.print(f"W&B: {doc['wandb_url']}")
+
+
+def _history_failed(what: str, e: Exception) -> NoReturn:
+    """An unexpected error in a history-graph command: its type and a fixed reason, never the
+    driver's or the server's text, and no traceback (Sol, AE03 review)."""
+    from rich.markup import escape
+
+    from nflengine.graph.client import safe_error
+
+    console.print(f"[red]history graph {what} failed: {escape(safe_error(e))}[/]")
+    raise typer.Exit(1) from None
+
+
+def _print_derive(d: dict | None, error: str | None = None) -> None:
+    from rich.markup import escape
+
+    if error:
+        console.print(f"[yellow]derive failed: {escape(error)} (run `nfl history-graph derive`)[/]")
+    if not d:
+        return
+    writes = sum(sum(v.values()) for v in (d.get("changes") or {}).values())
+    counts = ", ".join(f"{k} {v:,}" for k, v in (d.get("counts") or {}).items())
+    secs = (d.get("seconds") or {}).get("total", 0)
+    console.print(f"[green]person links: {counts}; {writes:,} writes ({secs:.0f} s)[/]")
+
+
+@history_app.command("derive")
+def history_derive(
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
+    smoke: bool = typer.Option(False, "--smoke", help="W&B: a logging check."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Derive the person links (AE03): TEAMMATE, CONNECTION, OPPONENT, COACHED, WORKED_WITH,
+    from what the graph holds, and sync them (a re-run writes nothing). `build` and `append`
+    run it at their end; run it alone after a failed one. Starts the container if needed."""
+    from rich.markup import escape
+
+    from nflengine.history_graph.derive import HistoryDeriveError, run_derive
+
+    try:
+        doc = run_derive(start=True, use_wandb=not no_wandb, launched_by=launched_by,
+                         smoke=smoke, log=console.print)  # fmt: skip
+    except HistoryDeriveError as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(2) from e
+    except Exception as e:
+        _history_failed("derive", e)
+    _print_derive(doc)
+    if doc.get("dropped"):
+        console.print(f"dropped: {doc['dropped']}")
+    if doc.get("wandb_url"):
+        console.print(f"W&B: {doc['wandb_url']}")
+
+
+@history_app.command("lab")
+def history_lab(
+    job: str | None = typer.Option(
+        None, "--job", help="neighbours, families or chemistry (comma-separated; default: all)."
+    ),
+    seed: int = typer.Option(42, help="The random seed (FastRP, KNN, Leiden)."),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
+    smoke: bool = typer.Option(False, "--smoke", help="W&B: a logging check."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Graph experiments on the person links (AE03, GDS): player neighbourhoods (FastRP + KNN),
+    football families (Leiden) and QB -> receiver chemistry (EPA per target, PageRank). Writes
+    neo4j-history/lab/*.parquet; one W&B run per job. Reads the graph only."""
+    from rich.markup import escape
+
+    from nflengine.history_graph.lab import HistoryLabError, run_lab
+
+    try:
+        out = run_lab(_csv(job), seed=seed, use_wandb=not no_wandb, launched_by=launched_by,
+                      smoke=smoke, log=console.print)  # fmt: skip
+    except HistoryLabError as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(2) from e
+    except Exception as e:
+        _history_failed("lab", e)
+    for name, entry in out.items():
+        keys = ("players", "families", "communities", "modularity", "duos", "ranked")
+        facts = ", ".join(f"{k} {entry[k]}" for k in keys if k in entry)
+        console.print(f"{name}: {facts}" + (f"; W&B {entry['wandb_url']}"
+                                              if entry.get("wandb_url") else ""))  # fmt: skip
+
+
+@history_app.command("bench-paths")
+def history_bench_paths(
+    sizes: str | None = typer.Option(
+        None, help="Sample sizes, e.g. 1000,2000,5000 (the full person graph is added)."
+    ),
+    pairs: int = typer.Option(20, help="Random pairs for the single-pair timings."),
+    sources: int = typer.Option(10, help="Random sources for the single-source timings."),
+    repeats: int = typer.Option(3, help="Repeats of each timing."),
+    seed: int = typer.Option(42),
+    budget_s: float = typer.Option(
+        150.0, "--budget", help="Skip an algorithm and size predicted past this many seconds."
+    ),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
+    smoke: bool = typer.Option(False, "--smoke", help="W&B: a logging check."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """The shortest-path benchmark (AE03) on the person graph and samples of it: Cypher
+    SHORTEST, GDS Dijkstra / Delta-Stepping, scipy, Duan et al. 2025 (our implementation),
+    Floyd-Warshall. Writes neo4j-history/lab/path_benchmark.{json,parquet}; a W&B run."""
+    from rich.markup import escape
+
+    from nflengine.history_graph.bench import HistoryBenchError, run_bench
+
+    size_list = [int(s) for s in sizes.split(",") if s.strip()] if sizes else None
+    try:
+        doc = run_bench(sizes=size_list, pairs=pairs, sources=sources, repeats=repeats,
+                        seed=seed, budget_s=budget_s, use_wandb=not no_wandb,
+                        launched_by=launched_by, smoke=smoke, log=console.print)  # fmt: skip
+    except HistoryBenchError as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(2) from e
+    except Exception as e:
+        _history_failed("bench-paths", e)
     if doc.get("wandb_url"):
         console.print(f"W&B: {doc['wandb_url']}")
 
@@ -2718,6 +2852,13 @@ def history_status_cmd() -> None:
     if a:
         console.print(f"append: {a['season']} through week {a['through_week']} "
                       f"({a['plays']:,} plays, {a['appended_at']})")  # fmt: skip
+    dv = st.get("derive")
+    if dv:
+        wk = f" + {dv['season']} week {dv['through_week']}" if dv.get("through_week") else ""
+        console.print(f"person links: derived {dv['derive_id']} (through {dv['through_season']}"
+                      f"{wk})")  # fmt: skip
+    elif b:
+        console.print("[yellow]no person links yet: `uv run nfl history-graph derive`[/]")
     if st["asof"]:
         console.print(f"Ask's label: {st['asof']['label']}")
     if st["counts"]:
@@ -2738,7 +2879,7 @@ def history_start() -> None:
     cfg = history_config()
     with _history_lock("nfl history-graph start"):
         left = read_unfinished(ensure_data_root(create_dirs=False))
-        if left is not None and left.get("what") != "append":
+        if left is not None and left.get("what") not in ("append", "derive"):
             # a build that died mid-install may have left a copy running and a half-written
             # store: never start Neo4j on it (Sol); the next build replaces it
             console.print(f"[red]not started: {escape(unfinished_advice(left))}[/]")

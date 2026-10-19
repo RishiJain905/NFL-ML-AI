@@ -68,6 +68,7 @@ def serve(
         web_dist=None if dev else dist,
         fail_at=fail_at,
         live_replay=feed,
+        warm_connections=True,
     )
     app = srv.create_app(settings)
     url = f"http://{HOST}:{port}/"

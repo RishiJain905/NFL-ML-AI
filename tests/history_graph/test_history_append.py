@@ -11,7 +11,12 @@ from types import SimpleNamespace
 
 import polars as pl
 import pytest
-from history_fakes import FakeGraph, FakeNeo4jError, diff_graphs
+from history_fakes import (
+    FakeGraph,
+    FakeNeo4jError,
+    diff_graphs,
+    no_real_docker,  # noqa: F401  (the safety net)
+)
 from history_world import (
     GAME_META,
     GC,
@@ -190,6 +195,8 @@ def test_changes_lists_only_the_non_empty_operations():
 class Env(SimpleNamespace):
     def append(self, season=2026, **kw):
         kw.setdefault("use_wandb", False)
+        kw.setdefault("derive", False)  # these tests are about the sync; AE03's derive at the
+        # end of an append has its own file (test_history_derive_run.py)
         kw.setdefault("log", QUIET)
         return A.run_append(season, paths=self.paths, cfg=CFG, driver=self.graph, **kw)
 
@@ -265,7 +272,7 @@ class TestFirstAppend:
 
     def test_counts_equal_the_exports_expected_counts(self, env):
         doc = env.append()
-        assert env.graph.counts() == load(env.world).expected_counts()
+        assert env.graph.bulk_counts() == load(env.world).expected_counts()
         assert (
             doc["counts"] == load(env.world, seasons=(2026,), participation=False).expected_counts()
         )
@@ -830,7 +837,7 @@ class TestSolFixes:
         )
         env.append()
         ((args, _),) = notes
-        assert args[1:] == ("append", "B1", 2026)
+        assert args[1:] == ("append", "B1", 2026, False)  # no half-written derive to carry
 
     def test_the_start_runs_inside_the_history_lock(self, env, monkeypatch):
         from nflengine.history_graph.docker import ServiceResult

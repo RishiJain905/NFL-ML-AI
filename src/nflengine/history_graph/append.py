@@ -273,11 +273,14 @@ def run_append(
     log: Callable[[str], None] = print,
     locked: bool = False,
     start: bool = False,
+    derive: bool = True,
 ) -> dict[str, Any]:
     """Sync the current season (default `seasons.current`) through `through_week` (default:
     the newest week with plays) into the history graph; writes `append.json`. `start`: start
     the history container if it's down, under the lock (Sol: a start outside the lock could
-    open a store a build was replacing). `locked`: the caller (a build) holds the lock."""
+    open a store a build was replacing). `locked`: the caller (a build) holds the lock.
+    `derive`: then sync the person links (AE03, `derive.run_derive`; a build derives once
+    itself, after its append)."""
     from nflengine.history_graph.build import weekly_lock_held
     from nflengine.settings import get_config
 
@@ -304,18 +307,24 @@ def run_append(
                 "instead (`nfl history-graph build`)"
             )
         left = state.read_unfinished(paths)
+        same = left is not None and left.get("build_id") == build["build_id"]
         if left is not None and not (
-            left.get("what") == "append"
-            and left.get("season") == season
-            and left.get("build_id") == build["build_id"]
-        ):  # only the same unfinished append may be finished by this run
+            (same and left.get("what") == "append" and left.get("season") == season)
+            or (same and derive and left.get("what") == "derive")
+        ):  # only the same unfinished append may be finished by this run (or an unfinished
+            # derive, which this run's own derive redoes)
             raise HistoryAppendError(state.unfinished_advice(left))
+        # half-written person links (a derive's marker, or an append's that carried one) stay
+        # marked through this append until a derive finishes (Sol, AE03 review)
+        pending = left is not None and (left.get("what") == "derive"
+                                        or bool(left.get("derive_pending")))  # fmt: skip
         week = through_week if through_week is not None else newest_week(paths, season)
         if not week:
             raise HistoryAppendError(f"no curated plays for {season} yet")
         if start:
             _start_if_down(cfg, log)
-        return _append(paths, cfg, build, season, week, driver, use_wandb, launched_by, smoke, log)
+        return _append(paths, cfg, build, season, week, driver, use_wandb, launched_by, smoke,
+                       log, derive, pending)  # fmt: skip
 
     if locked:
         return checked_run()
@@ -341,7 +350,8 @@ def _start_if_down(cfg: HistoryConfig, log: Callable[[str], None]) -> None:
         raise HistoryAppendError(f"history graph not reachable: {res.detail}")
 
 
-def _append(paths, cfg, build, season, week, driver, use_wandb, launched_by, smoke, log):
+def _append(paths, cfg, build, season, week, driver, use_wandb, launched_by, smoke, log,
+            derive=False, derive_pending=False):  # fmt: skip
     from nflengine.history_graph.build import _write_json, utc_now
     from nflengine.history_graph.export import build_frames, load_inputs
 
@@ -360,7 +370,7 @@ def _append(paths, cfg, build, season, week, driver, use_wandb, launched_by, smo
         t = time.monotonic()
         # until the result is checked, Ask doesn't read the graph (Sol): a failed batch or a
         # crash leaves the season half-written, and the marker says so until a good append
-        state.mark_unfinished(paths, "append", build["build_id"], season)
+        state.mark_unfinished(paths, "append", build["build_id"], season, derive_pending)
         res = sync(driver, frames, season, cfg.batch_size, log)
         t_sync = round(time.monotonic() - t, 1)
     finally:
@@ -382,15 +392,29 @@ def _append(paths, cfg, build, season, week, driver, use_wandb, launched_by, smo
         "appended_at": utc_now().isoformat(),
         "seconds": {"export": t_export, "sync": t_sync, "total": round(time.monotonic() - t0, 1)},
     }
-    _wandb_append(doc, use_wandb, launched_by, smoke, log)
-    _write_json(state.append_path(paths), doc)
-    if not res["check"]:
-        state.clear_unfinished(paths)
     if res["check"]:
+        _wandb_append(doc, use_wandb, launched_by, smoke, log)
+        _write_json(state.append_path(paths), doc)
         raise HistoryAppendError(
             "the graph still differs from the export after the append: "
             + ", ".join(sorted(res["check"]))
         )
+    _write_json(state.append_path(paths), doc)
+    if derive_pending:  # the plays are good, the person links still half-written: the derive's
+        state.mark_unfinished(paths, "derive", build["build_id"])  # marker until one finishes
+    else:
+        state.clear_unfinished(paths)
+    if derive:  # reads append.json: what the graph now holds
+        from nflengine.history_graph.derive import derive_after
+
+        t = time.monotonic()
+        doc["derive"], err = derive_after(paths, cfg, None if own else driver, log)
+        if err:
+            doc["derive_error"] = err
+        doc["seconds"]["derive"] = round(time.monotonic() - t, 1)
+        doc["seconds"]["total"] = round(time.monotonic() - t0, 1)
+    _wandb_append(doc, use_wandb, launched_by, smoke, log)
+    _write_json(state.append_path(paths), doc)
     return doc
 
 
@@ -415,6 +439,8 @@ def _wandb_append(doc: dict[str, Any], use_wandb: bool, launched_by, smoke, log)
         )
         writes = {f"writes/{k}": sum(v.values()) for k, v in doc["changes"].items()}
         wb.log({**writes, **{f"time/{k}": v for k, v in doc["seconds"].items()}})
+        from nflengine.history_graph.derive import wandb_metrics
+
         wb.summary.update(
             {
                 "status": doc["status"],
@@ -422,6 +448,7 @@ def _wandb_append(doc: dict[str, Any], use_wandb: bool, launched_by, smoke, log)
                 "games": doc["games"],
                 "writes": sum(writes.values()),
                 **{f"count/{k}": v for k, v in doc["counts"].items()},
+                **wandb_metrics(doc.get("derive")),
             }
         )
         doc["wandb_url"] = wb.url
