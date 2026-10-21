@@ -536,20 +536,28 @@ def run_eval(
     log: Callable[[str], None] = print,
     engine_factory: Callable[..., Any] | None = None,
     via: str = "engine",
+    generate_model: str | None = None,
 ) -> dict[str, Any]:
     """Run the golden set with one model; save `ask/evals/<stamp>_<model>.json`; log W&B.
 
     `via="api"` (AE01): every question goes through the control room's `POST /api/ask`
     in-process (`app.ask_service.ApiAsker`: the middleware, the request model, the service,
     the cleaning) and is scored from the JSON the page gets; the file gets an `_api` suffix and
-    the W&B run a `via:api` tag, and `nfl ask pick` leaves such runs out."""
-    from nflengine.ask.config import ask_config
+    the W&B run a `via:api` tag, and `nfl ask pick` leaves such runs out.
+
+    AE04: `model="local:<name>"` runs the local model (`ask.local`: its server, its candidate
+    templates, a known cost of 0); `generate_model` (an OpenRouter model) writes the
+    free-form queries while `model` routes and answers (the "split"): its summary's model is
+    "<model> + <generate_model>", a bake-off entry of its own."""
+    from nflengine.ask.config import LOCAL_PREFIX, ask_config
     from nflengine.ask.llm import OutOfCredits, make_llm
     from nflengine.ask.route import AskEngine, prompt_hash
     from nflengine.ask.templates import TEMPLATES_PATH, load_templates
     from nflengine.paths import ensure_data_root
 
     cfg = ask_config()
+    if model.startswith(LOCAL_PREFIX):  # AE04: the local model's own LLM block
+        cfg = cfg.model_copy(update={"llm": cfg.llm_for(model)})
     llm_update: dict[str, Any] = {}
     if max_tokens is not None:  # a high reasoning effort needs room (its budget is a share of it)
         llm_update["max_tokens"] = int(max_tokens)
@@ -561,6 +569,9 @@ def run_eval(
     kw = {} if reasoning_effort is ... else {"reasoning_effort": reasoning_effort}
     llm = make_llm(cfg.llm, model=model, **kw)
     engine = (engine_factory or AskEngine.build)(llm, cfg, paths)
+    if generate_model:  # AE04's split: this model writes the generated queries
+        engine.gen_llm = make_llm(ask_config().llm, model=generate_model)
+    entry = model if not generate_model else f"{model} + {generate_model}"
     if golden_set not in GOLDEN_SETS:
         raise ValueError(f"golden_set must be one of {GOLDEN_SETS}")
     if via not in ("engine", "api"):
@@ -605,6 +616,9 @@ def run_eval(
         "bounds": BOUNDS,
         "scorer_version": SCORER_VERSION,
         "via": via,
+        # AE04: the local model's candidate list, and the split's generator model
+        "route_candidates": cfg.llm.route_candidates,
+        "generate_model": generate_model,
     }
     run = None
     if use_wandb:
@@ -621,9 +635,11 @@ def run_eval(
                 f"set:{golden_set}",
                 f"via:{via}",
                 *(["smoke"] if smoke else []),
+                *([f"generate:{_slug(generate_model)}"] if generate_model else []),
             ],
             launched_by=launched_by,
             name=f"ask-eval-{_slug(model)}-{llm.effort}"
+            + (f"-split-{_slug(generate_model)}" if generate_model else "")
             + ("" if golden_set == "main" else f"-{golden_set}")
             + ("" if via == "engine" else f"-{via}"),
         )
@@ -680,11 +696,12 @@ def run_eval(
             asker.close()
         engine.close()
     summary = summarise(scored) if scored else {}
-    summary.update({"model": model, "reasoning_effort": llm.effort, "stopped": stopped})
+    summary.update({"model": entry, "reasoning_effort": llm.effort, "stopped": stopped})
     out_dir = paths.ask / "evals"
     out_dir.mkdir(parents=True, exist_ok=True)
     suffix = (
-        ("" if golden_set == "main" else f"_{golden_set}")
+        ("" if not generate_model else "_split")
+        + ("" if golden_set == "main" else f"_{golden_set}")
         + ("" if via == "engine" else f"_{via}")
         + ("_smoke" if smoke else "")
     )

@@ -2443,9 +2443,17 @@ def ask_eval(
         help="engine (the query layer directly) or api (each question through the control "
         "room's POST /api/ask, in-process, scored from the JSON the page gets; AE01).",
     ),
+    generate_model: str | None = typer.Option(
+        None,
+        "--generate-model",
+        help="AE04's split: this OpenRouter model writes the free-form queries while --model "
+        "(e.g. local:<name>) routes and answers.",
+    ),
     launched_by: str | None = LAUNCHED_BY,
 ) -> None:
-    """Run the golden set (config/ask_golden.yaml) and log a W&B `ask-eval` run."""
+    """Run the golden set (config/ask_golden.yaml) and log a W&B `ask-eval` run.
+
+    `--model local:<name>` (AE04) runs the local model served at ask.local.base_url."""
     from rich.markup import escape
 
     from nflengine.ask.config import ask_config
@@ -2483,6 +2491,7 @@ def ask_eval(
             launched_by=launched_by,
             log=lambda s: console.print(s),
             via=via,
+            generate_model=generate_model,
         )
         s = out["summary"]
         if s.get("questions"):
@@ -2501,6 +2510,69 @@ def ask_eval(
         )
         if s.get("stopped"):
             raise typer.Exit(3)
+
+
+@ask_app.command("train-data")
+def ask_train_data(
+    seed: int = typer.Option(0, help="The seed (fills, splits, candidate lists)."),
+    k: int = typer.Option(10, "--k", help="Candidate templates in each router prompt."),
+    heldout: str | None = typer.Option(
+        None, help="Templates kept out of training (comma-separated; default: D153's six)."
+    ),
+    limit: int | None = typer.Option(None, help="A quick smoke: the first N skeletons only."),
+) -> None:
+    """AE04: build the NFL training examples for the local model (ask/training/nfl/<version>/).
+
+    Reads config/ask_train_phrasings.yaml, fills every skeleton with random real names, runs
+    every query through the guard against today's data; never calls a model (free)."""
+    from rich.markup import escape
+
+    from nflengine.ask.trainset import DEFAULT_HELDOUT, TrainDataConfig, export
+
+    cfg = TrainDataConfig(
+        seed=seed,
+        candidates_k=k,
+        heldout_templates=tuple(_csv(heldout) or DEFAULT_HELDOUT),
+        limit_skeletons=limit,
+    )
+    try:
+        m = export(cfg, log=lambda s: console.print(escape(s)))
+    except (ValueError, RuntimeError) as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(1) from None
+    c = m["counts"]
+    console.print(
+        f"[green]{c['train']} train, {c['val']} val[/] ({c['templates_trained']} templates "
+        f"trained) | retrieval recall train {m['retrieval_recall']['train']:.1%}, val "
+        f"{m['retrieval_recall']['val']:.1%} | drops {sum(m['drops'].values())}"
+    )
+    console.print(f"saved {escape(m['dir'])}")
+
+
+@ask_app.command("verify")
+def ask_verify(
+    data: str = typer.Option(..., help="The examples (a val.jsonl from train-data)."),
+    preds: str = typer.Option(..., help='The model\'s replies: {"id", "output"} per line.'),
+    out: str | None = typer.Option(None, help="Write the scores (JSON) here."),
+) -> None:
+    """AE04: score a local model's replies on the NFL val examples by running them (free).
+
+    nfl-ask-trainer calls this after each epoch (through WSL interop)."""
+    from rich.markup import escape
+
+    from nflengine.ask.verify import verify
+
+    try:
+        res = verify(Path(data), Path(preds), Path(out) if out else None)
+    except (OSError, ValueError, RuntimeError) as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(1) from None
+    s = res["summary"]
+    console.print(
+        f"exec {s['all']['exec_acc'] or 0:.1%} of {s['all']['n']} | json "
+        f"{s['all']['json_ok'] or 0:.1%} | "
+        + " | ".join(f"{g} {b['exec_acc'] or 0:.1%} ({b['n']})" for g, b in s["group"].items())
+    )
 
 
 @ask_app.command("pick")

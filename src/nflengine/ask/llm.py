@@ -7,6 +7,10 @@ Two providers, chosen by `ask.llm.provider` in settings.yaml:
 - `openai_compatible`: a local or self-hosted server speaking the OpenAI chat API at
   `LLM_BASE_URL` (HTTPS, or plain HTTP on localhost only), with `LLM_API_KEY` if it wants one.
   Its cost is computed from `price_in_per_m` / `price_out_per_m` when they're set.
+- `local` (AE04, D152): the fine-tuned local model, served on this computer (llama-server or
+  LM Studio). Its address is `ask.local.base_url` in settings.yaml (localhost only, no key: not
+  a secret), its chat-template switches (thinking off) go in `chat_template_kwargs`, and its
+  cost is a known 0. `nfl ask eval --model local:<name>` uses it.
 
 Every reply must be one JSON object (JSON mode is requested; the reply is parsed leniently:
 code fences and text around the object are ignored). Every call is recorded in `calls`
@@ -107,6 +111,22 @@ def _base_url(raw: str | None) -> str:
     raise AskLLMError("LLM_BASE_URL must be https (plain http only on localhost)")
 
 
+def _local_url(raw: str | None) -> str:
+    """`ask.local.base_url`: this computer only (a model served by llama-server or LM
+    Studio), http or https, no credentials, query or fragment (AE04)."""
+    if not raw or not str(raw).strip():
+        raise AskLLMError("ask.local.base_url is not set in settings.yaml")
+    text = str(raw).strip()
+    if "?" in text or "#" in text:
+        raise AskLLMError("ask.local.base_url must not carry a query string or a fragment")
+    u = urlparse(text)
+    if u.scheme not in ("http", "https") or (u.hostname or "") not in LOCAL_HOSTS:
+        raise AskLLMError("ask.local.base_url must be on this computer (localhost)")
+    if u.username or u.password:
+        raise AskLLMError("ask.local.base_url must not carry credentials")
+    return text.rstrip("/")
+
+
 class AskLLM:
     """One provider client for a question (or a whole eval run): `chat_json` per call."""
 
@@ -149,6 +169,8 @@ class AskLLM:
             if env.is_set("LLM_API_KEY"):
                 headers["Authorization"] = f"Bearer {env.llm_api_key.get_secret_value()}"
             return f"{base}/chat/completions", headers
+        if self.provider == "local":  # AE04: settings.yaml's ask.local (localhost, no key)
+            return f"{_local_url(self.cfg.base_url)}/chat/completions", headers
         raise AskLLMError("unknown ask.llm.provider")
 
     def request_body(self, messages: list[dict[str, str]]) -> dict[str, Any]:
@@ -166,6 +188,9 @@ class AskLLM:
                 body["reasoning"] = {"effort": self.effort, "exclude": True}
             if self.routing:
                 body["provider"] = self.routing
+        if self.provider == "local" and self.cfg.chat_template_kwargs:
+            # llama-server / vLLM read this: thinking off for the fine-tuned model (AE04)
+            body["chat_template_kwargs"] = dict(self.cfg.chat_template_kwargs)
         return body
 
     def _post(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -278,9 +303,13 @@ def make_llm(cfg: AskLLMConfig | None = None, model: str | None = None, **kw: An
     """The configured client; for another model that is a bake-off candidate, the candidate's
     first effort and its routing. The configured model always runs as `ask.llm` says, even when
     it is a candidate too (the winner sits in the list at the efforts it was tried at)."""
-    from nflengine.ask.config import ask_config
+    from nflengine.ask.config import LOCAL_PREFIX, ask_config
 
     full = ask_config()
+    if model and model.startswith(LOCAL_PREFIX):  # AE04: the local model, its own block
+        local = cfg if cfg is not None and cfg.provider == "local" else full.llm_for(model)
+        kw.setdefault("reasoning_effort", None)
+        return AskLLM(local, model=local.model, **kw)
     cfg = cfg or full.llm
     cand = full.candidate(model) if model and model != cfg.model else None
     if cand is not None:

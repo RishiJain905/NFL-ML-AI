@@ -13,7 +13,9 @@ from pydantic import BaseModel, Field
 
 
 class AskLLMConfig(BaseModel):
-    provider: Literal["openrouter", "openai_compatible"] = "openrouter"
+    # local (AE04, D152): a model served on this computer (llama.cpp's llama-server, LM Studio);
+    # its address is `base_url` (localhost only), not a secret, so it lives in settings.yaml
+    provider: Literal["openrouter", "openai_compatible", "local"] = "openrouter"
     model: str | None = None
     # OpenRouter `reasoning.effort` (none | minimal | low | medium | high ...); None sends none.
     reasoning_effort: str | None = "low"
@@ -25,6 +27,40 @@ class AskLLMConfig(BaseModel):
     # openai_compatible only: $ per million tokens, so a local model's cost can be logged
     price_in_per_m: float | None = None
     price_out_per_m: float | None = None
+    # AE04: the router sees only the k templates most similar to the question (`retrieve.py`);
+    # None: every template (the OpenRouter models' prompt, unchanged)
+    route_candidates: int | None = None
+    # local only: the server's address and the chat template's switches (thinking off)
+    base_url: str | None = None
+    chat_template_kwargs: dict[str, Any] | None = None
+
+
+class AskLocalConfig(BaseModel):
+    """`ask.local`: the fine-tuned local model (AE04). `nfl ask eval --model local:<name>`
+    runs the golden set against it; `<name>` is the model name the server was started with."""
+
+    base_url: str = "http://127.0.0.1:8080/v1"
+    model: str = "spark-x2.6-4b-ask"
+    max_tokens: int = 1024
+    timeout_s: float = 120.0
+    temperature: float | None = 0.0
+    route_candidates: int | None = 10  # what the model was trained with (D153)
+    chat_template_kwargs: dict[str, Any] = Field(default_factory=lambda: {"enable_thinking": False})
+
+    def llm_config(self, model: str | None = None) -> AskLLMConfig:
+        return AskLLMConfig(
+            provider="local",
+            model=model or self.model,
+            reasoning_effort=None,
+            max_tokens=self.max_tokens,
+            timeout_s=self.timeout_s,
+            temperature=self.temperature,
+            price_in_per_m=0.0,  # free: a known cost of 0, so a tie can go to it (D138)
+            price_out_per_m=0.0,
+            route_candidates=self.route_candidates,
+            base_url=self.base_url,
+            chat_template_kwargs=dict(self.chat_template_kwargs),
+        )
 
 
 class AskLimits(BaseModel):
@@ -71,9 +107,20 @@ class AskConfig(BaseModel):
     sql: AskSqlConfig = Field(default_factory=AskSqlConfig)
     graph: AskGraphConfig = Field(default_factory=AskGraphConfig)
     candidates: list[AskCandidate] = Field(default_factory=list)
+    local: AskLocalConfig = Field(default_factory=AskLocalConfig)  # AE04
 
     def candidate(self, model: str) -> AskCandidate | None:
         return next((c for c in self.candidates if c.model == model), None)
+
+    def llm_for(self, model: str | None) -> AskLLMConfig:
+        """The LLM block a run uses: `local:<name>` -> the local model's (AE04), anything
+        else -> `ask.llm` as it is."""
+        if model and model.startswith(LOCAL_PREFIX):
+            return self.local.llm_config(model[len(LOCAL_PREFIX) :] or None)
+        return self.llm
+
+
+LOCAL_PREFIX = "local:"
 
 
 def ask_config(data: dict[str, Any] | None = None) -> AskConfig:

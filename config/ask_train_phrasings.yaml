@@ -1,0 +1,1282 @@
+# AE04 training question skeletons (see src/nflengine/ask/phrasings.py for the format).
+# Written without reading the golden or held-out sets; each template section holds 12+ skeletons.
+version: 1
+templates:
+  starters_out_this_week:
+    - {q: "Name the starters that won't suit up this week"}
+    - {q: "Which starters will {team} not have this week?"}
+    - {q: "list the starters who won't play on Sunday"}
+    - {q: "Any key players ruled out for the {team:nickname} game?"}
+    - {q: "Starters out this week"}
+    - {q: "Which regular starters are Doubtful or Out this week?"}
+    - {q: "Who will {team} be without on Sunday?"}
+    - {q: "Show me every starter on a reserve list or ruled out for this week's games"}
+    - {q: "Is anyone important out for {team} this week?"}
+    - {q: "whos missing for {team:code} this week"}
+    - {q: "Give me a rundown of the starters sitting out across the league this week"}
+    - {q: "Are any starters out for {team} this week?"}
+    - {q: "Which starters did teams lose to injury before this week's games?"}
+    - {q: "Which of the {team:nickname} starters are out in this week's game?"}
+    - {q: "Whos out this week for {team}? just the starters"}
+    - {q: "I'm setting my lineup and want to know which starters are ruled out or doubtful across the league this week"}
+  revenge_games_this_week:
+    - {q: "Who plays against his old club this week?"}
+    - {q: "Does {team} have a revenge game on the schedule this week?"}
+    - {q: "Which players play against their old team this week?"}
+    - {q: "revenge game alert: who is playing his ex-team on Sunday"}
+    - {q: "Is there a revenge game in the {team:nickname} game this week?"}
+    - {q: "List the players going up against a team they used to play for this week"}
+    - {q: "Show me this weeks revenge games"}
+    - {q: "Does {team} have anyone playing their old club this week?"}
+    - {q: "Any former players returning to face {team} this week?"}
+    - {q: "Who has a revenge game this weekend?"}
+    - {q: "Which players are playing against a former team this week, with their draft or trade ties?"}
+    - {q: "Anybody on the {team:nickname} getting a revenge game Sunday?"}
+    - {q: "Which guys are facing the team that traded them away this week?"}
+    - {q: "Who is lining up against the franchise that drafted him this weekend?"}
+  injury_ripple_this_week:
+    - {q: "How does {team:code} fare when its injured starters are out?"}
+    - {q: "Whose absence hurts his team the most this week?"}
+    - {q: "Who steps in for the injured starters this week and how do teams do without them?"}
+    - {q: "What happens to {team} when its injured starters are out?"}
+    - {q: "How much does {team} drop off without the starters who are out this week?"}
+    - {q: "which injured starters matter most to their teams this week"}
+    - {q: "Show me the with-and-without numbers for players who are out this week"}
+    - {q: "EPA with and without the injured starters this week"}
+    - {q: "Who is the backup replacing the injured starters for {team} and how has he been used?"}
+    - {q: "How big is the impact of this week's injuries on {team}?"}
+    - {q: "Biggest injury impact games this week"}
+    - {q: "How have teams scored when their starters were out, for the guys who are out this week?"}
+    - {q: "Are {team} better or worse without the starters who are out?"}
+    - {q: "What does losing this week's injured starters do to the {team:nickname}?"}
+  qb_changes_this_week:
+    - {q: "Which clubs are going with a backup QB on Sunday?"}
+    - {q: "Will {team} start a different quarterback than usual this week?"}
+    - {q: "Who is starting at quarterback for {team} instead of the usual guy?"}
+    - {q: "Any team changing quarterbacks for Sunday?"}
+    - {q: "list teams without their regular QB this week and why"}
+    - {q: "Is {team} playing its regular quarterback this week?"}
+    - {q: "Which QBs are out this week and who replaces them?"}
+    - {q: "Backup QBs starting this week"}
+    - {q: "How much has the new {team} quarterback thrown to the current receivers?"}
+    - {q: "who is under center for {team} this weekend if the starter is hurt"}
+    - {q: "Are the {team:nickname} making a quaterback change this week?"}
+    - {q: "Which quarterbacks are being replaced this week because of injury?"}
+    - {q: "Show me QB switches in this week's slate"}
+    - {q: "qb change this week for {team:code}?"}
+    - {q: "Quick question, is {team} going with its usual quarterback this Sunday or a backup?"}
+  common_opponents_this_week:
+    - {q: "What common opponents do this week's matchups have?"}
+    - {q: "How do {team} and its opponent this week compare against common opponents?"}
+    - {q: "Any common-opponent comparisons for this week's games?"}
+    - {q: "common opponents for the {team:nickname} game this week"}
+    - {q: "Compare this week's matchups through the teams they've both played"}
+    - {q: "What does the common-opponents chain say about {team} this week?"}
+    - {q: "Who has the better results against shared opponents in this week's games?"}
+    - {q: "Show margins against common opponents for every game this week"}
+    - {q: "Did {team} and its opponent this week face any of the same teams?"}
+    - {q: "How does the chain of common opponents compare with your model for {team}?"}
+    - {q: "shared opponents this week"}
+    - {q: "Which games this week have the biggest gap against common opponents?"}
+    - {q: "Using common opponents, who looks better in the {team:nickname} game this week?"}
+  coach_reunions_this_week:
+    - {q: "Any head coach up against a former employer this weekend?"}
+    - {q: "Which coaches face a team they used to coach this week?"}
+    - {q: "Coach reunion in the {team:nickname} game this week?"}
+    - {q: "Does {team} face a former coach this week?"}
+    - {q: "Which sideline boss is coaching against his old team on Sunday?"}
+    - {q: "list coaching reunions this week"}
+    - {q: "Is the {team:nickname} coach facing a team he coached before?"}
+    - {q: "head coaches meeting their old teams this week and their record against them"}
+    - {q: "Anybody facing the club that used to employ him as head coach this weekend?"}
+    - {q: "Reunion games for coaches in this week's slate"}
+    - {q: "What is the record of the coach who faces his former team in the {team:nickname} game?"}
+    - {q: "Which head coach has a homecoming game this week?"}
+    - {q: "Does {team:code} have a coach facing his old team?"}
+  coaching_tree_this_week:
+    - {q: "Do any of this week's opposing coaches come from one coaching family?"}
+    - {q: "Are the coaches in the {team:nickname} game connected through a coaching tree?"}
+    - {q: "Any head coaches meeting this week who worked under each other?"}
+    - {q: "Coaching tree links in this week's games"}
+    - {q: "Did either coach in the {team:nickname} game work under the other?"}
+    - {q: "Are {team} and its opponent this week coached by guys from the same mentor?"}
+    - {q: "Which matchups this week feature a mentor against his protege?"}
+    - {q: "show coaching-tree connections for this weekend's games"}
+    - {q: "Is the {team:nickname} coach linked to the opposing coach?"}
+    - {q: "which head coaches this week share a mentor"}
+    - {q: "Any mentor vs student coaching matchups for {team} this week?"}
+    - {q: "Are this week's opposing head coaches tied together in any way, like one coaching under the other?"}
+    - {q: "Is {team:code}'s head coach from the same tree as the guy across from him?"}
+  former_teammates_this_week:
+    - {q: "Which passers line up against ex-targets this week?"}
+    - {q: "Who are the former teammates in the {team:nickname} game this week?"}
+    - {q: "Is any QB facing a guy he used to throw to?"}
+    - {q: "former QB-receiver pairs on opposite sides this week"}
+    - {q: "Does the {team:nickname} quarterback face an old target this week?"}
+    - {q: "Which receivers play against the QB who used to throw to them this week?"}
+    - {q: "list quarterbacks playing against former receivers on Sunday"}
+    - {q: "Old connections: starting QBs facing receivers they threw 40+ targets to"}
+    - {q: "Is the {team:nickname} QB lining up against a former teammate?"}
+    - {q: "Any reunions between quarterbacks and their old receivers this weekend?"}
+    - {q: "former passing partners facing each other this week"}
+    - {q: "which quarterback this week faces a receiver he used to work with"}
+    - {q: "Does {team:code} have a QB-receiver reunion in this week's game?"}
+  qb_style_matchups_this_week:
+    - {q: "Which defenses historically struggle against QBs who scramble, among this week's games?"}
+    - {q: "Does {team} defense have a problem with QBs who scramble?"}
+    - {q: "Do any deep-passing quarterbacks face defenses that struggle against the deep ball this week?"}
+    - {q: "How does {team} defense handle mobile quarterbacks?"}
+    - {q: "QB style vs defense matchups this week"}
+    - {q: "Which scrambling QBs have a good matchup this week?"}
+    - {q: "Is {team} defense good or bad against the style of quarterback it faces this week?"}
+    - {q: "any mobile quarterbacks facing defenses that cant stop them this weekend"}
+    - {q: "How does the {team:nickname} defense do versus deep-throwing QBs?"}
+    - {q: "Where does the quarterback's style give an edge this week?"}
+    - {q: "list matchups with scramblers against weak defenses for this week's slate"}
+    - {q: "Which defenses are unusually good against the type of QB they face this week?"}
+    - {q: "Style matchup for the {team:nickname} game: scrambler or deep passer against the defense?"}
+  play_action_matchups_this_week:
+    - {q: "Which play-action-heavy teams draw a defense that struggles against it this week?"}
+    - {q: "How good is {team} defense at stopping play action?"}
+    - {q: "Which defenses are weak against play action this week and who is facing them?"}
+    - {q: "play action matchups this week"}
+    - {q: "Is the {team:nickname} defense vulnerable to play action this week?"}
+    - {q: "Do any heavy play-action offenses face defenses that struggle against it on Sunday?"}
+    - {q: "How does the {team:nickname} offense match up with play action this week?"}
+    - {q: "Which teams that love play action are playing a defense that gets burned by it?"}
+    - {q: "FTN play action edges this week, team by team"}
+    - {q: "Does {team} have a play-action edge in this week's game?"}
+    - {q: "give me the play action mismatches for the slate"}
+    - {q: "Who has the best play-action matchup this weekend?"}
+    - {q: "Are {team} bad against play action and who do they face?"}
+  trend_mismatches_this_week:
+    - {q: "In which games are the two teams' ratings heading in opposite directions?"}
+    - {q: "Is {team} trending up against a team trending down this week?"}
+    - {q: "Opposite trends in this week's games"}
+    - {q: "Which matchups pit a rising team against a falling one?"}
+    - {q: "Is the {team:nickname} game this week a hot team vs a cold team?"}
+    - {q: "games where one team's rating rose over the last 3 weeks and the other's fell"}
+    - {q: "any trend mismatches this week"}
+    - {q: "Does the {team:nickname} game feature teams moving in opposite directions?"}
+    - {q: "Who is on the rise facing someone sliding this weekend?"}
+    - {q: "trending up vs trending down games for this week's slate"}
+    - {q: "Is {team} getting better while its opponent gets worse this week?"}
+    - {q: "Show hot-vs-cold matchups for the week"}
+  officiating_this_week:
+    - {q: "Which of this week's crews call more penalties than usual?"}
+    - {q: "Who is reffing the {team:nickname} game and do they call a lot of penalties?"}
+    - {q: "Any crews this week that call unusually few penalties?"}
+    - {q: "referee tendencies this week"}
+    - {q: "Does the crew for the {team:nickname} game favor the home team in penalties?"}
+    - {q: "list this week's officiating crews with high penalty counts"}
+    - {q: "Which referees this weekend split penalties unevenly between home and away?"}
+    - {q: "Penalty-happy refs on this weeks slate?"}
+    - {q: "Is the {team:nickname} game being called by a flag-heavy crew?"}
+    - {q: "What do the refs for {team} this week tend to do?"}
+    - {q: "Which games have a crew that throws a lot of flags?"}
+    - {q: "ref crews for the week and their penalty rates"}
+  passing_hub_out_this_week:
+    - {q: "Which offenses are missing their number one pass catcher this week?"}
+    - {q: "If a main receiver is out for {team}, who takes over his role in the passing game?"}
+    - {q: "Is {team} missing one of its top passing targets this week?"}
+    - {q: "Which passing-game hubs are out this week and who takes over?"}
+    - {q: "Which team's WR1 is out on Sunday and who steps up in the passing network?"}
+    - {q: "Does {team} lose a main receiving option this week?"}
+    - {q: "Top-3 passing network guys sitting out this week"}
+    - {q: "Who takes over as {team} main target now that the hub is out?"}
+    - {q: "receivers out this week that their offense runs through"}
+    - {q: "What teams are playing without a top-3 target in the passing network?"}
+    - {q: "Is the {team:nickname} passing game missing its hub?"}
+    - {q: "who fills the receiving role for {team} with the top target hurt?"}
+    - {q: "missing key receivers this week by team"}
+  usage_comparisons_this_week:
+    - {q: "Which young pass catchers have usage that matches a former star's?"}
+    - {q: "Which young players' usage looks like a past player-season this week?"}
+    - {q: "Any young {team} players whose usage resembles a past star?"}
+    - {q: "usage look-alikes for young WR, TE and RB playing this week"}
+    - {q: "Which rookies are being used like a famous receiver was early in his career?"}
+    - {q: "Who is the closest usage match for the young players in the {team:nickname} game?"}
+    - {q: "young backs with the usage of an old star this week"}
+    - {q: "Which young playmakers are following the usage path of a past standout?"}
+    - {q: "show young players' usage comparisons for this week"}
+    - {q: "Is any {team} youngster getting used like a former star?"}
+    - {q: "Which second-year receivers have a usage profile close to a past season of another player?"}
+    - {q: "usage twins for this week's young skill players"}
+  unit_mismatches_this_week:
+    - {q: "Where are the biggest offense versus defense mismatchs this week?"}
+    - {q: "Is the {team:nickname} pass offense set up well against its opponent this week?"}
+    - {q: "Which games pit a top-8 offense against a bottom-8 defense this week?"}
+    - {q: "mismatches between pass offense and pass defense this week"}
+    - {q: "Does {team} have a rushing advantage this weekend?"}
+    - {q: "Where is there a big unit mismatch in the {team:nickname} game?"}
+    - {q: "list the games with an elite offense facing a terrible defense"}
+    - {q: "Which run defenses are in trouble this week against a top rushing offense?"}
+    - {q: "unit mismatches for the week"}
+    - {q: "Is the {team:nickname} defense mismatched against its opponent's offense this week?"}
+    - {q: "Which games feature the strongest pass offense against the weakest pass defense by adjusted EPA?"}
+    - {q: "Where do the ratings show a lopsided offense-vs-defense matchup this week?"}
+    - {q: "Does {team:code} have the matchup advantage on offense this week?"}
+  special_teams_edges_this_week:
+    - {q: "In which games is one side far better on special teams this week?"}
+    - {q: "Is there a special teams edge for {team} this week?"}
+    - {q: "special teams advantages this week"}
+    - {q: "Which team has the better special teams in the {team:nickname} game this week?"}
+    - {q: "Any big special-teams mismatches on this week's slate?"}
+    - {q: "Is {team} special teams unit better than its opponent's this week?"}
+    - {q: "Special teams EPA gap for this weekends games"}
+    - {q: "Where do special teams matter most this week?"}
+    - {q: "Which games are tilted by the kicking and return units?"}
+    - {q: "How big is the special-teams edge for the {team:nickname} on Sunday?"}
+    - {q: "list special teams edges by game"}
+    - {q: "does {team:code} have a ST advantage this week"}
+  player_teams:
+    - {q: "Name the teams {player} has been on over his career"}
+    - {q: "Season by season, who did {player} play for?"}
+    - {q: "List every team {player} has been on since 2018"}
+    - {q: "{player} carrer teams"}
+    - {q: "Which teams did {player} suit up for, season by season?"}
+    - {q: "who all has {player} suited up with"}
+    - {q: "Show me {player}s team history"}
+    - {q: "Has {player} ever played for more than one team?"}
+    - {q: "What team was {player} on in each of the last few years?"}
+    - {q: "{player} teams by year with games played"}
+    - {q: "Which franchises has {player} been with?"}
+    - {q: "Tell me every club {player} has been on and how many games he played for each"}
+    - {q: "When did {player} move from one team to another?"}
+    - {q: "Trace {player}'s path through the league team by team"}
+  qb_receivers:
+    - {q: "Whos {player:QB} targeting the most {first_season:this}?", params: {limit: 1}}
+    - {q: "Which receivers has {player:QB} relied on most since {first_season}?"}
+    - {q: "Wich receiver has the most TD catches from {player:QB}?", params: {rank_by: "tds", limit: 1}}
+    - {q: "Top 5 receivers by yards from {player:QB} between {first_season} and {last_season}", params: {rank_by: "yards", limit: 5}}
+    - {q: "Who caught the most passes from {player:QB} since {first_season}?", params: {rank_by: "catches", limit: 1}}
+    - {q: "list {player:QB}'s top 3 targets from {first_season} to {last_season}", params: {limit: 3}}
+    - {q: "Which receivers have the most receiving yards with {player:QB} throwing to them?", params: {rank_by: "yards"}}
+    - {q: "Show me everyone {player:QB} has completed passes to, ranked by catches, since {first_season}", params: {rank_by: "catches"}}
+    - {q: "Who was {player:QB}'s top target in {first_season}-{last_season}?", params: {limit: 1}}
+    - {q: "Who has {player:QB} thrown the most touchdowns to? top 10", params: {rank_by: "tds", limit: 10}}
+    - {q: "Who got the most targets from {player:QB} in {season}?", params: {rank_by: "targets", limit: 1}}
+    - {q: "How many yards did each of {player:QB}'s receivers get from him in {season}?", params: {rank_by: "yards"}}
+    - {q: "who are the main pass catchers for {player:QB}"}
+    - {q: "Who has been the leading receiver, by yards, for {player:QB} {first_season:this}?", params: {rank_by: "yards", limit: 1}}
+    - {q: "{player:QB} five most targeted receivers since {first_season}", params: {rank_by: "targets", limit: 5}}
+    - {q: "Who did {player:QB} throw to the most in {season}?", params: {limit: 1}}
+    - {q: "I'm curious who {player:QB} has been throwing touchdowns to the most over the years, give me the top 3", params: {rank_by: "tds", limit: 3}}
+    - {q: "Top 5 targets for {player:QB} in {season}", params: {limit: 5}}
+  teammates:
+    - {q: "{player} and {other}: ever on the same team?"}
+    - {q: "{player} and {other}: when were they teammates?"}
+    - {q: "Did {player} ever play with {other}"}
+    - {q: "How long did {player} and {other} play on the same team?"}
+    - {q: "{player} and {other} teammates?"}
+    - {q: "How many weeks did {player} and {other} overlap on a roster?"}
+    - {q: "Were {other} and {player} on the same team at any point since 2018?"}
+    - {q: "Have {player} and {other} ever shared a locker room?"}
+    - {q: "Tell me which years {player} and {other} played for the same team"}
+    - {q: "Did {player:QB} and {other:WR} play on the same team?"}
+    - {q: "Show me the team-seasons {player} and {other} shared"}
+    - {q: "were {player} and {other} teammates on any team"}
+    - {q: "Did {other} ever play alongside {player}?"}
+    - {q: "Which team were {player} and {other} both on, and when?"}
+    - {q: "I can't remember if {player} and {other} were ever on the same team, can you check?"}
+  former_teammates_on_team:
+    - {q: "Name the guys on {team} who were once teammates of {player}"}
+    - {q: "Who currently with {team} used to be on a team with {player}?"}
+    - {q: "Which players on {team} are former teammates of {player}?"}
+    - {q: "Who on {team} used to be {player}'s teammate on {former_team}?"}
+    - {q: "Any of {player}'s old teammates from {former_team} on {team} this season?"}
+    - {q: "Are there any guys on {team} who played with {player}?"}
+    - {q: "former teammates of {player} now on {team}"}
+    - {q: "Which players currently on {team} were teammates of {player} on {former_team}?"}
+    - {q: "Does {team} have anyone who used to play alongside {player}?"}
+    - {q: "list the players on {team} that {player} shared a team with before"}
+    - {q: "Who currently on {team} was with {player} at {former_team}?"}
+    - {q: "Which {team} players have a history with {player}?"}
+    - {q: "{player} old teammates on {team}"}
+    - {q: "Which players on the {team:nickname} used to play with {player} on the {former_team:nickname}?"}
+  qb_starters:
+    - {q: "Which quarterbacks made starts for {team} in {season}?"}
+    - {q: "Split up the QB starts for {team} {season:last}"}
+    - {q: "Which quarterbacks started games for the {team:nickname} {season:this}?"}
+    - {q: "{team} starting quarterbacks {season}"}
+    - {q: "{team:code} QBs in {season}: who started?"}
+    - {q: "Who was under center for {team} in {season}?"}
+    - {q: "How many different quarterbacks started for {team} in {season}?"}
+    - {q: "list {team} QB starts by player for the {season} season"}
+    - {q: "Who played quarterback most for {team} {season:last}?"}
+    - {q: "Did {team} use more than one starting quarterback in {season}?"}
+    - {q: "Show me the weeks each {team} quarterback started in {season}"}
+    - {q: "who started at qb for {team} {season:this}"}
+    - {q: "Which QB got the most starts for {team} in {season}?"}
+    - {q: "Give me {team} QB starters from the {season} season"}
+  coach_head_record:
+    - {q: "How did {coach} fare in the regular season in each year from {first_season} to {last_season}?"}
+    - {q: "How successful has {coach} been as head coach in each season since {first_season}?"}
+    - {q: "{coach} yearly record starting {first_season}"}
+    - {q: "What's {coach}'s win-loss mark {first_season:this}?"}
+    - {q: "Show {coach}'s wins and losses by year between {first_season} and {last_season}, playoffs included"}
+    - {q: "How many playoff wins did {coach} have each season since {first_season}?"}
+    - {q: "{coach}'s season-by-season record from {first_season} through {last_season}"}
+    - {q: "What's {coach}'s record since {first_season}?"}
+    - {q: "Did {coach} have a winning record in the seasons from {first_season} to {last_season}?"}
+    - {q: "How did {coach} do each year since the 2018 season?", params: {first_season: 2018}}
+    - {q: "{coach} regular season wins and losses by year, {first_season} to {last_season}"}
+    - {q: "Break down {coach}'s record year by year from {first_season} on"}
+    - {q: "What was {coach}'s record in {season}?"}
+    - {q: "Give me {coach}'s playoff record by season since {first_season}"}
+    - {q: "How did {coach} do in {season}?"}
+  coaching_tree:
+    - {q: "Which assistants have worked for {coach}?", params: {relation: "proteges"}}
+    - {q: "Which head coaches was {coach} an assistant for?", params: {relation: "mentors"}}
+    - {q: "Map out the coaching tree around {coach}"}
+    - {q: "Which coordinators came up under {coach}?", params: {relation: "proteges"}}
+    - {q: "Who were {coach}'s mentors?", params: {relation: "mentors"}}
+    - {q: "Which coaches did {coach} learn from as an assistant?", params: {relation: "mentors"}}
+    - {q: "Which of {coach}'s assistants went on to other jobs?", params: {relation: "proteges"}}
+    - {q: "coaching tree {coach}"}
+    - {q: "Which head coaches started as coordinators under {coach}?", params: {relation: "proteges"}}
+    - {q: "Who did {coach} work under as a coordinator?", params: {relation: "mentors"}}
+    - {q: "List everyone in {coach}'s coaching family, both directions", params: {relation: "both"}}
+    - {q: "Who are {coach}'s protegees?", params: {relation: "proteges"}}
+    - {q: "Which coaches developed under {coach}?", params: {relation: "proteges"}}
+    - {q: "Who gave {coach} his start as an assistant?", params: {relation: "mentors"}}
+    - {q: "Who came from {coach}'s staff?", params: {relation: "proteges"}}
+    - {q: "I want to understand where {coach} came from in coaching, so who were the head coaches he worked under?", params: {relation: "mentors"}}
+  team_coordinators:
+    - {q: "Who runs the offense for {team} as OC?"}
+    - {q: "Which coach is {team} DC?"}
+    - {q: "List the coordinators {team} has had since {first_season}"}
+    - {q: "{team} coordinators from {first_season} to {last_season}"}
+    - {q: "Who's the special teams coordinator for {team}?"}
+    - {q: "Who was the {team:nickname} defensive coordinator in {season}?"}
+    - {q: "List the {team:nickname} head coach and coordinators by season from {first_season}"}
+    - {q: "Who coaches the {team:nickname} offense and defense this season?"}
+    - {q: "Show me the {team:nickname} coordinators each year since {first_season}"}
+    - {q: "Who was the OC for {team} in 2022 and 2023?", params: {first_season: 2022, last_season: 2023}}
+    - {q: "what coordinators has {team} had between {first_season} and {last_season}?"}
+    - {q: "Who is calling the defense for {team:code}?"}
+    - {q: "{team} coordinators over the years since {first_season}"}
+    - {q: "Which head coach and coordinators did {team} have in {season}?"}
+    - {q: "Who was the {team:nickname} OC in {season}?"}
+  team_rating_trend:
+    - {q: "How have the numbers for {team} moved over the season so far?"}
+    - {q: "Is {team} on the rise or sliding lately?"}
+    - {q: "{team} EPA trend by week"}
+    - {q: "Show me the week-by-week ratings for {team}"}
+    - {q: "How has {team} Elo moved through the season?"}
+    - {q: "Has {team} offense or defense changed more over the last few weeks?"}
+    - {q: "Is {team} getting better?"}
+    - {q: "Give me {team} net EPA by week"}
+    - {q: "Whats the 3-week trend for {team}?"}
+    - {q: "How did {team} rating look at the start of the season compared to now?"}
+    - {q: "{team:code} rating trajectory this year"}
+    - {q: "Are the {team:nickname} improving on offense this season?"}
+    - {q: "show {team} elo each week"}
+    - {q: "has {team} defense been getting worse this year?"}
+  power_ratings_this_week:
+    - {q: "Which teams are the strongest right now by adjusted EPA?"}
+    - {q: "Which defense is best this year by your ratings?", params: {unit: "defense", limit: 1}}
+    - {q: "Top 5 offenses by adjusted EPA right now", params: {unit: "offense", limit: 5}}
+    - {q: "Rank all the teams by net rating"}
+    - {q: "Which team has the best passing offense this week?", params: {unit: "pass_offense", limit: 1}}
+    - {q: "Who has the best rushing defense by your numbers?", params: {unit: "rush_defense", limit: 1}}
+    - {q: "Top 3 pass defenses in the league right now", params: {unit: "pass_defense", limit: 3}}
+    - {q: "power rankings this week"}
+    - {q: "Which rushing offense is the best?", params: {unit: "rush_offense", limit: 1}}
+    - {q: "Show me the top 10 teams by net EPA", params: {unit: "net", limit: 10}}
+    - {q: "best offense in the league right now", params: {unit: "offense", limit: 1}}
+    - {q: "Who are the top 5 teams in the league?", params: {limit: 5}}
+    - {q: "rank the defenses from best to worst", params: {unit: "defense"}}
+    - {q: "top {limit} teams by rating"}
+    - {q: "Which team is rated number one by your model?", params: {limit: 1}}
+    - {q: "Rank the rush offenses", params: {unit: "rush_offense"}}
+    - {q: "Who has the best defense against the pass, top 5", params: {unit: "pass_defense", limit: 5}}
+    - {q: "Looking at the ratings right now, which five offenses are the best by adjusted EPA?", params: {unit: "offense", limit: 5}}
+  game_predictions_this_week:
+    - {q: "Who are your picks for this week's games?"}
+    - {q: "How does the model see the {team:nickname} game going this week?"}
+    - {q: "Give me the win probabilities for this week's games"}
+    - {q: "What does the model say about {team} this week?"}
+    - {q: "predicted scores for this week's games"}
+    - {q: "Who is favored in the {team:nickname} game?"}
+    - {q: "Give me the projected score and win chance for {team} on Sunday"}
+    - {q: "Show me every game prediction for the week with the expected quarterbacks"}
+    - {q: "Predict the {team:nickname} game"}
+    - {q: "game picks for this weekend"}
+    - {q: "what score do you expect for {team:code} on Sunday"}
+    - {q: "How likely is a win for {team} this week according to the model?"}
+    - {q: "which games this week are the closest by your predictions"}
+    - {q: "Who will win the {team:nickname} game this week?"}
+    - {q: "Before I make my picks, what are the win probabilities and predicted scores for all of this week's games?"}
+  injury_report_this_week:
+    - {q: "Which players have been ruled out for this weeks games?", params: {status: "out"}}
+    - {q: "What does the {team:nickname} injury report look like?"}
+    - {q: "Which players are listed as Questionable for {team}?"}
+    - {q: "Show me the injury report"}
+    - {q: "Who is Out or Doubtful for {team} on Sunday?", params: {status: "out"}}
+    - {q: "injury report for {team}"}
+    - {q: "Which players are out this week across the league?", params: {status: "out"}}
+    - {q: "List everyone with an injury designation this week"}
+    - {q: "Any {team} players listed as doubtful?", params: {status: "out"}}
+    - {q: "What injuries do {team} have this week?"}
+    - {q: "Who is not playing for {team} this week due to injury?", params: {status: "out"}}
+    - {q: "latest injury report, only players ruled out", params: {status: "out"}}
+    - {q: "Who is hurt on {team:code}?"}
+    - {q: "what's the {team:nickname} injury situation"}
+    - {q: "players ruled out for the {team:nickname}", params: {status: "out"}}
+    - {q: "I need to know who is officially ruled out for {team} before Sunday", params: {status: "out"}}
+  player_injury_history:
+    - {q: "Is {player} listed on any injury report {season:this}?"}
+    - {q: "Which injuries was {player} dealing with in {season}?"}
+    - {q: "Show me {player}'s injury report entries for {season}"}
+    - {q: "How many weeks was {player} listed as questionable in {season}?"}
+    - {q: "{player} injury history {season}"}
+    - {q: "Was {player} hurt {season:last}?"}
+    - {q: "Which weeks did {player} appear on the injury report in {season}?"}
+    - {q: "What was wrong with {player} in {season}? list the injuries by week"}
+    - {q: "Did {player} miss practice with an injury in {season}?"}
+    - {q: "List {player}'s injury designations week by week for the {season} season"}
+    - {q: "injuries for {player} {season:last}"}
+    - {q: "Was {player} injured at any point in {season}?"}
+    - {q: "Track {player}'s injury status through {season}"}
+    - {q: "what body part was {player} dealing with in {season}"}
+  depth_chart:
+    - {q: "Which wide receivers does {team} list on its depth chart?", params: {position: "WR"}}
+    - {q: "Who is QB2 for {team}?", params: {position: "QB"}}
+    - {q: "Show me the full {team} depth chart"}
+    - {q: "Who starts at left tackle for {team}?", params: {position: "LT"}}
+    - {q: "Who is the {team:nickname} kicker on the depth chart?", params: {position: "PK"}}
+    - {q: "depth chart {team:code} running back", params: {position: "RB"}}
+    - {q: "Who is the {team:nickname} punter?", params: {position: "P"}}
+    - {q: "Whos the starting center for {team}?", params: {position: "C"}}
+    - {q: "Who plays free safety for {team}?", params: {position: "FS"}}
+    - {q: "Who is the third string tight end for {team}?", params: {position: "TE"}}
+    - {q: "Who is next to the starter at running back for {team}?", params: {position: "RB"}}
+    - {q: "Give me the {team:nickname} depth chart"}
+    - {q: "Who is behind the starter at quarterback for {team}?", params: {position: "QB"}}
+    - {q: "who returns kicks for {team}", params: {position: "KR"}}
+    - {q: "{team} MLB depth chart", params: {position: "MLB"}}
+    - {q: "Who is at nose tackle for {team}?", params: {position: "NT"}}
+    - {q: "list {team} tight ends in order", params: {position: "TE"}}
+    - {q: "Can you pull the current depth chart for {team}, but only the right tackle spot?", params: {position: "RT"}}
+  similar_players:
+    - {q: "Whose past seasons look like {player:WR/TE}'s usage?"}
+    - {q: "Which past player is {player:WR/TE} closest to?"}
+    - {q: "Who does {player:RB} play like, usage-wise?"}
+    - {q: "Find players with a similar usage profile to {player}"}
+    - {q: "{player:WR} comparable players"}
+    - {q: "Which former player had the usage closest to {player:TE}?"}
+    - {q: "Who is the closest comparison for {player:WR/TE/RB}?"}
+    - {q: "Show {player:RB}'s usage look-alikes from past seasons"}
+    - {q: "Who was used like {player:WR} in the past?"}
+    - {q: "Which past seasons by other players resemble {player}'s usage this year?"}
+    - {q: "most similar player to {player}"}
+    - {q: "Is there a historical comp for {player:WR/TE} based on how he's used?"}
+    - {q: "KNN comps for {player:RB}"}
+    - {q: "Which old stars was {player:WR/TE} used like?"}
+  passing_hubs:
+    - {q: "Who is the focal point of the {team:nickname} pass offense?", params: {limit: 1}}
+    - {q: "Which receiver is the {team:nickname} passing game built around?", params: {limit: 1}}
+    - {q: "Who are the top passing-game hubs for {team}?"}
+    - {q: "Top 3 receivers in the {team:nickname} passing network", params: {limit: 3}}
+    - {q: "Who is {team} main target this season, the one the offense runs through?", params: {limit: 1}}
+    - {q: "Show me each {team} receiver's share of the passing network"}
+    - {q: "passing hubs {team:code}"}
+    - {q: "Whos the centerpiece of the {team:nickname} passing attack?", params: {limit: 1}}
+    - {q: "Which two receivers does the {team:nickname} offense revolve around?", params: {limit: 2}}
+    - {q: "Rank {team} pass catchers by network centrality"}
+    - {q: "Who are the 10 most central receivers for {team}?", params: {limit: 10}}
+    - {q: "Whose targets drive the {team:nickname} passing game most?", params: {limit: 1}}
+    - {q: "Is the {team:nickname} passing game spread out or concentrated in one hub?"}
+    - {q: "who is the number one pass catcher in the {team:nickname} network", params: {limit: 1}}
+  team_draft_picks:
+    - {q: "What players came to {team} in the {year} draft?"}
+    - {q: "How many first-round selections by {team} are still around?", params: {max_round: 1}}
+    - {q: "Who has {team} drafted since {first_year}?"}
+    - {q: "List {team} first and second round picks from {first_year} to {last_year}", params: {max_round: 2}}
+    - {q: "Show me every player {team} drafted in {year}, with round and pick"}
+    - {q: "Who were {team} top-3-round picks since {first_year}?", params: {max_round: 3}}
+    - {q: "{team} draft picks 2020 to 2023", params: {first_year: 2020, last_year: 2023}}
+    - {q: "Which players did {team} draft in the first round between {first_year} and {last_year}?", params: {max_round: 1}}
+    - {q: "{team:code} draftees since 2018", params: {first_year: 2018}}
+    - {q: "Who did the {team:nickname} take in the first two rounds since {first_year}?", params: {max_round: 2}}
+    - {q: "Who did {team} pick in round 1 of the {year} draft?", params: {max_round: 1}}
+    - {q: "players drafted by {team}"}
+    - {q: "Show every {team} draftee in the top 4 rounds since {first_year}", params: {max_round: 4}}
+    - {q: "How many first-rounders has {team} picked since {first_year}?", params: {max_round: 1}}
+    - {q: "Which players did {team} pick in the {year} draft?"}
+    - {q: "Who were {team} first-round picks in {year}?", params: {max_round: 1}}
+  trades:
+    - {q: "Who has {team} acquired by trade this year?", params: {direction: "acquired"}}
+    - {q: "Which players has {team} shipped out since {first_season}?", params: {direction: "sent"}}
+    - {q: "Show all trades involving {team} from {first_season} to {last_season}"}
+    - {q: "Which players did {team} acquire in a trade in {season}?", params: {direction: "acquired"}}
+    - {q: "Who did the {team:nickname} send out in trades this season?", params: {direction: "sent"}}
+    - {q: "trades for {team:code} since {first_season}"}
+    - {q: "Which players has {team} picked up by trade since {first_season}?", params: {direction: "acquired"}}
+    - {q: "What players were dealt away by {team} between {first_season} and {last_season}?", params: {direction: "sent"}}
+    - {q: "List every trade {team} made this season"}
+    - {q: "Did {team} trade for anyone in {season}?", params: {direction: "acquired"}}
+    - {q: "Who did {team} give up in trades since {first_season}?", params: {direction: "sent"}}
+    - {q: "Players traded to {team} from {first_season} to {last_season}", params: {direction: "acquired"}}
+    - {q: "Who did {team} trade in {season}?"}
+    - {q: "trade history for {team} since {first_season}"}
+    - {q: "Who did {team} get in trades between {first_season} and {last_season}, and who did they send away?"}
+    - {q: "Who did {team} trade away in {season}?", params: {direction: "sent"}}
+  stat_games_vs_team:
+    - {q: "Who has racked up the most 100-yard receiving games versus {team} since {first_season}?", params: {stat: "receiving", threshold: 100}}
+    - {q: "Which QB has thrown for 300+ yards againts {team} the most times?", params: {stat: "passing", threshold: 300}}
+    - {q: "Which running backs have rushed for 100+ yards against {team} the most?", params: {stat: "rushing", threshold: 100}}
+    - {q: "Players with at least 3 games of 100 receiving yards against {team}", params: {stat: "receiving", threshold: 100, min_games: 3}}
+    - {q: "Who has gone for 150 rushing yards against {team} more than once since {first_season}?", params: {stat: "rushing", threshold: 150, min_games: 2}}
+    - {q: "most 200-yard receiving games versus {team} in the playoffs", params: {stat: "receiving", threshold: 200, season_type: "POST"}}
+    - {q: "Which quarterbacks have thrown for 400 yards against {team} in the regular season?", params: {stat: "passing", threshold: 400, season_type: "REG"}}
+    - {q: "Who consistently torches {team}? 100-yard receivers between {first_season} and {last_season}", params: {stat: "receiving", threshold: 100}}
+    - {q: "100-yard rushers against {team} from {first_season} to {last_season}", params: {stat: "rushing", threshold: 100}}
+    - {q: "Who has 250 passing yards against {team} the most times?", params: {stat: "passing", threshold: 250}}
+    - {q: "Which players have had 120+ receiving yards against {team} at least twice?", params: {stat: "receiving", threshold: 120, min_games: 2}}
+    - {q: "most games with 75 yards rushing against {team}", params: {stat: "rushing", threshold: 75}}
+    - {q: "Show me QBs with 350-yard passing games againts {team:code} in the postseason", params: {stat: "passing", threshold: 350, season_type: "POST"}}
+    - {q: "Who had 100 yards receiving against {team} in the regular season since {first_season}?", params: {stat: "receiving", threshold: 100, season_type: "REG"}}
+    - {q: "which backs ran for 100+ against {team} {first_season:this}?", params: {stat: "rushing", threshold: 100}}
+    - {q: "Which recievers have 80+ yard games against {team} the most?", params: {stat: "receiving", threshold: 80}}
+    - {q: "I want to know which running backs have run for at least 120 yards against {team} more than once in the regular season since {first_season}", params: {stat: "rushing", threshold: 120, min_games: 2, season_type: "REG"}}
+    - {q: "100-yard receivers against {team} in {season}", params: {stat: "receiving", threshold: 100, }}
+  season_leaders:
+    - {q: "Which player had the most rushing yards in the league in {season}?", params: {stat: "rushing_yards", limit: 1}}
+    - {q: "Who leads the league in sacks {season:this}?", params: {stat: "sacks", limit: 1}}
+    - {q: "Five leaders in receiving TDs for {season}", params: {stat: "receiving_tds", limit: 5}}
+    - {q: "Which QB threw the most touchdown passes in {season}?", params: {stat: "passing_tds", position: "QB", limit: 1}}
+    - {q: "Who had the most receptions {season:last}?", params: {stat: "receptions", limit: 1}}
+    - {q: "Most interceptions thrown in {season}", params: {stat: "interceptions_thrown", limit: 1}}
+    - {q: "Top 10 linebackers by tackels in {season}", params: {stat: "tackles", position: "LB", limit: 10}}
+    - {q: "Which defensive back had the most interceptons in {season}?", params: {stat: "interceptions", position: "DB", limit: 1}}
+    - {q: "Who led all running backs in rushing touchdowns {season:this}?", params: {stat: "rushing_tds", position: "RB", limit: 1}}
+    - {q: "Who has the most yards from scrimmage in {season}?", params: {stat: "scrimmage_yards", limit: 1}}
+    - {q: "Who led the leauge in PPR fantasy points in {season}?", params: {stat: "fantasy_points_ppr", limit: 1}}
+    - {q: "Top 3 pass rushers by sacks in the {season} playoffs", params: {stat: "sacks", season_type: "POST", limit: 3}}
+    - {q: "Leaders in passes defended in {season}", params: {stat: "passes_defended"}}
+    - {q: "Who had the most targets among wide receivers in {season}?", params: {stat: "targets", position: "WR", limit: 1}}
+    - {q: "Top 15 passers by yards including the playoffs in {season}", params: {stat: "passing_yards", season_type: "ALL", limit: 15}}
+    - {q: "Regular-season leader in receiving yards {season}", params: {stat: "receiving_yards", season_type: "REG", limit: 1}}
+    - {q: "Which tight end led the NFL in receiving yards in {season}?", params: {stat: "receiving_yards", position: "TE", limit: 1}}
+    - {q: "Who threw for the most yards {season:last}?", params: {stat: "passing_yards", limit: 1}}
+    - {q: "rushing yards leaders {season}", params: {stat: "rushing_yards"}}
+    - {q: "Top {limit} sack leaders in {season}", params: {stat: "sacks"}}
+    - {q: "Which defensive lineman had the most sacks in {season}?", params: {stat: "sacks", position: "DL", limit: 1}}
+    - {q: "Who caught the most touchdowns in {season}?", params: {stat: "receiving_tds", limit: 1}}
+    - {q: "who has the most passing touchdowns {season:this}", params: {stat: "passing_tds", limit: 1}}
+    - {q: "Top 20 in total tackles in {season}", params: {stat: "tackles", limit: 20}}
+    - {q: "Can you tell me which player had the most passing yards in the whole league in {season}, regular season only?", params: {stat: "passing_yards", season_type: "REG", limit: 1}}
+  player_seasons:
+    - {q: "Give me {player:RB}'s year-by-year rushing numbers"}
+    - {q: "How did {player:WR} produce in each of his seasons?"}
+    - {q: "{player:QB} career stats by season"}
+    - {q: "How many yards did {player} have each season?"}
+    - {q: "Season-by-season passing stats for {player:QB}"}
+    - {q: "{player}'s playoff stats by season", params: {season_type: "POST"}}
+    - {q: "Show {player}'s regular season totals for every year", params: {season_type: "REG"}}
+    - {q: "Give me {player:DEF} sacks and tackles each season"}
+    - {q: "{player} stats by year including the playoffs", params: {season_type: "ALL"}}
+    - {q: "How has {player:TE} production changed year to year?"}
+    - {q: "list {player:WR} receptions and receiving yards for each season he's played"}
+    - {q: "What are {player:RB}'s yearly numbers?"}
+    - {q: "{player} postseason numbers by year", params: {season_type: "POST"}}
+    - {q: "year by year stats for {player}"}
+    - {q: "How many touchdowns did {player:QB} throw each season?"}
+  player_game_log:
+    - {q: "Week by week, how is {player:QB} doing {season:this}?"}
+    - {q: "Pull up the {season} game log for {player:WR}"}
+    - {q: "{player} week by week stats {season}"}
+    - {q: "What did {player:RB} do in every game in {season}?"}
+    - {q: "game log for {player} {season:last}"}
+    - {q: "List {player}'s games in {season} with opponent and stats"}
+    - {q: "How many yards did {player:WR} have in each game {season:this}?"}
+    - {q: "Break down {player:QB}'s {season} season game by game"}
+    - {q: "{player}'s weekly stat line for {season}"}
+    - {q: "Give me the game-by-game numbers for {player:DEF} in {season}"}
+    - {q: "What did {player} do against each opponent in {season}?"}
+    - {q: "Show every game {player} played {season:last}"}
+    - {q: "{player} gamelog {season}"}
+    - {q: "In which weeks did {player:RB} score a touchdown in {season}?"}
+    - {q: "I'd like to see how {player} did in every single game during the {season} season, with the opponents"}
+  player_vs_team:
+    - {q: "What kind of numbers does {player:TE} put up versus {team}?"}
+    - {q: "List the games {player:QB} played against {team}"}
+    - {q: "{player} stats vs {team}"}
+    - {q: "What are {player:WR}'s numbers against {team} in his career?"}
+    - {q: "Every game {player} played versus {team}"}
+    - {q: "How many yards has {player:RB} had against {team}?"}
+    - {q: "{player} career vs {team:code}"}
+    - {q: "Did {player:QB} play well against the {team:nickname}?"}
+    - {q: "Give me {player}'s history against {team}"}
+    - {q: "list {player:DEF} games versus {team} with sacks and tackles"}
+    - {q: "What does {player:WR} usually do when facing {team}?"}
+    - {q: "How has {player} performed against the {team:nickname} over the years?"}
+    - {q: "Break down {player:QB} vs {team}, game by game"}
+    - {q: "{player:RB} rushing yards against {team}"}
+  team_record:
+    - {q: "Year by year, what is the {team:nickname} win-loss record since {first_season}?"}
+    - {q: "What was {team} win total in {season}?"}
+    - {q: "How are {team} doing this season?"}
+    - {q: "{team} regular season record by year from {first_season} to {last_season}", params: {season_type: "REG"}}
+    - {q: "How did {team} do in the playoffs each season since {first_season}?", params: {season_type: "POST"}}
+    - {q: "{team} wins and losses including playoffs {first_season} to {last_season}", params: {season_type: "ALL"}}
+    - {q: "{team} points scored and allowed by season since {first_season}"}
+    - {q: "Win-loss record for the {team:nickname} over the years starting in {first_season}"}
+    - {q: "How many wins did {team} have each year between {first_season} and {last_season}?"}
+    - {q: "What was {team} record in {season}?"}
+    - {q: "{team:code} W-L by season since {first_season}"}
+    - {q: "Did {team} have a winning record from {first_season} to {last_season}?"}
+    - {q: "How many games has {team} lost since {first_season}?"}
+    - {q: "what were {team} postseason results from {first_season} to {last_season}", params: {season_type: "POST"}}
+    - {q: "{team} record 1999 to {last_season}", params: {first_season: 1999}}
+    - {q: "How did {team} finish in {season}?"}
+    - {q: "Could you give me the win-loss record of {team} for every season from {first_season} through {last_season}, playoffs included?", params: {season_type: "ALL"}}
+    - {q: "How did {team} finish the {season} season?"}
+    - {q: "{team} regular season record in {season}", params: {season_type: "REG"}}
+  head_to_head:
+    - {q: "What's {team} record versus {other} from {first_season} on?"}
+    - {q: "How many times have {team} won against {other}?"}
+    - {q: "{team:nickname} vs {other:nickname} h2h since {first_season}"}
+    - {q: "{team} vs {other} in the playoffs", params: {season_type: "POST"}}
+    - {q: "How have {team} done against {other} in the regular season from {first_season} to {last_season}?", params: {season_type: "REG"}}
+    - {q: "Who has the edge, {team} or {other}, all time?"}
+    - {q: "{team} against {other} head to head"}
+    - {q: "What is the series record between {team} and {other}?"}
+    - {q: "When did {team} last play {other}, and what's the record between them?"}
+    - {q: "Record of {team} versus {other} including playoffs since {first_season}", params: {season_type: "ALL"}}
+    - {q: "How many times has {team} lost to {other} since {first_season}?"}
+    - {q: "{team} - {other} series history"}
+    - {q: "Playoff history between {team} and {other}", params: {season_type: "POST"}}
+    - {q: "regular season record of {team} against {other}", params: {season_type: "REG"}}
+    - {q: "H2H {team:code} {other:code} {first_season} to {last_season}"}
+    - {q: "Looking at the regular season only, how have {team} done against {other} over the years since {first_season}?", params: {season_type: "REG"}}
+    - {q: "How did {team} do against {other} in {season}?"}
+    - {q: "{team} vs {other} results in {season}"}
+  team_season_results:
+    - {q: "What were the results of every {team} game in {season}?"}
+    - {q: "What does the {team:nickname} schedule look like {season:this}?"}
+    - {q: "How did {team} do game by game {season:last}?"}
+    - {q: "{team} schedule {season}"}
+    - {q: "list every {team} game in {season} with the score"}
+    - {q: "Who did {team} play in {season}, and what were the scores?"}
+    - {q: "Which weeks did {team} win in {season}?"}
+    - {q: "Give me the {team:nickname} game log for {season}"}
+    - {q: "What's the {team:nickname} schedule for the {season} season, home and away?"}
+    - {q: "{team} week by week results {season:last}"}
+    - {q: "Who do {team} play {season:this}?"}
+    - {q: "Show scores for all {team} games in {season}"}
+    - {q: "{team:code} {season} results"}
+    - {q: "Did {team} lose any home games in {season}?"}
+  team_epa_by_season:
+    - {q: "How efficient has {team} offense been per play, by season, since {first_season}?"}
+    - {q: "Who had the top defense by EPA allowed in {season}?", params: {order: "defense", limit: 1}}
+    - {q: "Top 5 offenses by EPA per play {first_season:this}", params: {order: "offense", limit: 5}}
+    - {q: "Which team was the most efficient overall per play in {season}?", params: {order: "net", limit: 1}}
+    - {q: "{team:nickname} EPA per play offense and defense from {first_season} to {last_season}"}
+    - {q: "Rank the teams by defensive EPA allowed in {season}", params: {order: "defense"}}
+    - {q: "How has the {team:nickname} defense graded by EPA each year since {first_season}?"}
+    - {q: "which offense was best by EPA in {season}, top 3", params: {order: "offense", limit: 3}}
+    - {q: "{team} net EPA per play by season"}
+    - {q: "Team success rates by season since {first_season}"}
+    - {q: "Best three defenses by EPA per play in {season}", params: {order: "defense", limit: 3}}
+    - {q: "What was {team} defensive EPA allowed per play in {season}?"}
+    - {q: "Net EPA per play for all teams {first_season:this}"}
+    - {q: "EPA per play for {team:code} offense: {first_season} through {last_season}"}
+    - {q: "Which offense had the highest EPA per play in {season}?", params: {order: "offense", limit: 1}}
+    - {q: "How has the {team:nickname} offense graded by EPA per play each season from {first_season} to {last_season}, along with success rate?"}
+    - {q: "How good was the {team:nickname} offense by EPA per play in {season}?"}
+  coach_record:
+    - {q: "{coach} win-loss record across his career"}
+    - {q: "What's {coach}'s total of postseason wins?"}
+    - {q: "What is {coach}'s career record?"}
+    - {q: "{coach} regular season record each year going back to 1999"}
+    - {q: "How many wins does {coach} have as a head coach?"}
+    - {q: "What was {coach}'s record in the playoffs?"}
+    - {q: "Show {coach}'s record with every team he's coached"}
+    - {q: "{coach} playoff wins and losses"}
+    - {q: "How did {coach} do in his career, year by year?"}
+    - {q: "Give me {coach}'s coaching record from the schedules"}
+    - {q: "{coach} all-time record"}
+    - {q: "How many seasons did {coach} have a winning record?"}
+    - {q: "Total wins and losses for {coach}, split by regular season and playoffs"}
+    - {q: "What was {coach}'s record before 2018?"}
+  play_action_by_down:
+    - {q: "How effective is {team} play action on third down {season:this}?"}
+    - {q: "What share of {team} first-down dropbacks use play action in {season}?"}
+    - {q: "By down, how well does {team} defense hold up against play action {season:last}?", params: {side: "defense"}}
+    - {q: "{team} play action rate by down"}
+    - {q: "play action EPA by down for {team} in {season}"}
+    - {q: "Does play action help {team} on 2nd down in {season}?"}
+    - {q: "Can {team} stop play action on 3rd down?", params: {side: "defense"}}
+    - {q: "{team:code} play-action success rate on offense, {season}", params: {side: "offense"}}
+    - {q: "Is {team} better with or without play action in {season}?"}
+    - {q: "How effective is play action for the {team:nickname} on early downs {season:this}?"}
+    - {q: "Break down {team} play action usage by down in {season}"}
+    - {q: "How well does {team} stop play action in {season}?", params: {side: "defense"}}
+    - {q: "What's {team} dropback EPA with play action versus without in {season}?"}
+    - {q: "{team} defense vs play-action by down {season:this}", params: {side: "defense"}}
+  neutral_pass_rate:
+    - {q: "Which teams lead the league in neutral-situation pass rate {season:this}?"}
+    - {q: "How much more or less than expected did {team} throw in {season}?"}
+    - {q: "Which team has the highest PROE in {season}?", params: {limit: 1}}
+    - {q: "Top 5 most pass-happy teams in neutral situations in {season}", params: {limit: 5}}
+    - {q: "{team} neutral situation pass rate {season:last}"}
+    - {q: "PROE by team {season}"}
+    - {q: "How pass-heavy are the {team:nickname} when the game is close in {season}?"}
+    - {q: "Give me dropback rate and expected rate for {team} in {season}"}
+    - {q: "Who throws more than expected in neutral spots {season:this}? top 3", params: {limit: 3}}
+    - {q: "{team:code} PROE {season}"}
+    - {q: "Order the teams by PROE in {season}"}
+    - {q: "Which team had the highest neutral pass rate over expected in {season}?", params: {limit: 1}}
+    - {q: "Who is the league leader in PROE {season:this}?", params: {limit: 1}}
+    - {q: "How aggressive is {team} through the air versus expectation {season:this}?"}
+    - {q: "Among neutral situations only, where the game is still close, how much do {team} pass compared to what's expected in {season}?"}
+  fourth_down_decisions:
+    - {q: "Which club is most aggressive on fourth down {season:this}?", params: {limit: 1}}
+    - {q: "What was the {team:nickname} fourth-down go rate in {season}?"}
+    - {q: "Top 5 teams by fourth-down go rate in {season}", params: {limit: 5}}
+    - {q: "{team} 4th down attempts and conversions {season}"}
+    - {q: "How many times did {team} punt on fourth down in {season}?"}
+    - {q: "Who's most willing to go for it on 4th down in {season}?", params: {limit: 1}}
+    - {q: "4th down go rate by team {season:last}"}
+    - {q: "Did the {team:nickname} convert their fourth down tries in {season}?"}
+    - {q: "How many fourth downs did {team} face {season:this} and how many field goals did they kick?"}
+    - {q: "fourth-down aggression ranking for {season}"}
+    - {q: "What's the {team:nickname} go-for-it rate on fourth down in {season}?"}
+    - {q: "Who went for it most on 4th down in {season}? top 3", params: {limit: 3}}
+    - {q: "list teams' fourth down go rate, punts and field goals {season}"}
+    - {q: "Which teams rank in the top 10 for 4th-down go rate in {season}?", params: {limit: 10}}
+    - {q: "When it's fourth down, how aggressive are {team} compared to the rest of the league {season:this}? I'd like to see the go-for-it rate"}
+  red_zone_td_rate:
+    - {q: "Which offense is best at turning red zone trips into touchdowns {season:this}?", params: {side: "offense", limit: 1}}
+    - {q: "How often did {team} finish red zone drives with a touchdown in {season}?"}
+    - {q: "Which defense allowed the highest red zone TD rate in {season}?", params: {side: "defense", limit: 1}}
+    - {q: "How often do {team} get touchdowns once they reach the red zone {season:this}?"}
+    - {q: "Top 5 red zone offenses in {season}", params: {side: "offense", limit: 5}}
+    - {q: "Red zone TD percentage for the {team:nickname} defense in {season}", params: {side: "defense"}}
+    - {q: "red zone drives and touchdowns by team {season}"}
+    - {q: "Which defense gives up touchdowns most often inside the 20 in {season}?", params: {side: "defense", limit: 1}}
+    - {q: "{team} red zone conversion rate {season:last}"}
+    - {q: "How many red zone trips did {team} have in {season} and how many ended in a TD?"}
+    - {q: "Rank offenses by red zone TD rate in {season}"}
+    - {q: "What red zone touchdown percentage did {team} allow in {season}?", params: {side: "defense"}}
+    - {q: "Top 3 red-zone TD rates {season:this}", params: {limit: 3}}
+    - {q: "red zone td rate {team:code} {season}"}
+  longest_plays:
+    - {q: "Which plays went the farthest in {season}?"}
+    - {q: "How long is the {team:nickname} longest rushing play {season:this}?", params: {kind: "run", limit: 1}}
+    - {q: "Longest pass play in {season}", params: {kind: "pass", limit: 1}}
+    - {q: "Top 5 longest runs in {season}", params: {kind: "run", limit: 5}}
+    - {q: "Show me the 10 longest completions for {team} in {season}", params: {kind: "pass", limit: 10}}
+    - {q: "Which play was the longest from scrimmage {season:this}?", params: {limit: 1}}
+    - {q: "What was the longest play by the {team:nickname} offense in {season}?", params: {limit: 1}}
+    - {q: "biggest gains from scrimmage in {season}"}
+    - {q: "Top 3 longest rushing plays {season:last}", params: {kind: "run", limit: 3}}
+    - {q: "Longest catches of {season}, top 20", params: {kind: "pass", limit: 20}}
+    - {q: "{team:code} longest passing play in {season}", params: {kind: "pass", limit: 1}}
+    - {q: "Give me the longest runs for {team} {season:this}", params: {kind: "run"}}
+    - {q: "What were the 15 longest scrimmage plays in {season}?", params: {limit: 15}}
+  history_qb_receivers_situation:
+    - {q: "Which receiver has the most third-down catches from {player:QB}?", params: {situation: "3rd_down", rank_by: "catches", limit: 1}}
+    - {q: "In the red zone, who does {player:QB} look to most since {first_season}?", params: {situation: "red_zone", rank_by: "targets", limit: 1}}
+    - {q: "On third and long, which receivers does {player:QB} lean on?", params: {situation: "3rd_long"}}
+    - {q: "Top 5 receivers for {player:QB} in goal-to-go situations", params: {situation: "goal_to_go", limit: 5}}
+    - {q: "Who catches {player:QB}'s touchdown passes in the red zone?", params: {situation: "red_zone", rank_by: "tds"}}
+    - {q: "Who has {player:QB} thrown the most first downs to on 3rd and medium?", params: {situation: "3rd_medium", rank_by: "first_downs", limit: 1}}
+    - {q: "On 4th down, who does {player:QB} look for?", params: {situation: "4th_down"}}
+    - {q: "Who gets the most yards from {player:QB} in two-minute drills?", params: {situation: "two_minute", rank_by: "yards", limit: 1}}
+    - {q: "In the playoffs, who has {player:QB} targeted most on third down?", params: {situation: "3rd_down", games: "playoffs", limit: 1}}
+    - {q: "Who does {player:QB} throw to in the regular season on 3rd and short?", params: {situation: "3rd_short", games: "regular"}}
+    - {q: "{player:QB} most targeted receivers on 1st down since {first_season}", params: {situation: "1st_down"}}
+    - {q: "Whos {player:QB}s go-to guy on 3rd or 4th down?", params: {situation: "3rd_or_4th", limit: 1}}
+    - {q: "Who had the most red zone catches from {player:QB}, {first_season} to {last_season}?", params: {situation: "red_zone", rank_by: "catches", limit: 1}}
+    - {q: "Who does {player:QB} like to throw to on 2nd down {first_season:this}?", params: {situation: "2nd_down"}}
+    - {q: "{player:QB} top 3 targets on third and long since {first_season}", params: {situation: "3rd_long", limit: 3}}
+    - {q: "Which of {player:QB}'s receivers has the most goal-to-go touchdowns?", params: {situation: "goal_to_go", rank_by: "tds", limit: 1}}
+    - {q: "Who has {player:QB} thrown the most first downs to, from {first_season} to {last_season}?", params: {rank_by: "first_downs", limit: 1}}
+    - {q: "When {player:QB} needs a first down on third and medium, who does he usually throw to in the playoffs?", params: {situation: "3rd_medium", games: "playoffs"}}
+    - {q: "Who did {player:QB} throw to most in the red zone in {season}?", params: {situation: "red_zone", limit: 1}}
+    - {q: "{player:QB} third down targets in {season}", params: {situation: "3rd_down", }}
+  history_team_targets_situation:
+    - {q: "Which {team} player sees the most targets in the red zone since {first_season}?", params: {situation: "red_zone", rank_by: "targets", limit: 1}}
+    - {q: "Which {team} receiver got the most 3rd-down looks in {season}?", params: {situation: "3rd_down", limit: 1}}
+    - {q: "Who leads {team} in catches from goal-to-go spots since {first_season}?", params: {situation: "goal_to_go", rank_by: "catches", limit: 1}}
+    - {q: "Top 3 red zone targets for the {team:nickname}", params: {situation: "red_zone", limit: 3}}
+    - {q: "{team} target leaders on third and long {first_season} to {last_season}", params: {situation: "3rd_long"}}
+    - {q: "Who catches the most touchdowns for {team} in the red zone?", params: {situation: "red_zone", rank_by: "tds", limit: 1}}
+    - {q: "On 4th down who does {team} throw to?", params: {situation: "4th_down"}}
+    - {q: "{team:code} 3rd and short targets since {first_season}", params: {situation: "3rd_short"}}
+    - {q: "Who does {team} look for in the two-minute drill?", params: {situation: "two_minute"}}
+    - {q: "Red zone receiving yards leaders for {team} in the playoffs", params: {situation: "red_zone", rank_by: "yards", games: "playoffs"}}
+    - {q: "Which {team} receivers lead in 3rd-down targets in the regular season?", params: {situation: "3rd_down", games: "regular"}}
+    - {q: "who is the most targeted guy for {team} on 2nd down {first_season:this}", params: {situation: "2nd_down", limit: 1}}
+    - {q: "Top 5 {team} receivers in the red zone by touchdowns since {first_season}", params: {situation: "red_zone", rank_by: "tds", limit: 5}}
+    - {q: "Most targeted {team} player in goal to go situations", params: {situation: "goal_to_go", limit: 1}}
+    - {q: "Who does {team} pass to on 3rd and medium?", params: {situation: "3rd_medium"}}
+    - {q: "Who gets {team} targets on first down?", params: {situation: "1st_down"}}
+    - {q: "{team} red zone target leaders in {season}", params: {situation: "red_zone", }}
+  history_team_carries_situation:
+    - {q: "Who does {team} give the ball to on third and short?", params: {situation: "3rd_short"}}
+    - {q: "Which back has been handed the ball most in goal-to-go for {team} since {first_season}?", params: {situation: "goal_to_go", limit: 1}}
+    - {q: "Which {team} back converts the most fourth downs on the ground?", params: {situation: "4th_down", rank_by: "first_downs", limit: 1}}
+    - {q: "Top 3 red zone rushers for {team}", params: {situation: "red_zone", limit: 3}}
+    - {q: "{team} red zone rushing touchdown leaders since {first_season}", params: {situation: "red_zone", rank_by: "tds"}}
+    - {q: "Who runs the ball on third and medium for the {team:nickname}?", params: {situation: "3rd_medium"}}
+    - {q: "Who carries it most on 3rd down for {team}?", params: {situation: "3rd_down", limit: 1}}
+    - {q: "Which {team} back has the most yards in the two-minute drill?", params: {situation: "two_minute", rank_by: "yards", limit: 1}}
+    - {q: "Who has the most carries on 3rd and short in the playoffs for {team}?", params: {situation: "3rd_short", games: "playoffs", limit: 1}}
+    - {q: "{team:code} goal line carries leaders", params: {situation: "goal_to_go"}}
+    - {q: "most first-down carries for {team} {first_season:this}", params: {situation: "1st_down", limit: 1}}
+    - {q: "Who does {team} run to on 2nd down?", params: {situation: "2nd_down"}}
+    - {q: "{team} ball carriers on 3rd or 4th down", params: {situation: "3rd_or_4th"}}
+    - {q: "List {team} rushers by first downs gained in the red zone since {first_season}", params: {situation: "red_zone", rank_by: "first_downs"}}
+    - {q: "Who runs for {team} in short yardage, regular season only?", params: {situation: "3rd_short", games: "regular"}}
+    - {q: "Who leads {team} in rushing yards on 1st down from {first_season} to {last_season}?", params: {situation: "1st_down", rank_by: "yards", limit: 1}}
+    - {q: "Who got the carries on 3rd and short for {team} in {season}?", params: {situation: "3rd_short", }}
+    - {q: "{team} red zone rushing leaders in {season}", params: {situation: "red_zone", }}
+  history_defense_pass_rush:
+    - {q: "What's the {team:nickname} blitz frequency on third-and-long since {first_season}?", params: {situation: "3rd_long"}}
+    - {q: "Per season, how often does {team} get pressure on third down?", params: {situation: "3rd_down", by: "season"}}
+    - {q: "In {season}, how frequently did {team} rush five or more?"}
+    - {q: "{team:code} blitz rate by season since {first_season}", params: {by: "season"}}
+    - {q: "Does {team} blitz more in the redzone?", params: {situation: "red_zone"}}
+    - {q: "What's the pressure rate for the {team:nickname} defense on 2nd down?", params: {situation: "2nd_down"}}
+    - {q: "How often does {team} blitz overall from {first_season} to {last_season}?"}
+    - {q: "Blitz percentage for {team} on 4th down", params: {situation: "4th_down"}}
+    - {q: "{team} pass rush: blitz, 5+ rushers and pressure rates in the playoffs", params: {games: "playoffs"}}
+    - {q: "year-by-year blitz rate for {team} defense in the regular season since {first_season}", params: {by: "season", games: "regular"}}
+    - {q: "How frequently did {team} rush 5+ in the two-minute drill?", params: {situation: "two_minute"}}
+    - {q: "What fraction of dropbacks do {team} blitz on 3rd and short?", params: {situation: "3rd_short"}}
+    - {q: "How often do {team} blitz {first_season:this}?"}
+    - {q: "How often does {team} blitz on goal-to-go?", params: {situation: "goal_to_go"}}
+    - {q: "{team} pressure rate each season on 3rd down since {first_season}", params: {situation: "3rd_down", by: "season"}}
+    - {q: "How often did {team} blitz on 3rd down in {season}?", params: {situation: "3rd_down", }}
+  history_defense_coverage:
+    - {q: "Which coverages does {team} show on third and long?", params: {field: "coverage", situation: "3rd_long"}}
+    - {q: "How much man coverage did {team} play in {season}?", params: {field: "man_zone", }}
+    - {q: "Nickel rate for {team} since {first_season}", params: {field: "package"}}
+    - {q: "man vs zone split for {team} defense in the red zone", params: {field: "man_zone", situation: "red_zone"}}
+    - {q: "{team:code} cover 3 rate on first down", params: {field: "coverage", situation: "1st_down"}}
+    - {q: "Does {team} play more zone on third down?", params: {field: "man_zone", situation: "3rd_down"}}
+    - {q: "Which coverage shells does {team} use most from {first_season} to {last_season}?", params: {field: "coverage"}}
+    - {q: "What's {team} dime package usage on 3rd and long?", params: {field: "package", situation: "3rd_long"}}
+    - {q: "EPA allowed by coverage type for {team} since {first_season}", params: {field: "coverage"}}
+    - {q: "How much man coverage does {team} play in the playoffs?", params: {field: "man_zone", games: "playoffs"}}
+    - {q: "{team} base, nickel and dime shares in the regular season", params: {field: "package", games: "regular"}}
+    - {q: "{team} coverage mix in goal-to-go situations", params: {field: "coverage", situation: "goal_to_go"}}
+    - {q: "Does the {team:nickname} defense rely on Cover 2 or Cover 3 more?", params: {field: "coverage"}}
+    - {q: "man or zone on 2nd down for {team}", params: {field: "man_zone", situation: "2nd_down"}}
+    - {q: "Which coverage does {team} play in the two-minute drill?", params: {field: "coverage", situation: "two_minute"}}
+    - {q: "I'm trying to see how often {team} plays man versus zone in the red zone", params: {field: "man_zone", situation: "red_zone"}}
+  history_qb_vs_coverage:
+    - {q: "What are {player:QB}'s numbers when defenses play man?", params: {field: "man_zone"}}
+    - {q: "{player:QB} versus Cover 2 since {first_season}", params: {field: "coverage"}}
+    - {q: "Whats {player:QB}s EPA against zone?", params: {field: "man_zone"}}
+    - {q: "{player:QB} vs man and zone on 3rd down", params: {field: "man_zone", situation: "3rd_down"}}
+    - {q: "{player:QB} completion rate against each coverage shell", params: {field: "coverage"}}
+    - {q: "How does {player:QB} handle zone in the red zone?", params: {field: "man_zone", situation: "red_zone"}}
+    - {q: "Is {player:QB} better against man or zone, {first_season} to {last_season}?", params: {field: "man_zone"}}
+    - {q: "{player:QB} in the playoffs versus man coverage", params: {field: "man_zone", games: "playoffs"}}
+    - {q: "How often does {player:QB} get sacked or throw picks against Cover 1?", params: {field: "coverage"}}
+    - {q: "{player:QB} stats against cover 3 on third and long", params: {field: "coverage", situation: "3rd_long"}}
+    - {q: "How did {player:QB} do against zone coverage in {season}?", params: {field: "man_zone", }}
+    - {q: "Which coverages give {player:QB} trouble?", params: {field: "coverage"}}
+    - {q: "{player:QB} man vs zone, regular season only", params: {field: "man_zone", games: "regular"}}
+    - {q: "EPA per play for {player:QB} against man coverage on 4th down", params: {field: "man_zone", situation: "4th_down"}}
+    - {q: "{player:QB} against man coverage in {season}", params: {field: "man_zone", }}
+  history_receiver_routes:
+    - {q: "Which routes get {player:WR} the most targets?"}
+    - {q: "Break down {player:TE}'s production by route since {first_season}"}
+    - {q: "Which routes did {player:WR} see targets on in {season}?"}
+    - {q: "{player:WR} targets by route on 3rd down", params: {situation: "3rd_down"}}
+    - {q: "route tree for {player:WR/TE} in the red zone", params: {situation: "red_zone"}}
+    - {q: "Which routes produce the most yards for {player:WR}?"}
+    - {q: "What routes does {player:RB} catch passes on?"}
+    - {q: "How many targets did {player:WR} see on each route?"}
+    - {q: "route targets for {player:WR/TE} on 3rd and long, {first_season} to {last_season}", params: {situation: "3rd_long"}}
+    - {q: "{player} targeted routes in the playoffs", params: {games: "playoffs"}}
+    - {q: "What are {player:WR}'s most productive routes in goal-to-go?", params: {situation: "goal_to_go"}}
+    - {q: "{player:WR} routes regular season only", params: {games: "regular"}}
+    - {q: "Does {player:TE} get targeted on corner routes in the two-minute drill?", params: {situation: "two_minute"}}
+    - {q: "What's {player:WR}'s EPA per target by route?"}
+  history_snaps_together:
+    - {q: "Count the snaps {player:TE} and {other:QB} both played"}
+    - {q: "Total snaps shared by {player:DL} and {other:DB}"}
+    - {q: "How many plays did {player:WR} line up against {other:DB}?"}
+    - {q: "Snaps together for {player} and {other} on scrimmage plays", params: {snaps: "scrimmage"}}
+    - {q: "{player} {other} snaps together since {first_season}"}
+    - {q: "How often were {player:QB} and {other:WR} on the field together in the playoffs?", params: {games: "playoffs"}}
+    - {q: "In the regular season, how many snaps did {player} and {other} play together?", params: {games: "regular"}}
+    - {q: "number of games {player:RB} and {other:QB} shared the field"}
+    - {q: "Did {player} and {other} ever line up against each other, and how many snaps?"}
+    - {q: "how many scrimmage snaps did {player} play opposite {other}", params: {snaps: "scrimmage"}}
+    - {q: "total snaps {player:QB} and {other:TE} were both in, special teams included", params: {snaps: "all"}}
+    - {q: "{player} vs {other} snaps matchup history"}
+    - {q: "How many times were {player:WR} and {other:DB} on the field at the same time between {first_season} and {last_season}?"}
+    - {q: "How many snaps did {player:OL} and {other:DL} line up across from each other?"}
+    - {q: "How many snaps did {player} and {other} play together in {season}?"}
+  history_player_snaps_vs_team:
+    - {q: "What's {player:DL}'s snap count against {team}?"}
+    - {q: "How many plays was {player:TE} on the field versus {team} since {first_season}?"}
+    - {q: "{player} snaps vs {team}"}
+    - {q: "Count every snap, special teams too, that {player} played against {team}", params: {snaps: "all"}}
+    - {q: "How many games has {player} played against the {team:nickname} and how many snaps?"}
+    - {q: "{player:QB} snaps against {team} in the playoffs", params: {games: "playoffs"}}
+    - {q: "In the regular season, how many snaps did {player} take against {team}?", params: {games: "regular"}}
+    - {q: "How many scrimmage plays has {player:LB} been on the field versus {team:code}?", params: {snaps: "scrimmage"}}
+    - {q: "Snaps for {player} against {team} between {first_season} and {last_season}"}
+    - {q: "How often has {player:WR} been on the field against {team}?"}
+    - {q: "snaps {player} has logged opposite {team}"}
+    - {q: "How many plays did {player} play versus {team} in {season}?"}
+    - {q: "{player} total snaps against {team}, all plays", params: {snaps: "all"}}
+    - {q: "How many defensive snaps did {player:DEF} have against {team}?"}
+    - {q: "{player:LB} snaps against {team} in {season}"}
+  history_team_personnel:
+    - {q: "What's the {team:nickname} usage rate of 11 personnel?", params: {field: "personnel"}}
+    - {q: "Which formations did {team} line up in on third down in {season}?", params: {field: "formation", situation: "3rd_down", }}
+    - {q: "Which personnel groupings show up for {team} in the red zone since {first_season}?", params: {field: "personnel", situation: "red_zone"}}
+    - {q: "{team} shotgun formation usage on first down", params: {field: "formation", situation: "1st_down"}}
+    - {q: "personnel groupings for {team} on 3rd and long", params: {field: "personnel", situation: "3rd_long"}}
+    - {q: "Which formations does the {team:nickname} run in goal-to-go situations?", params: {field: "formation", situation: "goal_to_go"}}
+    - {q: "How often does {team} go heavy with 12 personnel?", params: {field: "personnel"}}
+    - {q: "{team:code} personnel usage in the playoffs", params: {field: "personnel", games: "playoffs"}}
+    - {q: "Show the formation breakdown for {team} with EPA per play", params: {field: "formation"}}
+    - {q: "What's {team} personnel mix on 2nd down?", params: {field: "personnel", situation: "2nd_down"}}
+    - {q: "How does {team} line up on 4th down?", params: {field: "formation", situation: "4th_down"}}
+    - {q: "{team} two-minute drill personnel", params: {field: "personnel", situation: "two_minute"}}
+    - {q: "Do {team} use more 21 or 11 personnel from {first_season} to {last_season}?", params: {field: "personnel"}}
+    - {q: "Regular season formations used by {team}", params: {field: "formation", games: "regular"}}
+    - {q: "personnel groups {team} 3rd and short", params: {field: "personnel", situation: "3rd_short"}}
+    - {q: "For {team}, what personnel packages does the offense use in the two-minute drill since {first_season}?", params: {field: "personnel", situation: "two_minute"}}
+    - {q: "{team} personnel usage in {season}", params: {field: "personnel", }}
+  history_drive_results:
+    - {q: "What percentage of {team} possessions end in touchdowns since {first_season}?"}
+    - {q: "What were the outcomes of {team} drives in {season}?"}
+    - {q: "What percentage of {team} drives end in a punt?"}
+    - {q: "{team} drive outcomes in the regular season since {first_season}", params: {games: "regular"}}
+    - {q: "how often did the {team:nickname} turn the ball over on a drive between {first_season} and {last_season}"}
+    - {q: "Playoff drive results for {team}", params: {games: "playoffs"}}
+    - {q: "Share of {team} drives that finish with a field goal"}
+    - {q: "{team:code} drive results {first_season:this}"}
+    - {q: "What fraction of {team} possessions ended in points since {first_season}?"}
+    - {q: "Break down how {team} drives end: touchdowns, field goals, punts, turnovers"}
+    - {q: "How many of {team} drives ended in an interception or fumble since {first_season}?"}
+    - {q: "Show me the drive result breakdown for {team} in {season}"}
+    - {q: "{team} drives that ended in a turnover on downs"}
+    - {q: "regular season drive results for {team} from {first_season} to {last_season}", params: {games: "regular"}}
+  history_connection:
+    - {q: "What links {person} and {other}?"}
+    - {q: "Find the quickest chain between {person} and {other}"}
+    - {q: "How far apart are {person} and {other} in links?"}
+    - {q: "six degrees: {person} to {other}"}
+    - {q: "Connect {person} and {other} through teammates and coaches"}
+    - {q: "Are {person} and {other} linked by teammates or coaches, and how?"}
+    - {q: "What chain of teammates links {person:QB} and {other:QB}?"}
+    - {q: "How many degrees separate {person} from {other}?"}
+    - {q: "Show the path between {person} and {other}"}
+    - {q: "Who links {person} to {other}?"}
+    - {q: "shortest chain from {person} to {other}"}
+    - {q: "How is {other} tied to {person}?"}
+    - {q: "Link {person:WR} with {other:DB}"}
+    - {q: "are {person} and {other} within three links of each other?"}
+    - {q: "I'm wondering how {person} is connected to {other}, like through teammates or coaches, what's the shortest path?"}
+  history_most_snaps_with:
+    - {q: "Which teammate has {player} logged the most snaps with?", params: {limit: 1}}
+    - {q: "Rank the teammates {player} has shared the field with"}
+    - {q: "Who has {player:QB} shared the field with the most?", params: {limit: 1}}
+    - {q: "Top 5 teammates by snaps together for {player}", params: {limit: 5}}
+    - {q: "Who is {player}'s most frequent on-field teammate?", params: {limit: 1}}
+    - {q: "Which three players has {player:DL} played alongside the most?", params: {limit: 3}}
+    - {q: "{player} teammates ranked by snaps shared"}
+    - {q: "Who spent the most snaps next to {player:OL}?", params: {limit: 1}}
+    - {q: "list the 10 players {player} has been on the field with most", params: {limit: 10}}
+    - {q: "Who has {player} lined up with the most?", params: {limit: 1}}
+    - {q: "Name the teammate with the most snaps alongside {player}", params: {limit: 1}}
+    - {q: "teammates with the most snaps shared with {player}, top {limit}"}
+    - {q: "Who are the players {player} has been on the field with the most over his career?"}
+    - {q: "Which players has {player:LB} shared the most snaps with?"}
+    - {q: "Over his career, which one teammate has {player} spent the most snaps on the field with?", params: {limit: 1}}
+  history_qb_chemistry:
+    - {q: "Which QB-WR pairs are the most efficient per target?", params: {rank_by: "epa_per_target"}}
+    - {q: "Which passer-catcher pairs have connected for the most TDs?", params: {rank_by: "touchdowns"}}
+    - {q: "Which receiver clicks best with {player:QB}?", params: {limit: 1}}
+    - {q: "Best duos for {team} by EPA per target", params: {rank_by: "epa_per_target"}}
+    - {q: "Which duos have at least 300 targets together and the best catch rate?", params: {min_targets: 300, rank_by: "catch_rate"}}
+    - {q: "Top 5 QB-receiver duos by yards", params: {rank_by: "yards", limit: 5}}
+    - {q: "What's the most targeted QB-receiver pair since 2018?", params: {rank_by: "targets", limit: 1}}
+    - {q: "Which QB has the best chemistry with {player:WR}?", params: {limit: 1}}
+    - {q: "Best catch-rate duos with at least 100 targets", params: {min_targets: 100, rank_by: "catch_rate"}}
+    - {q: "{team} best quarterback-receiver combos"}
+    - {q: "Which pairs with a minimum of 500 targets have the highest EPA per target?", params: {min_targets: 500, rank_by: "epa_per_target"}}
+    - {q: "Most productive passing duos by yards, minimum 200 targets, top 10", params: {rank_by: "yards", min_targets: 200, limit: 10}}
+    - {q: "Which receivers has {player:QB} been most efficient with?", params: {rank_by: "epa_per_target"}}
+    - {q: "top 3 touchdown duos for the {team:nickname}", params: {rank_by: "touchdowns", limit: 3}}
+    - {q: "Who has the best connection with {player:TE}?", params: {limit: 1}}
+    - {q: "chemistry leaders: quarterback and receiver pairs ranked by catch rate", params: {rank_by: "catch_rate"}}
+  history_coach_players:
+    - {q: "Rank {coach}'s most-coached players"}
+    - {q: "Which players got the most snaps under {coach} as DC?", params: {role: "defensive_coordinator"}}
+    - {q: "Who has {coach} coached more than anyone else?", params: {limit: 1}}
+    - {q: "Top 5 players coached by {coach} as head coach", params: {role: "head_coach", limit: 5}}
+    - {q: "Who played the most snaps for {coach} when he ran the offense as OC?", params: {role: "offensive_coordinator", limit: 1}}
+    - {q: "players {coach} coached as special teams coordinator", params: {role: "special_teams_coordinator"}}
+    - {q: "{coach} most coached players"}
+    - {q: "Which guys have taken the most snaps for head coach {coach}?", params: {role: "head_coach"}}
+    - {q: "Who has {coach} coached the most snaps of?", params: {limit: 1}}
+    - {q: "List the 15 players {coach} has had the most snaps with", params: {limit: 15}}
+    - {q: "Which defensive players got the most snaps under {coach} as defensive coordinator?", params: {role: "defensive_coordinator"}}
+    - {q: "Who has played for {coach} the most?", params: {limit: 1}}
+  history_coach_colleagues:
+    - {q: "List the coaches {coach} has been on staff alongside"}
+    - {q: "Which coaches overlapped with {coach} on the same coaching staff?"}
+    - {q: "With which coach has {coach} spent the most seasons on a staff?", params: {limit: 1}}
+    - {q: "Longest staff partnerships for {coach}, top 5", params: {limit: 5}}
+    - {q: "Who has {coach} been on the same staff with the longest?", params: {limit: 1}}
+    - {q: "who all has {coach} been a coaching colleague of"}
+    - {q: "Which colleague has {coach} spent the most seasons with?", params: {limit: 1}}
+    - {q: "list {coach} colleagues by years together"}
+    - {q: "Who were {coach}'s colleagues on the staff?"}
+    - {q: "Which 3 coaches has {coach} worked alongside the longest?", params: {limit: 3}}
+    - {q: "How many coaches has {coach} shared a staff with, and for how many seasons each?"}
+    - {q: "Who are {coach}'s longest coaching partners?"}
+    - {q: "Of all the coaches {coach} has been on a staff with, which one has he been with the most seasons?", params: {limit: 1}}
+  history_opponents_faced:
+    - {q: "Which corners have lined up against {player:WR} most often?", params: {position: "cornerback"}}
+    - {q: "Who are the offensive linemen {player:DL} has gone up against the most?", params: {position: "offensive_line"}}
+    - {q: "Which defenders have been on the field against {player:QB} the most?"}
+    - {q: "Who has {player:TE} lined up against most among safeties?", params: {position: "safety", limit: 1}}
+    - {q: "Which linebackers have covered {player:RB} the most?", params: {position: "linebacker"}}
+    - {q: "Top 5 defensive backs {player:WR} has faced", params: {position: "defensive_back", limit: 5}}
+    - {q: "Which wide receivers has {player:DB} been matched up with most often?", params: {position: "wide_receiver"}}
+    - {q: "Which defensive linemen has {player:OL} gone up against most?", params: {position: "defensive_line"}}
+    - {q: "Which tight ends has {player:LB} gone up against the most?", params: {position: "tight_end"}}
+    - {q: "the opponent {player} has faced most", params: {limit: 1}}
+    - {q: "Which running backs has {player:LB} been on the field against the most?", params: {position: "running_back"}}
+    - {q: "Who is {player:WR}'s most frequent matchup?", params: {limit: 1}}
+    - {q: "Which QBs has {player:DL} been on the field against most?", params: {position: "quarterback"}}
+    - {q: "most common opponents for {player}"}
+    - {q: "Top 3 cornerbacks that have faced {player:WR}", params: {position: "cornerback", limit: 3}}
+refuse:
+  - {q: "Delete every {team} game from {season}", reason: write}
+  - {q: "Update {player}'s {season} rushing yards to 2,000", reason: write}
+  - {q: "I need {player}'s {season} passing yards set to 6000", reason: write}
+  - {q: "could you add a game for {team} against Dallas in week {week}", reason: write}
+  - {q: "Insert a new player named Test Player into the roster table", reason: write}
+  - {q: "DROP TABLE games;", reason: write}
+  - {q: "Change the score of the {team:nickname} game in week {week} of {season} to 45-0", reason: write}
+  - {q: "please remove {player} from the database", reason: write}
+  - {q: "Set {coach}'s win total to 300", reason: write}
+  - {q: "Fix the {team:nickname} record for {season}, it should be 17-0", reason: write}
+  - {q: "Rename {player} to John Smith in the players table", reason: write}
+  - {q: "Mark {player} as injured for the rest of the season", reason: write}
+  - {q: "Overwrite {team} EPA numbers with zeros", reason: write}
+  - {q: "Add 100 yards to {player}'s receiving total", reason: write}
+  - {q: "update plays set epa = 0 where posteam = 'KC'", reason: write}
+  - {q: "Could you correct the date of the {team:nickname} game in week {week}?", reason: write}
+  - {q: "Create a new team called the Portland Pythons", reason: write}
+  - {q: "I want you to truncate the injuries table", reason: write}
+  - {q: "Make {team} win the {season} Super Bowl in the data", reason: write}
+  - {q: "Merge {player} and his duplicate record", reason: write}
+  - {q: "Edit {coach}'s record so he's undefeated", reason: write}
+  - {q: "Remove all {season} playoff games from the schedule", reason: write}
+  - {q: "Can you change {player}'s position to quarterback in the database?", reason: write}
+  - {q: "INSERT INTO games VALUES ('2030_01_KC_DEN', 2030, 1)", reason: write}
+  - {q: "Please log that {player} threw {int} touchdowns last night", reason: write}
+  - {q: "Add a trade: {player} goes to {team} for a first-round pick", reason: write}
+  - {q: "UPDATE player_games SET passing_yards = 5000 WHERE player_display_name = 'Josh Allen'", reason: write}
+  - {q: "alter table plays add column notes text", reason: write}
+  - {q: "Reset all {team} stats for {season}", reason: write}
+  - {q: "I'd like {player}'s touchdown count bumped up by 3, can you do that?", reason: write}
+  - {q: "Wipe the {season} injury report", reason: write}
+  - {q: "Replace {team} with the Seattle Seahawks everywhere in the games table", reason: write}
+  - {q: "delete {player} from the depth chart", reason: write}
+  - {q: "Go ahead and save a new coach named Bob Smith for {team}", reason: write}
+  - {q: "Change the {season} week {week} kickoff time for {team} to noon", reason: write}
+  - {q: "What is {player}'s salary?", reason: no_data}
+  - {q: "How much cap space does {team} have?", reason: no_data}
+  - {q: "What's {player}'s contract?", reason: no_data}
+  - {q: "When does {player}'s contract expire?", reason: no_data}
+  - {q: "What was the attendance at the {team:nickname} home opener in {season}?", reason: no_data}
+  - {q: "How much do tickets cost for {team} games?", reason: no_data}
+  - {q: "What were the TV ratings for the {season} Super Bowl?", reason: no_data}
+  - {q: "What were {player}'s stats in college?", reason: no_data}
+  - {q: "What was {player}'s 40-yard dash time at the combine?", reason: no_data}
+  - {q: "Who will win the Super Bowl this year?", reason: no_data}
+  - {q: "Will {team} make the playoffs this season?", reason: no_data}
+  - {q: "How many yards will {player} have next week?", reason: no_data}
+  - {q: "Which team should I bet on this weekend?", reason: no_data}
+  - {q: "Should I take the over in the {team:nickname} game?", reason: no_data}
+  - {q: "Who is the best quarterback of all time?", reason: no_data}
+  - {q: "Who wins the {team:nickname} game in two weeks?", reason: no_data}
+  - {q: "Who will {team} draft first in the next draft?", reason: no_data}
+  - {q: "Which quarterback should I start in fantasy this week?", reason: no_data}
+  - {q: "Is {coach} going to get fired?", reason: no_data}
+  - {q: "How much is the {team:nickname} franchise worth?", reason: no_data}
+  - {q: "What was {player}'s Wonderlic score?", reason: no_data}
+  - {q: "Who are the highest paid players in the league?", reason: no_data}
+  - {q: "How many people watched {team} play on Monday night?", reason: no_data}
+  - {q: "Predict {player}'s stats for the rest of the season", reason: no_data}
+  - {q: "Who are the top free agents next offseason?", reason: no_data}
+  - {q: "What are your best point spread picks for Sunday?", reason: no_data}
+  - {q: "Give me a parlay for this weekend's games", reason: no_data}
+  - {q: "Which team has the best locker room?", reason: no_data}
+  - {q: "What's the cap hit for {player} this year?", reason: no_data}
+  - {q: "Who is going to win MVP this season?", reason: no_data}
+  - {q: "Where does {player} rank among the best players ever, in your opinion?", reason: no_data}
+  - {q: "What's the weather forecast for the {team:nickname} game on Sunday?", reason: no_data}
+  - {q: "What is the {team:nickname} payroll?", reason: no_data}
+  - {q: "How many yards did {player} have in college?", reason: no_data}
+  - {q: "What's the over/under for the {team:nickname} game going to be next month?", reason: no_data}
+  - {q: "How many sacks did {player} have in 2006?", reason: out_of_range}
+  - {q: "Who won the 1995 Super Bowl?", reason: out_of_range}
+  - {q: "What will the {team:nickname} record be in 2031?", reason: out_of_range}
+  - {q: "Who led the NFL in rushing yards in 2004?", reason: out_of_range}
+  - {q: "Show me Peyton Manning's passing stats for 2003", reason: out_of_range}
+  - {q: "What was the {team:nickname} record in 1992?", reason: out_of_range}
+  - {q: "How many receptions did Randy Moss have in 2007?", reason: out_of_range}
+  - {q: "Who threw the most touchdown passes in 2008?", reason: out_of_range}
+  - {q: "List every {team} game in 1996", reason: out_of_range}
+  - {q: "What happened on the first play of Super Bowl XXX?", reason: out_of_range}
+  - {q: "Show me the {team:nickname} schedule for 2029", reason: out_of_range}
+  - {q: "Who will lead the league in passing yards in 2028?", reason: out_of_range}
+  - {q: "Who started at quarterback for {team} in 1998?", reason: out_of_range}
+  - {q: "What was Brett Favre's rushing total in 2009?", reason: out_of_range}
+  - {q: "Give me the play-by-play of the 2002 AFC championship game", reason: out_of_range}
+  - {q: "How many tackles did Ray Lewis make in 2005?", reason: out_of_range}
+  - {q: "What's {coach}'s record in 1997?", reason: out_of_range}
+  - {q: "What is the {team:nickname} record in 2035?", reason: out_of_range}
+  - {q: "Top 10 rushers in 2001", reason: out_of_range}
+  - {q: "How many games did {player} play in 2009?", reason: out_of_range}
+  - {q: "What was the longest play of the 2000 season?", reason: out_of_range}
+  - {q: "Who won the 1988 Super Bowl?", reason: out_of_range}
+  - {q: "Show me {team} results from 1985", reason: out_of_range}
+  - {q: "How many yards did Jerry Rice have in 1995?", reason: out_of_range}
+  - {q: "2030 {team} schedule", reason: out_of_range}
+  - {q: "What did the {team:nickname} defense do on third down in 2007?", reason: out_of_range}
+  - {q: "What is {player}'s game log for 2008?", reason: out_of_range}
+  - {q: "Who led the league in sacks in 2000?", reason: out_of_range}
+  - {q: "Walter Payton's rushing yards by season", reason: out_of_range}
+  - {q: "Which team had the best EPA per play in 2005?", reason: out_of_range}
+  - {q: "How many interceptions did {player} throw in 2002?", reason: out_of_range}
+  - {q: "Who will be {team} head coach in 2032?", reason: out_of_range}
+  - {q: "Show me every game in 1993", reason: out_of_range}
+  - {q: "Who led the NFL in receptions in 2009?", reason: out_of_range}
+  - {q: "How did {team} do in the 2040 season?", reason: out_of_range}
+  - {q: "Who won the NBA championship last year?", reason: not_nfl}
+  - {q: "How many goals did Messi score in 2022?", reason: not_nfl}
+  - {q: "Write me a Python function to sort a list", reason: not_nfl}
+  - {q: "What is the capital of France?", reason: not_nfl}
+  - {q: "Who won the Premier League this season?", reason: not_nfl}
+  - {q: "What's the recipe for chocolate chip cookies?", reason: not_nfl}
+  - {q: "How many home runs did Aaron Judge hit last season?", reason: not_nfl}
+  - {q: "Who won the Masters in 2019?", reason: not_nfl}
+  - {q: "Explain how photosynthesis works", reason: not_nfl}
+  - {q: "What's the best way to learn Spanish?", reason: not_nfl}
+  - {q: "Who is the starting point guard for the Lakers?", reason: not_nfl}
+  - {q: "How tall is Mount Everest?", reason: not_nfl}
+  - {q: "Who won the college football national championship?", reason: not_nfl}
+  - {q: "What's the weather like in Chicago today?", reason: not_nfl}
+  - {q: "Translate good morning into German", reason: not_nfl}
+  - {q: "Who won the last World Series?", reason: not_nfl}
+  - {q: "What's the stock price of Apple?", reason: not_nfl}
+  - {q: "Help me debug this error: TypeError: undefined is not a function", reason: not_nfl}
+  - {q: "Who is the president of the United States?", reason: not_nfl}
+  - {q: "How do I fix a flat tire?", reason: not_nfl}
+  - {q: "What's the best strategy in fantasy basketball?", reason: not_nfl}
+  - {q: "Who won the Stanley Cup in 2023?", reason: not_nfl}
+  - {q: "How many Grand Slams has Federer won?", reason: not_nfl}
+  - {q: "Tell me a joke", reason: not_nfl}
+  - {q: "Who won Formula 1 this year?", reason: not_nfl}
+  - {q: "Summarize the plot of the movie Inception", reason: not_nfl}
+  - {q: "What is 17 times 23?", reason: not_nfl}
+  - {q: "Who is the top scorer in the Champions League?", reason: not_nfl}
+  - {q: "Which college team has the most wins in the Big Ten?", reason: not_nfl}
+  - {q: "Who is the best soccer player in the world?", reason: not_nfl}
+  - {q: "Who won Wimbledon in 2018?", reason: not_nfl}
+  - {q: "Explain what a REST API is", reason: not_nfl}
+  - {q: "Which Ivy League school has the best football record?", reason: not_nfl}
+  - {q: "How many points did LeBron score last night?", reason: not_nfl}
+  - {q: "What's a good workout routine for building muscle?", reason: not_nfl}
+generate:
+  - {q: "How many penalties did {team} commit in {season}?", source: sql}
+  - {q: "Which team had the most penalty yards in {season}?", source: sql}
+  - {q: "What's the average temperature at {team} home games since 2015?", source: sql}
+  - {q: "Which stadium has hosted the most games since 2010?", source: sql}
+  - {q: "How many games went to overtime in {season}?", source: sql}
+  - {q: "What was the highest scoring game of {season}", source: sql}
+  - {q: "What percentage of games has the home team won since {season}?", source: sql}
+  - {q: "Which player had the most receiving yards in a single game since 2015?", source: sql}
+  - {q: "What was {player:RB}'s longest run in {season}?", source: sql}
+  - {q: "Who was the first overall pick in the {season} draft?", source: sql}
+  - {q: "How many quarterbacks went in the first round of the {season} draft?", source: sql}
+  - {q: "What was {player:QB}'s average depth of target in {season}?", source: sql}
+  - {q: "Which quarterback had the quickest time to throw in {season}?", source: sql}
+  - {q: "How many drops did {player:WR} have in {season}?", source: sql}
+  - {q: "How many snaps did {player:DEF} play in week {week} of {season}?", source: sql}
+  - {q: "Which players were on the injury report with a concussion in {season}?", source: sql}
+  - {q: "What was the largest comeback win of {season}?", source: sql}
+  - {q: "How many fumbles did {team} lose in {season}?", source: sql}
+  - {q: "How many sacks did {team} allow in {season}?", source: sql}
+  - {q: "What was the {team:nickname} average yards per play in {season}?", source: sql}
+  - {q: "Which teams had the most turnovers in {season}?", source: sql}
+  - {q: "What was the average margin of victory for {team} in {season}?", source: sql}
+  - {q: "Who made the most field goals from 50+ yards in {season}?", source: sql}
+  - {q: "How many fourth-quarter comebacks did {player:QB} lead in {season}?", source: sql}
+  - {q: "What was the average time of possession for {team} in {season}?", source: sql}
+  - {q: "What was the weather for the {team:nickname} game in week {week} of {season}?", source: sql}
+  - {q: "Which games had the biggest point spread since {season}?", source: sql}
+  - {q: "What was the longest made field goal of {season}?", source: sql}
+  - {q: "How many two-point conversions did {team} attempt in {season}?", source: sql}
+  - {q: "Who has the most career rushing touchdowns since 2010?", source: sql}
+  - {q: "Which running backs had the most rushing yards over expected in {season}?", source: sql}
+  - {q: "What's the {team:nickname} record against the spread in {season}?", source: sql}
+  - {q: "What is {coach}'s record against {team}?", source: sql}
+  - {q: "Which team threw the most screen passes in {season}?", source: sql}
+  - {q: "Which teams use pre-snap motion the most in {season}?", source: sql}
+  - {q: "Which quarterbacks were pressured most often in {season}?", source: sql}
+  - {q: "Which receivers had the most yards after the catch in {season}?", source: sql}
+  - {q: "How many touchdown passes did {player:QB} throw in the fourth quarter in {season}?", source: sql}
+  - {q: "What's the average age of the {team:nickname} roster in {season}?", source: sql}
+  - {q: "Which players have played for both {team} and the Packers?", source: graph}
+  - {q: "Which coaches have been head coach of both {team} and the Jets?", source: graph}
+  - {q: "Which quarterback has started the most games for {team} since 2018?", source: graph}
+  - {q: "How many players switched teams after the {season} season?", source: graph}
+  - {q: "Which players on {team} were originally drafted by the Giants?", source: graph}
+  - {q: "Which coaches worked under both {coach} and Andy Reid?", source: graph}
+  - {q: "Which former {team} coordinators became head coaches elsewhere?", source: graph}
+  - {q: "Which players have been on the injury report the most weeks this season?", source: graph}
+  - {q: "How many players were on the {team:nickname} injury report in week {week} of {season}?", source: graph}
+  - {q: "Which player has been on the most different teams since 2018?", source: graph}
+  - {q: "Which players on {team} have never played for another team since 2018?", source: graph}
+  - {q: "Who were {player}'s teammates in {season}?", source: graph}
+  - {q: "Which rookies are starting at quarterback this week?", source: graph}
+  - {q: "Which teams have a new head coach this season?", source: graph}
+  - {q: "Which receivers have caught passes from three or more different quarterbacks since 2018?", source: graph}
+  - {q: "Which players are still with the team that drafted them?", source: graph}
+  - {q: "Which tight ends on {team} played for another team last season?", source: graph}
+  - {q: "How many 3rd-and-long plays did {team} face in {season}?", source: history}
+  - {q: "What's the conversion rate of {team} on 3rd and long since {season}?", source: history}
+  - {q: "How does {player:QB} do against the blitz on 3rd down?", source: history}
+  - {q: "How does {player:QB} perform when pressured versus a clean pocket?", source: history}
+  - {q: "What's {player:QB}'s EPA per dropback on play action since 2022?", source: history}
+  - {q: "How often does {team} throw deep on 1st down?", source: history}
+  - {q: "Which receivers were targeted most in the red zone in {season}?", source: history}
+  - {q: "Which running backs had the most carries on 3rd and short in {season}?", source: history}
+  - {q: "How many sacks did {player:QB} take on 3rd down in {season}?", source: history}
+  - {q: "How many red zone snaps did {player:QB} and {person:WR} play together?", source: history}
+  - {q: "What's {player:RB}'s yards per carry in the red zone since 2018?", source: history}
+  - {q: "Which team had the longest drives on average in {season}?", source: history}
+  - {q: "How often do drives that start inside their own 10 end in a score?", source: history}
+  - {q: "How many drives by {team} against the Eagles ended in a touchdown?", source: history}
+  - {q: "Which defense forced the most three-and-outs since 2020?", source: history}
+  - {q: "How many two-minute drill touchdown drives did {team} have since {season}?", source: history}
+  - {q: "Which coverage does {team} play against 12 personnel?", source: history}
+  - {q: "How many sacks did the {team:nickname} defense get on 3rd down in {season}?", source: history}
+  - {q: "How many plays of 20+ yards did {team} have on first down in {season}?", source: history}
+  - {q: "How many plays did {team} run in the no-huddle in {season}?", source: history}
+  - {q: "Which QB has thrown the most touchdowns on 3rd and long since 2018?", source: history}
+  - {q: "How many snaps did {player:DEF} play on third down in {season}?", source: history}
+  - {q: "How many penalties were called on {team} in the red zone since 2018?", source: history}
+  - {q: "Who has the most sacks on 3rd down since 2018?", source: history}

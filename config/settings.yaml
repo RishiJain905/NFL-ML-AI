@@ -234,6 +234,17 @@ ask:                      # Ask the Engine (AE00+; documentation/ask-the-engine/
     - {model: openai/gpt-6-luna, efforts: [max], max_tokens: 16000, timeout_s: 120}
     - {model: deepseek/deepseek-v4.1-flash-1017, efforts: [max], max_tokens: 16000, timeout_s: 120}
     - {model: anthropic/claude-haiku-5.5, efforts: [max], max_tokens: 16000, timeout_s: 120}
+  # AE04 (D152): the fine-tuned local model (nfl-ask-trainer), served on this computer by
+  # llama-server or LM Studio. `nfl ask eval --model local:<name>` uses it; `ask.llm` above stays
+  # the default unless the D154 rule says otherwise. Not a secret: localhost only, no key.
+  local:
+    base_url: http://127.0.0.1:8080/v1   # the server's OpenAI-compatible address (localhost only)
+    model: spark-x2.6-4b-ask              # the name the server serves the model under
+    max_tokens: 1024
+    timeout_s: 120
+    temperature: 0.0
+    route_candidates: 10                  # the candidate templates it was trained with (D153)
+    chat_template_kwargs: {enable_thinking: false}
 
 history_graph:            # the history graph (AE02+; documentation/ask-the-engine/AE02, D112, D145)
   first_season: 2018      # plays from here; participation (research) 2018-2025, FTN 2022 on

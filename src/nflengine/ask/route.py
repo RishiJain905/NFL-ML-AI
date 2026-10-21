@@ -302,8 +302,13 @@ class AskEngine:
         curated: tuple[str | None, int | None] = (None, None),
         today: dt.date | None = None,
         history: dict[str, Any] | None = None,
+        gen_llm: AskLLM | None = None,
     ):
         self.llm = llm
+        # AE04: an optional second model for generated queries only (the "split": a local
+        # model routes and answers, an OpenRouter model writes the free-form queries)
+        self.gen_llm = gen_llm
+        self._retriever = None  # AE04: built on first use (`route_candidates`)
         self.sources = sources
         self.names = names
         self.templates = templates
@@ -348,7 +353,10 @@ class AskEngine:
         self.today = dt.date.today()
         self.asof = graph_asof(paths, self.current)
         self.curated = curated_through(paths, self.current)
-        self.names = NameIndex.load(paths.curated, self.current)
+        names = NameIndex.load(paths.curated, self.current)
+        if names is not self.names:
+            self._retriever = None  # it strips names with the index: rebuild with the new one
+        self.names = names
         self.history = history_asof(paths, self.cfg)
 
     # ---- context ------------------------------------------------------------------------------
@@ -409,12 +417,44 @@ class AskEngine:
 
     # ---- prompts ------------------------------------------------------------------------------
 
-    def _route_prompt(
+    def retriever(self):
+        """The candidate-template ranker (AE04, `retrieve.py`): the templates' titles and
+        examples plus the training skeletons (`config/ask_train_phrasings.yaml`) when present."""
+        if self._retriever is None:
+            from nflengine.ask.phrasings import phrasing_texts
+            from nflengine.ask.retrieve import TemplateRetriever
+
+            self._retriever = TemplateRetriever(self.templates, phrasing_texts(), self.names)
+        return self._retriever
+
+    def route_candidates(
         self, question: str, mentions: list[Mention], allowed: list[str]
+    ) -> list[str] | None:
+        """The template ids the router sees when `route_candidates` is set (AE04: the local
+        model), else None (every template: the OpenRouter models' prompt)."""
+        k = self.cfg.llm.route_candidates
+        if not k:
+            return None
+        usable = [
+            t.id
+            for t in self.templates.values()
+            if t.source in allowed and not (t.asof and not self.asof)
+        ]
+        return self.retriever().top(question, k, usable, mentions)
+
+    def _route_prompt(
+        self,
+        question: str,
+        mentions: list[Mention],
+        allowed: list[str],
+        candidates: list[str] | None = None,
     ) -> tuple[str, str]:
         temps = [t for t in self.templates.values() if t.source in allowed]
         if "graph" in allowed and not self.asof:
             temps = [t for t in temps if not t.asof]
+        if candidates is not None:  # AE04: only these, in the library's order
+            keep = set(candidates)
+            temps = [t for t in temps if t.id in keep]
         rule = f"Only this source may be used: {allowed[0]}.\n" if len(allowed) == 1 else ""
         history_line, history_generate, history_when = "", "", ""
         if "history" in allowed:  # AE02: only when the history graph can answer
@@ -450,12 +490,19 @@ class AskEngine:
         user = f"Question: {question}\nNames:\n{names}"
         return system, user
 
-    def _examples(self, question: str, source: str, k: int = 4) -> str:
+    def _examples(
+        self, question: str, source: str, k: int = 4, exclude: frozenset[str] = frozenset()
+    ) -> str:
+        """The `k` tested templates most like the question, as the generator's examples.
+        `exclude` (AE04's training data): templates left out, so a generated query is
+        composed rather than copied from its own template."""
         from rapidfuzz import fuzz
 
         scored = []
         for t in self.templates.values():
             if t.source != source or t.library:  # the library's files are long: not examples
+                continue
+            if t.id in exclude:
                 continue
             best = max((fuzz.token_set_ratio(question, e) for e in t.examples), default=0)
             scored.append((best, t))
@@ -467,7 +514,11 @@ class AskEngine:
         return "\n\n".join(out) or "(none)"
 
     def _generate_prompt(
-        self, question: str, source: str, mentions: list[Mention]
+        self,
+        question: str,
+        source: str,
+        mentions: list[Mention],
+        exclude: frozenset[str] = frozenset(),
     ) -> tuple[str, str]:
         if source == "sql":
             cols = {t: self.sources.sandbox.columns(t) for t in self.sources.sandbox.tables()}
@@ -479,7 +530,7 @@ class AskEngine:
         system = _fill(
             (PROMPT_DIR / "generate.md").read_text(encoding="utf-8"),
             schema=schema,
-            examples=self._examples(question, source),
+            examples=self._examples(question, source, exclude=exclude),
         )
         names = "\n".join(m.prompt_line() for m in mentions) or "(none found)"
         user = (
@@ -508,6 +559,8 @@ class AskEngine:
             res.error_code = "llm"
         finally:
             res.calls = [c.to_dict() for c in self.llm.take_calls()]
+            if self.gen_llm is not None:  # AE04's split: the generator model's calls count too
+                res.calls += [c.to_dict() for c in self.gen_llm.take_calls()]
             self.last_calls = res.calls
             res.timings["total"] = round(time.monotonic() - t0, 3)
         return res
@@ -643,7 +696,8 @@ class AskEngine:
 
         # the router
         t = time.monotonic()
-        system, user = self._route_prompt(q, mentions, allowed)
+        candidates = self.route_candidates(q, mentions, allowed)
+        system, user = self._route_prompt(q, mentions, allowed, candidates)
         history: list[dict[str, str]] = []
         decision = self.llm.chat_json("route", system, user)
         res.timings["route"] = round(time.monotonic() - t, 3)
@@ -804,7 +858,8 @@ class AskEngine:
     def _generate(self, res: AskResult, q: str, source: str, mentions: list[Mention]) -> None:
         t = time.monotonic()
         system, user = self._generate_prompt(q, source, mentions)
-        reply = self.llm.chat_json("generate", system, user)
+        llm = self.gen_llm or self.llm  # AE04's split: another model writes the query
+        reply = llm.chat_json("generate", system, user)
         res.timings["generate"] = round(time.monotonic() - t, 3)
         history: list[dict[str, str]] = []
         rounds = self.cfg.limits.corrections
@@ -886,7 +941,7 @@ class AskEngine:
                 {"role": "user", "content": problem},
             ]
             t = time.monotonic()
-            reply = self.llm.chat_json("fix", system, user, history)
+            reply = llm.chat_json("fix", system, user, history)
             res.timings["generate"] = round(
                 res.timings.get("generate", 0) + time.monotonic() - t, 3
             )

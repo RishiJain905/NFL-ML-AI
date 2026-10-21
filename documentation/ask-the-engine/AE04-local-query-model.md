@@ -46,6 +46,23 @@ Fine-tune a small open model (about 1–4B parameters) to turn our questions int
   - the W&B guide (`ask-finetune`).
 - [ ] ✋ **Close AE04.**
 
+## Scope as agreed (Rishi, 2026-10-19 / 20; D152-D154)
+
+- **Base model: Spark-X2.6-4B** (bf16, `D:\LOCAL-Models\XHToken\Spark-X2.6-4B`), bf16 LoRA (not QLoRA, not a 9B / 27B: 16 GB of VRAM).
+- **SFT only** in AE04 (plain and + LLM-JEPA); RL (GRPO with an execution reward) is a later phase.
+- **The training environment is its own repository**, `F:\Personal\NFL\nfl-ask-trainer` (WSL, ROCm). This repo keeps the data export, the verifier, the local provider and the eval.
+- **Behaviour, not facts**: skeleton questions filled with random real entities, the engine's own prompts, candidate templates instead of the whole catalogue, held-out templates, public text-to-SQL / Cypher data for the general behaviour (D153).
+- The 🧑 fine-tunes and the 🧑 local bake-off entry: **the agent runs them**; the ✋ decision: **a rule written before the scored runs** (D154); OpenRouter: **up to $0.10** (the split's one run); downloads: the bf16 model and the public datasets (on D:).
+
+## Findings (checked live 2026-10-20)
+
+- **Hardware:** AMD Radeon RX 7800 XT (gfx1101, 16 GB), Ryzen 7 7700X, 31 GB RAM. No CUDA. AMD's HIP SDK 7.1 on Windows; **ROCm 7.2 in WSL Ubuntu** with `/dev/dxg`, where Rishi's own `~/venvs/ew3` already ran a GPU PyTorch (AMD's `torch 2.9.1+rocm7.2.0.lw` wheels from repo.radeon.com: "lw" builds use the system's `/opt/rocm` HSA runtime, which WSL needs). The trainer's venv uses the same two wheels.
+- **The model** (`modeling_spark.py`): attention is an explicit eager matmul (no SDPA / flash path), the residual stream in fp32, tied 131k-vocab embeddings, a gated (sigmoid) attention output. The chat template's no-thinking mode ends the generation prompt with `<|Bot|></think>`; three thinking levels (none / low / high).
+- **The GPU probe** (`nfl-ask-trainer/scripts/probe_model.py`, LoRA r 16 on the attention and MLP projections = 31.0M parameters, gradient checkpointing, batch 1, logits only on the target positions): 799 / 688 / 616 / 586 tokens/s at 512 / 1,024 / 2,048 / 3,072 tokens, 9.3-12.5 GB peak. **PyTorch SDPA was slower** (456 tokens/s at 3,072) and not numerically identical: the model's own eager attention is used. HF `generate` one sequence at a time: 8.2 tokens/s (per-epoch validation is batched).
+- **Loading from D: through WSL took 200 s** (`from_pretrained` memory-maps, and WSL's 9P drive bridge serves random reads slowly). A sequential re-read looked fast (~350 MB/s) only because Windows had the file cached: **D: is a USB hard drive** (Seagate One Touch, 92% full) and uncached reads inside WSL ran at 5-10 MB/s (the trainer worker's measurement; a load still took 341 s with sequential reads). So the model was copied to **F:** (`F:\LOCAL-Models\XHToken\Spark-X2.6-4B`, an NVMe; robocopy, 122 s; every shard's sha256 = Hugging Face's), as Rishi allowed "if for faster training"; D: keeps the canonical copy, and the trainer still reads the shards sequentially.
+- **Prompt sizes:** the router prompt with all 66 templates is ~37,000 characters (~10k tokens); with 10 candidates ~8,500 characters; a generator prompt ~9,000-10,000 characters.
+- **Serving:** LM Studio has llama.cpp ROCm backends up to runtime 2.61 (Spark's architecture needs 2.34+); Ollama is 0.33.2 (Spark needs 0.34.1+).
+
 ## What to look for
 
 - **JEPA vs plain** at the same budget: the paper reports gains on Spider. On our small, narrow set, check that it isn't just noise across 2–3 seeds.
