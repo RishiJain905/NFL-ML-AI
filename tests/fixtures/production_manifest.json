@@ -77,7 +77,7 @@
     "src/nflengine/graph/tables_extra.py": "83b6e6f653e7151d60877e4dbc9f547836ed91795d59cd133060c42deccdee00",
     "src/nflengine/ingest/__init__.py": "350c78b51eacdc4da8ba33b405e610c7039b7298491011d3404eb5d358f06001",
     "src/nflengine/ingest/base.py": "3192e64f67e3e76f6868b4bb3169d75f514575cb0851a384392ffd552e4b4d59",
-    "src/nflengine/ingest/espn.py": "1509ea733667d3d9d75b50ed7179ab31d9929809a9596825a8052624ee8bd1a9",
+    "src/nflengine/ingest/espn.py": "668676588c914a282bd981f557b5ed7fbf8c0cd9e99ca78383b18a7293f93a08",
     "src/nflengine/ingest/http.py": "5675246e86a2f6a18d244f6475c72d98051c182d5ee99cc4efef0cd6609353f6",
     "src/nflengine/ingest/nflverse.py": "4f6ea38b9f840ff281c277e809fabc8c8458905a9a0a4b865f2d25abfa8e076e",
     "src/nflengine/ingest/ngs_site.py": "989cd76de4b6d192dd21356f643e533f32c9b2a5e503f51eaa40777c9d58e568",
@@ -118,7 +118,7 @@
     "src/nflengine/ops/services.py": "0e2d80b6f49d7029c75f46ab76716385ab5d3ae03a6340d0c6f1d7c350a3611c",
     "src/nflengine/ops/summary.py": "07aa1db2e7268653d3005790ff876bf2cf76b7c5f47ff08fef072b8c6299c2c9",
     "src/nflengine/schedule.py": "2dc4baac8204459210420fbfb76499e1dac7a291e3537731f0a58126cb58569f",
-    "src/nflengine/weekly.py": "e48779191cdaf7b95206b97f8c17cd38d0fcc130a402ff4ec13c5686d923a203"
+    "src/nflengine/weekly.py": "582d9f06e9ef4005a7e602a098b185e90652aaa7d050155d7a225a6c8c4bf923"
   },
   "note": "D107 no-touch guard: SHA-256 hashes (line endings normalised to LF) of the protected production files and of the pre-existing top-level blocks of config/settings.yaml. Regenerate only with Rishi's OK, in a deliberate separate commit: uv run python tests/test_production_untouched.py --write-manifest",
   "settings_blocks": {
