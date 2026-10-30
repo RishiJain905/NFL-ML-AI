@@ -70,6 +70,40 @@ def parse_scoreboard(data: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+# One type per column whatever the rows hold (D156): ESPN drops a game's odds and weather once
+# it's final, so inferring from the first 100 rows failed once 100+ finished games came first
+# (2026-10-29: "could not append value: \"DraftKings\""), and a pull of only finished games
+# would type `espn_spread` as Null (curation negates it).
+SCOREBOARD_SCHEMA: dict[str, Any] = {
+    "espn_event_id": pl.Utf8,
+    "season": pl.Int64,
+    "season_type": pl.Int64,
+    "week": pl.Int64,
+    "kickoff_utc": pl.Utf8,
+    "home_team_espn": pl.Utf8,
+    "away_team_espn": pl.Utf8,
+    "home_score": pl.Float64,
+    "away_score": pl.Float64,
+    "completed": pl.Boolean,
+    "status": pl.Utf8,
+    "venue": pl.Utf8,
+    "indoor": pl.Boolean,
+    "odds_provider": pl.Utf8,
+    "odds_details": pl.Utf8,
+    "espn_spread": pl.Float64,
+    "over_under": pl.Float64,
+    "home_moneyline": pl.Float64,
+    "away_moneyline": pl.Float64,
+    "weather_temp_f": pl.Float64,
+    "weather_desc": pl.Utf8,
+}
+
+
+def scoreboard_frame(rows: list[dict[str, Any]]) -> pl.DataFrame:
+    """`parse_scoreboard` rows (any number of weeks) as one frame with fixed column types."""
+    return pl.DataFrame(rows, schema=SCOREBOARD_SCHEMA)
+
+
 def parse_news(data: dict[str, Any]) -> list[dict[str, Any]]:
     rows = []
     for a in data.get("articles", []):
@@ -180,7 +214,7 @@ def ingest_espn(
             )
             store.write_json(SOURCE, "scoreboard_raw", f"season={season}-week={w:02d}", data)
             rows += parse_scoreboard(data)
-        return pl.DataFrame(rows)
+        return scoreboard_frame(rows)
 
     def news() -> pl.DataFrame:
         data = client.get_json(f"{SITE}/news", {"limit": 100}, use_cache=False)

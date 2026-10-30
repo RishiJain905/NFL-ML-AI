@@ -135,3 +135,51 @@ def test_cli_digest_passes_llm_override(monkeypatch) -> None:
     )
     assert res.exit_code == 0, res.output
     assert seen["provider"] == "placeholder" and seen["mode"] == "backtest"
+
+
+def _curate_over(monkeypatch, pbp: set[str]) -> dict:
+    """The weekly curate step with the build faked and the real completeness check over a
+    schedule where week 8's Thursday game has finished: what stopped 2026 week 8's late run
+    (2026-10-29: CAR at GB final, its play-by-play not published yet; D155)."""
+    import polars as pl
+
+    import nflengine.curate.build as build
+    import nflengine.curate.quality as quality
+
+    sched = pl.DataFrame(
+        {
+            "game_id": ["g_w7", "g_thu", "g_sun"],
+            "season": [2026] * 3,
+            "week": [7, 8, 8],
+            "game_type": ["REG"] * 3,
+            "completed": [True, True, False],
+        }
+    )
+    seen: dict = {"kw": []}
+
+    def checks(**kw):
+        seen["kw"].append(kw)
+        return [quality.check_completeness(sched, pbp, 2010, **kw)]
+
+    monkeypatch.setattr(build, "build_all", lambda log=print: ["games", "plays"])
+    monkeypatch.setattr(quality, "run_quality_checks", checks)
+    return seen
+
+
+def test_curate_doesnt_require_this_weeks_finished_games_in_pbp(monkeypatch) -> None:
+    from nflengine.weekly import _curate
+
+    seen = _curate_over(monkeypatch, {"g_w7"})
+    detail = _curate(WeeklyOptions(2026, 8), print)
+    assert seen["kw"] == [{"pbp_pending_week": (2026, 8)}]
+    assert detail.startswith("2 tables; quality checks pass")
+    assert "1 of 2026 week 8 not required yet" in detail and "g_thu" in detail
+
+
+def test_curate_still_requires_last_weeks_games_in_pbp(monkeypatch) -> None:
+    from nflengine.weekly import _curate
+
+    _curate_over(monkeypatch, {"g_thu"})
+    with pytest.raises(StepFailed) as e:
+        _curate(WeeklyOptions(2026, 8), print)
+    assert e.value.step == "curate" and "completed games in play-by-play" in e.value.detail

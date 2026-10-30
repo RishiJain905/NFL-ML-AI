@@ -159,6 +159,8 @@ Do it between weeks, never during a run. The same works for `player-model`.
 
 Just run it. Games that already kicked off keep their earlier predictions or get none, and the rest are predicted as usual. The run summary records `on_time: false`.
 
+A game of the run's own week that has already finished needn't have play-by-play yet (nflverse publishes it hours after the game): the curate step's detail names it ("… quality checks pass (1 of 2026 week 8 not required yet, e.g. ['2026_08_CAR_GB'])"). Before D155 (2026-10-29) such a run stopped at `curate` with "blocking quality checks failed: ['completed games in play-by-play']" until nflverse caught up; a run that stopped that way resumes with **Resume week N from curate** (`--from-step curate --promote`). A game of an **earlier** week without play-by-play still stops the run.
+
 ### The lock
 
 The lock is an operating-system lock on `D:\nfl-ml-data\runs\.weekly.lock`, held while a weekly run or an injury update runs. Windows releases it the moment that process ends, even if it crashed, so a lock is never left stuck and there is nothing to delete by hand. The file's text says who holds it (pid, computer, command, start time) and is emptied when the run ends; `uv run nfl weekly status` says `lock: free` or who holds it. Exit 4 therefore always means a run is really still going (Task Manager → Details → the pid in the file). If a run crashed, the next run reports the note it left behind as an `info` alert.

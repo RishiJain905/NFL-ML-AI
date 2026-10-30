@@ -47,6 +47,29 @@ def test_parse_scoreboard() -> None:
     assert row["weather_temp_f"] == 71 and row["completed"] is False
 
 
+def test_scoreboard_frame_types_dont_depend_on_the_rows() -> None:
+    import copy
+
+    import polars as pl
+
+    from nflengine.ingest.espn import SCOREBOARD_SCHEMA, scoreboard_frame
+
+    # ESPN drops a final game's odds and weather: 110 of those, then the upcoming ones with
+    # odds, broke the frame on 2026-10-29 (types were inferred from the first 100 rows, D156)
+    final = copy.deepcopy(SCOREBOARD["events"][0])
+    final["status"]["type"]["completed"] = True
+    final.pop("weather")
+    final["competitions"][0].pop("odds")
+    rows = parse_scoreboard({"events": [final] * 110 + SCOREBOARD["events"] * 2})
+    df = scoreboard_frame(rows)
+    assert df.schema == pl.Schema(SCOREBOARD_SCHEMA) and df.height == 112
+    assert df["odds_provider"].drop_nulls().to_list() == ["DraftKings"] * 2
+    # only finished games (late in the season): still Float64, so curation can negate it
+    done = scoreboard_frame(parse_scoreboard({"events": [final]}))
+    assert done.schema["espn_spread"] == pl.Float64 and done["espn_spread"].null_count() == 1
+    assert scoreboard_frame([]).schema == pl.Schema(SCOREBOARD_SCHEMA)
+
+
 def test_parse_injuries_takes_athlete_id_from_link() -> None:
     data = {
         "injuries": [

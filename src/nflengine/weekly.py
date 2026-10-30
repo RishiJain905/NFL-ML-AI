@@ -14,7 +14,8 @@ Named, idempotent steps, in order:
 | digest | payload -> LLM -> checks -> render (`nfl digest`) |
 
 Ingest comes before the readiness check because the check reads the newest raw snapshots
-(documentation/02 lists "readiness -> ingest"; D52). Each step records its status in
+(documentation/02 lists "readiness -> ingest"; D52); curate's checks don't require play-by-play
+for week N's own finished games yet (a late run, D155). Each step records its status in
 `runs/<season>/week<NN>/weekly_run.json`; `--from-step <name>` resumes from a failed step.
 A fail-soft step that can't do its job raises `StepDegraded`: it is recorded as `degraded`
 and the run goes on (the graph: Neo4j down -> the digest goes out without its graph
@@ -99,15 +100,26 @@ def _ready(o: WeeklyOptions, log: Callable[[str], None]) -> str:
 
 def _curate(o: WeeklyOptions, log: Callable[[str], None]) -> str:
     from nflengine.curate.build import build_all
-    from nflengine.curate.quality import BLOCK, run_quality_checks
+    from nflengine.curate.quality import BLOCK, COMPLETENESS, run_quality_checks
 
     with events.portion(0.0, 0.85):
         built = build_all(log=log)
     events.progress(None, 85, 100, "quality checks")
-    blocked = [c.name for c in run_quality_checks() if not c.passed and c.level == BLOCK]
+    # A late run (after week N's first game ended) finds that game completed in the schedule
+    # hours before nflverse publishes its play-by-play. The run never reads week N's
+    # play-by-play (it predicts week N from the weeks before; `ready` requires week N-1's),
+    # so this week's finished games aren't required yet; earlier weeks still are (D155,
+    # as the injury update's D126).
+    checks = run_quality_checks(pbp_pending_week=(o.season, o.week))
+    blocked = [c.name for c in checks if not c.passed and c.level == BLOCK]
     if blocked:
         raise StepFailed("curate", f"blocking quality checks failed: {blocked}")
-    return f"{len(built)} tables; quality checks pass"
+    pending = [
+        c.detail.rpartition("; ")[2]
+        for c in checks
+        if c.name == COMPLETENESS and "not required" in c.detail
+    ]
+    return f"{len(built)} tables; quality checks pass" + "".join(f" ({p})" for p in pending)
 
 
 def _ratings(o: WeeklyOptions, log: Callable[[str], None]) -> str:
