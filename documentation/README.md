@@ -46,6 +46,7 @@ One guide per major technology or component, written for a reader who's new to i
 
 | Guide | What it explains |
 |---|---|
+| [Our databases](guides/databases.md) | Why DuckDB (zero setup, views over Parquet, fast analytics, Polars), why DuckDB and not SQLite, why DuckDB **and** Neo4j (table questions vs relationship questions), why two Neo4j graphs, which step writes each one, how to look at them |
 | [Knowledge graph (Neo4j)](guides/knowledge-graph.md) | Neo4j in two minutes, what our graph holds, a Neo4j Browser walkthrough, each Cypher query in the library, how graph findings reach the digest (P05; P08 queries Q5-Q7, Q9) |
 | [Graph Data Science](guides/graph-data-science.md) | GDS primer (projections, PageRank, degree, KNN vs node similarity, stream / write / mutate), the two weekly GDS jobs, and a Neo4j Browser walkthrough with real results (P08) |
 | [Weights & Biases](guides/weights-and-biases.md) | Every W&B run, chart, table and artifact, step by step through the weekly run and the research runs, what to check each week, and the **2026 Season Dashboard** chart by chart (what each shows, whether higher or lower is better, normal ranges) |
