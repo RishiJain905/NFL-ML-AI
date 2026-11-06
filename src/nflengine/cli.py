@@ -222,10 +222,25 @@ def control_room(
     replay_lag: float = typer.Option(
         10.0, "--replay-lag", min=0.0, max=300.0, help="Seconds ESPN takes to post a play."
     ),
+    tailscale: str | None = typer.Option(
+        None,
+        "--tailscale",
+        metavar="NAME.ts.net",
+        help="D157: also answer on this machine's Tailscale name (for the phone, through "
+        "`tailscale serve`): read-only plus Ask the Engine; Run and the update buttons stay "
+        "on the PC. Still binds 127.0.0.1 only.",
+    ),
 ) -> None:
     """Open the control room: a local web app for the weekly pipeline (127.0.0.1 only)."""
     from nflengine.app.preflight import REHEARSAL_STEPS
+    from nflengine.app.security import tailscale_name
     from nflengine.app.serve import serve
+
+    if tailscale is not None:
+        try:
+            tailscale = tailscale_name(tailscale)
+        except ValueError as e:
+            raise typer.BadParameter(str(e), param_hint="--tailscale") from e
 
     if fail_at is not None and (not rehearsal or fail_at not in REHEARSAL_STEPS):
         raise typer.BadParameter(
@@ -245,6 +260,7 @@ def control_room(
             fail_at=fail_at,
             log=print,
             live_replay=replay,
+            tailscale=tailscale,
         )
     )
 

@@ -167,6 +167,8 @@ class AppSettings:
     # driver / connect function
     connections: ConnectionsService | None = None
     warm_connections: bool = False  # `nfl app` warms the history graph in the background
+    # D157: `nfl app --tailscale NAME.ts.net` also answers on that name (read-only plus Ask)
+    tailscale: str | None = None
 
 
 class _Context:
@@ -937,7 +939,11 @@ def create_app(settings: AppSettings) -> FastAPI:
 
     # outermost of the user middleware: every route and the static files sit behind it
     app.add_middleware(
-        LocalOnlyMiddleware, port=settings.port, token=settings.token, dev=settings.dev
+        LocalOnlyMiddleware,
+        port=settings.port,
+        token=settings.token,
+        dev=settings.dev,
+        tailscale=settings.tailscale,
     )
     return app
 

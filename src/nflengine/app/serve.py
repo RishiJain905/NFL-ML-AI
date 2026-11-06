@@ -28,6 +28,7 @@ def serve(
     log: Callable[[str], None] = print,
     fail_at: str | None = None,
     live_replay: dict | None = None,
+    tailscale: str | None = None,
 ) -> int:
     """Start the server and block until Ctrl+C. Returns an exit code."""
     import uvicorn
@@ -69,6 +70,7 @@ def serve(
         fail_at=fail_at,
         live_replay=feed,
         warm_connections=True,
+        tailscale=tailscale,
     )
     app = srv.create_app(settings)
     url = f"http://{HOST}:{port}/"
@@ -81,6 +83,12 @@ def serve(
         log(f"Control room on {url}  (Ctrl+C to stop)")
         if open_browser:
             threading.Timer(1.5, webbrowser.open, args=(url,)).start()
+    if tailscale:
+        log(
+            f"Tailscale: also answers on https://{tailscale}/ (read-only plus Ask the Engine; "
+            f"Run and the update buttons only work here). Expose it with "
+            f"`tailscale serve --bg {port}`, never `tailscale funnel`."
+        )
     if rehearsal:
         log(
             "Rehearsal mode: the Run button runs `nfl weekly rehearse` into "

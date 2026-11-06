@@ -7,6 +7,11 @@
   `Origin` header and the per-launch token in `X-CR-Token`. The page reads the token from
   `GET /api/session`, which other sites can't read (no CORS headers are ever sent).
 - Responses carry headers that stop framing (clickjacking a Run button) and sniffing.
+- `nfl app --tailscale NAME.ts.net` (D157, opt-in) also answers on that one Tailscale name,
+  for Rishi's phone through `tailscale serve` (which proxies to 127.0.0.1 and keeps the
+  Host). Requests on that name are read-only plus Ask: the only state-changing request
+  allowed is `POST /api/ask` (with `Origin: https://NAME.ts.net` and the token); Run and the
+  update buttons answer 403 `remote_read_only`. The server still binds 127.0.0.1 only.
 
 Written as plain ASGI middleware (no BaseHTTPMiddleware) so it also covers streaming
 responses (CR02's server-sent events).
@@ -16,6 +21,7 @@ from __future__ import annotations
 
 import hmac
 import logging
+import re
 from collections.abc import Iterable
 from typing import Any
 
@@ -42,6 +48,28 @@ SECURITY_HEADERS = [
 ]
 
 
+_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+TAILSCALE_NAME = re.compile(rf"^{_LABEL}(?:\.{_LABEL})+\.ts\.net$")
+# The only state-changing request a Tailscale (phone) request may make: an Ask question.
+REMOTE_WRITES = frozenset({("POST", "/api/ask")})
+REMOTE_READ_ONLY = (
+    "On the phone (Tailscale) the control room is read-only plus Ask the Engine: "
+    "run the pipeline from the PC."
+)
+
+
+def tailscale_name(name: str) -> str:
+    """A machine's full Tailscale name (`pc.tail1234.ts.net`), lower-cased; ValueError if it
+    isn't one. Only `*.ts.net` names: the flag can't be turned into "answer any host"."""
+    clean = name.strip().lower().rstrip(".")
+    if not TAILSCALE_NAME.match(clean):
+        raise ValueError(
+            f"{name!r} isn't a Tailscale name: use the machine's full name, like "
+            "pc-name.tail1234.ts.net (see `tailscale status` or `tailscale serve status`)"
+        )
+    return clean
+
+
 def allowed_hosts(port: int) -> frozenset[str]:
     return frozenset({f"127.0.0.1:{port}", f"localhost:{port}"})
 
@@ -60,11 +88,15 @@ class LocalOnlyMiddleware:
         token: str,
         dev: bool = False,
         extra_hosts: Iterable[str] = (),
+        tailscale: str | None = None,
     ) -> None:
         self.app = app
         self.token = token
         self.hosts = allowed_hosts(port) | frozenset(extra_hosts)
         self.origins = allowed_origins(port, dev)
+        name = tailscale_name(tailscale) if tailscale else None
+        self.remote_hosts = frozenset({name, f"{name}:443"}) if name else frozenset()
+        self.remote_origins = frozenset({f"https://{name}"}) if name else frozenset()
 
     async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
         kind = scope["type"]
@@ -75,11 +107,16 @@ class LocalOnlyMiddleware:
             await send({"type": "websocket.close", "code": 1008})
             return
         headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope["headers"]}
-        if headers.get("host", "") not in self.hosts:
+        host = headers.get("host", "").lower()
+        remote = host in self.remote_hosts
+        if not remote and host not in self.hosts:
             await _reject(send, 400, "bad_host", "This app only answers on 127.0.0.1.")
             return
         if scope["method"] not in SAFE_METHODS:
-            if headers.get("origin") not in self.origins:
+            if remote and (scope["method"], scope.get("path", "")) not in REMOTE_WRITES:
+                await _reject(send, 403, "remote_read_only", REMOTE_READ_ONLY)
+                return
+            if headers.get("origin") not in (self.remote_origins if remote else self.origins):
                 await _reject(send, 403, "bad_origin", "Requests must come from the app itself.")
                 return
             if not hmac.compare_digest(headers.get(TOKEN_HEADER, ""), self.token):

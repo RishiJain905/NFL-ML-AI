@@ -146,7 +146,7 @@ Season and week are validated integers. **No endpoint takes a file path.**
 
 These sit on top of the Security section of `CLAUDE.md`, which always wins.
 
-1. **Localhost only.** Bind to `127.0.0.1`, never `0.0.0.0`. `nfl app` refuses any other host. Requests whose `Host` header isn't `127.0.0.1:<port>` or `localhost:<port>` are rejected, which blocks DNS-rebinding tricks from other websites.
+1. **Localhost only.** Bind to `127.0.0.1`, never `0.0.0.0`. `nfl app` refuses any other host. Requests whose `Host` header isn't `127.0.0.1:<port>` or `localhost:<port>` are rejected, which blocks DNS-rebinding tricks from other websites. **Opt-in exception (D157):** `nfl app --tailscale NAME.ts.net` also answers on that one Tailscale name (Rishi's phone through `tailscale serve`, which proxies to 127.0.0.1). Requests on it are read-only plus Ask: the only state-changing request allowed is `POST /api/ask`, with that name's HTTPS origin and the token. Still bound to 127.0.0.1 only; never `tailscale funnel`.
 2. **Changes need the launch token.** `POST` endpoints need a token generated when `nfl app` starts and handed to the page, plus a matching `Origin`. No CORS, except the Vite dev origin under `--dev`.
 3. **Four commands, built in code.** The browser sends a kind, never a command line:
    - `weekly` → `nfl weekly run --auto --expect-week N`. N is the server's own calendar week, and the browser's `expect_week` must match it.

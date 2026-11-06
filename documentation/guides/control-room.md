@@ -51,6 +51,26 @@ npm --prefix web run dev       # the page on http://localhost:5173/ (Vite forwar
 
 `uv run nfl app --rehearsal` points the Run button at `nfl weekly rehearse` of the newest published week into `rehearsals/control-room`, never the live week; a banner says so (§2b).
 
+### From your phone, over Tailscale (D157)
+
+The app only listens on this PC, so a phone at work can't reach it directly. [Tailscale](https://tailscale.com/) puts the PC and the phone on one private network (yours only; nothing is on the public internet). `tailscale serve` then passes the phone's requests to `127.0.0.1:8765` over HTTPS. The app answers them only when it was started with `--tailscale` and the PC's own Tailscale name.
+
+**Once:** install Tailscale on the PC and the phone and sign in to the same account on both. Find the PC's full name with `tailscale status` (like `rishi-pc.tail1234.ts.net`). The first `tailscale serve` asks you to turn on HTTPS certificates for your tailnet in the admin console; say yes.
+
+**Each time** (the PC stays on and awake, with Docker / Neo4j up, while you're away):
+
+```powershell
+uv run nfl app --no-browser --tailscale rishi-pc.tail1234.ts.net
+tailscale serve --bg 8765        # once; it stays until `tailscale serve reset`
+```
+
+On the phone, open `https://rishi-pc.tail1234.ts.net/`.
+
+**What works from the phone:** every page and chart (all GETs) and Ask the Engine (`POST /api/ask`, with the same token, rate limit and guard as on the PC). **What doesn't:** Run, Resume, the Saturday injury update and Update play calling answer 403 `remote_read_only` ("run the pipeline from the PC"). The Neo4j Browser links point at `localhost` and only work on the PC.
+
+**Never `tailscale funnel`.** Funnel puts the site on the public internet, where anyone could ask paid questions. Only `*.ts.net` names are accepted by `--tailscale`, and without the flag the app refuses the name like any other host.
+
+
 ## 2. What you see
 
 **Sidebar:**
@@ -423,7 +443,7 @@ They never write to the data root (a test hashes every file before and after cal
 The app can't be reached from other computers, and other websites open in your browser can't use it:
 
 1. **It only listens on 127.0.0.1.** There's no `--host` option.
-2. **It only answers requests addressed to `127.0.0.1:<port>` or `localhost:<port>`.** That stops a trick where a malicious site points its own domain name at your machine ("DNS rebinding").
+2. **It only answers requests addressed to `127.0.0.1:<port>` or `localhost:<port>`.** That stops a trick where a malicious site points its own domain name at your machine ("DNS rebinding"). The one exception is opt-in: `nfl app --tailscale NAME.ts.net` (D157, §1) also answers on that Tailscale name, read-only plus Ask. On that name a state-changing request must be `POST /api/ask` with `Origin: https://NAME.ts.net` and the token; everything else gets 403 `remote_read_only`, and the PC's own origins don't count there (nor the Tailscale origin on the PC). Tests: `tests/app/test_app_tailscale.py`.
 3. **Anything that changes something needs the launch token and must come from the app's own page.** The token is a random string made each time `nfl app` starts. The page reads it from `/api/session`, which other sites can't read. The only things that change anything are CR02's Run, Resume and Saturday buttons; every CR03 page only reads.
 4. **No cross-site access headers are ever sent.** The page can't be framed by another site either (it can't be tricked into clicking Run inside a hidden frame). The other security headers: content security policy, `nosniff`, `no-referrer`, `no-store` on API answers.
 5. **Secrets stay on the server.**
