@@ -114,6 +114,7 @@ class AppConfig(BaseModel):
     playcalling: dict[str, Any] = Field(default_factory=dict)  # play calling (PC00+, D107)
     ask: dict[str, Any] = Field(default_factory=dict)  # Ask the Engine (AE00+, D107, D111)
     history_graph: dict[str, Any] = Field(default_factory=dict)  # the history graph (AE02+)
+    forecastlab: dict[str, Any] = Field(default_factory=dict)  # Forecast lab (FL00+, D158)
 
 
 def load_app_config(path: Path | None = None) -> AppConfig:

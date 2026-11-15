@@ -259,3 +259,14 @@ history_graph:            # the history graph (AE02+; documentation/ask-the-engi
   staging_volume: nfl-neo4j-history-staging
   start_timeout_s: 300    # wait for Bolt after a start
   batch_size: 5000        # rows per UNWIND transaction (the weekly append)
+
+forecastlab:              # Forecast lab (FL00+; documentation/forecast-lab/, D107, D158)
+  availability:           # will he play, how much, who inherits (FL00; forecastlab/availability.py)
+    train_from: 2014              # snap counts start in 2013; one season of lags
+    tune_seasons: 2017-2018       # every setting is chosen here
+    report_seasons: 2019-2025     # the model card's numbers (the ship rule, FL00)
+    at_risk_below: 0.85           # a chance of playing under this puts him on the "might sit" list
+  curves:                 # the outcome curve behind a player projection (FL01; forecastlab/curves.py)
+    history_from: 2017            # the player model's walk-forward predictions start here
+    tune_seasons: 2019-2020       # the number of analogs and what "similar" means
+    report_seasons: 2021-2025     # the model card's numbers (the ship rule, FL01)
