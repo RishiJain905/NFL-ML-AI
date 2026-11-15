@@ -38,7 +38,7 @@ from nflengine.app.connections_service import ConnectionsRefused, ConnectionsSer
 from nflengine.app.health import SystemChecks, get_health
 from nflengine.app.jsonsafe import SafeJSONResponse
 from nflengine.app.preflight import get_preflight, rehearsal_target
-from nflengine.app.readers import graphlab, mlops, playbrowser
+from nflengine.app.readers import forecastlab, graphlab, mlops, playbrowser
 from nflengine.app.readers import playcalling as playcall
 from nflengine.app.readers.alerts import get_alerts
 from nflengine.app.readers.common import strip_root, use_data_root
@@ -54,7 +54,7 @@ from nflengine.app.readers.players import get_players
 from nflengine.app.readers.results import get_results
 from nflengine.app.readers.season import get_scorecard, get_teams
 from nflengine.app.readers.weeks import get_week, list_weeks, team_info
-from nflengine.app.runner import Runner, RunRefused, public, rehearsal_root
+from nflengine.app.runner import CHAIN_AFTER, Runner, RunRefused, public, rehearsal_root
 from nflengine.app.security import LocalOnlyMiddleware
 from nflengine.app.status import ServiceStatus
 from nflengine.app.stream import parse_cursor, run_stream
@@ -110,7 +110,9 @@ class RunBody(BaseModel):
     """`POST /api/run`: a kind and the browser's expected week, nothing else."""
 
     model_config = ConfigDict(extra="forbid")
-    kind: str = Field(pattern="^(weekly|resume|injury_update|playcalling_update)$")
+    kind: str = Field(
+        pattern="^(weekly|resume|injury_update|playcalling_update|forecastlab_update)$"
+    )
     expect_week: int = Field(ge=1, le=22)
 
 
@@ -169,6 +171,12 @@ class AppSettings:
     warm_connections: bool = False  # `nfl app` warms the history graph in the background
     # D157: `nfl app --tailscale NAME.ts.net` also answers on that name (read-only plus Ask)
     tailscale: str | None = None
+    # D158: after a run the app launched ends well, start the Forecast lab update.
+    # `nfl app` turns it on; tests leave it off unless they test it
+    chain: bool = False
+    chain_poll_s: float = 2.0
+    chain_tries: int = 30  # how often to re-check a lock that is still being released
+    chain_wait_s: float = 6 * 3600.0  # the longest a run is waited for
 
 
 class _Context:
@@ -239,7 +247,7 @@ class _Context:
                 "root": rehearsal_root(paths),
                 "lock_held": running is not None,
             }
-        return get_preflight(
+        pf = get_preflight(
             paths,
             plan,
             now=self.s.now(),
@@ -249,6 +257,78 @@ class _Context:
             running=running,
             rehearsal=rehearsal,
         )
+        # D158: does this app start the Forecast lab update after a run it launched?
+        pf["chain"] = bool(self.s.chain and not self.s.rehearsal)
+        return pf
+
+    # ---- D158: the Forecast lab follow-up after a successful run -------------------------------
+
+    def follow_up(self, started: dict[str, Any]) -> threading.Thread | None:
+        """After Run week N, a resume or the injury update ends well, start
+        `nfl forecastlab update` (the runner's `forecastlab_update` kind). Runs on a daemon
+        thread started by the POST that launched the run: nothing else ever starts it (no
+        page load, no GET). Off unless `AppSettings.chain` is set; never in rehearsal mode."""
+        if not self.s.chain or self.s.rehearsal or started.get("kind") not in CHAIN_AFTER:
+            return None
+        t = threading.Thread(
+            target=self._follow_up,
+            args=(str(started["run_id"]), started.get("week")),
+            daemon=True,
+            name="fl-chain",
+        )
+        t.start()
+        return t
+
+    def _follow_up(self, run_id: str, run_week: Any = None) -> None:
+        try:
+            deadline = time.monotonic() + self.s.chain_wait_s
+            while (code := self.runner.exit_code(run_id)) is None:  # the run is still going
+                if time.monotonic() > deadline:
+                    log.warning("forecast lab follow-up: gave up waiting for run %s", run_id)
+                    return
+                time.sleep(self.s.chain_poll_s)
+            if code != 0:  # failed, not ready, locked, or the app lost the child
+                log.warning("forecast lab follow-up: not started (run %s ended %s)", run_id, code)
+                return
+            for _ in range(self.s.chain_tries):  # the lock is released a moment after the exit
+                paths = self.paths()
+                pf = self.preflight(paths)
+                gate = pf.get("forecastlab") or {}
+                week = pf.get("week")
+                if isinstance(run_week, int) and week != run_week:
+                    # the calendar moved on while the run was going: not this week's
+                    log.warning("forecast lab follow-up: the week changed (%s)", week)
+                    return
+                if gate.get("allowed") and isinstance(week, int):
+                    try:
+                        out = self.runner.start(
+                            "forecastlab_update",
+                            week,
+                            paths=paths,
+                            preflight=pf,
+                            now=self.s.now(),
+                            lock_held=lock_dict(paths)["held"],
+                            follows=run_id,
+                        )
+                    except RunRefused as e:
+                        if e.code not in ("running", "locked"):
+                            log.warning("forecast lab follow-up refused: %s", e.message)
+                            return
+                    else:
+                        log.warning(
+                            "control room started: %s (run %s, after %s)",
+                            out["command"],
+                            out["run_id"],
+                            run_id,
+                        )
+                        return
+                elif gate.get("reason") != "A run is in progress.":
+                    log.warning("forecast lab follow-up: nothing to do (%s)", gate.get("reason"))
+                    return
+                time.sleep(self.s.chain_poll_s)
+            log.warning("forecast lab follow-up: the lock stayed busy after run %s", run_id)
+        except Exception:  # noqa: BLE001 - a follow-up never breaks the app
+            log.exception("forecast lab follow-up failed")
 
 
 def _error(status: int, code: str, message: str) -> SafeJSONResponse:
@@ -292,7 +372,8 @@ def create_app(settings: AppSettings) -> FastAPI:
             return _error(
                 422,
                 "bad_request",
-                "A run request is {kind: weekly | resume | injury_update, expect_week: 1-22}.",
+                "A run request is {kind: weekly | resume | injury_update | "
+                "playcalling_update | forecastlab_update, expect_week: 1-22}.",
             )
         if req.url.path.startswith("/api/weeks/"):
             return _error(422, "bad_request", "Season and week must be whole numbers in range.")
@@ -463,6 +544,7 @@ def create_app(settings: AppSettings) -> FastAPI:
             status = 409 if e.code in ("running", "locked") else 403
             return _error(status, e.code, e.message)
         log.warning("control room started: %s (run %s)", started["command"], started["run_id"])
+        ctx.follow_up(started)  # D158: the Forecast lab update, once this run ends well
         return SafeJSONResponse(strip_root(started, paths.root), 202)
 
     @app.get("/api/run/current")
@@ -741,6 +823,45 @@ def create_app(settings: AppSettings) -> FastAPI:
     def play_calls_route(season: int = Season, week: int = Week) -> SafeJSONResponse:
         paths = ctx.paths()
         return week_json(paths, playcall.get_play_calls(paths, season, week))
+
+    # ---- FL02 (D158): the Availability and Outcomes week tabs. Read-only; the player id and
+    # the target key are validated by pattern, and an unknown curve is a fixed-text 404.
+    @app.get("/api/weeks/{season}/{week}/availability")
+    def availability_route(
+        season: int = Season,
+        week: int = Week,
+        team: str | None = Query(None, pattern=r"^[A-Z]{2,3}$"),
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        body = forecastlab.get_availability(paths, season, week, team)
+        if body is None:
+            return _error(404, "not_found", "No players for that team this week.")
+        return week_json(paths, body)
+
+    @app.get("/api/weeks/{season}/{week}/outcomes")
+    def outcomes_route(
+        season: int = Season,
+        week: int = Week,
+        target: str | None = Query(None, pattern=r"^[a-z_]{1,20}-[a-z]{1,8}$"),
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        body = forecastlab.get_outcomes(paths, season, week, target)
+        if body is None:
+            return _error(404, "not_found", "No curves for that stat this week.")
+        return week_json(paths, body)
+
+    @app.get("/api/weeks/{season}/{week}/outcomes/curve")
+    def outcome_curve_route(
+        season: int = Season,
+        week: int = Week,
+        player: str = Query(pattern=r"^[0-9A-Za-z-]{1,20}$"),
+        target: str = Query(pattern=r"^[a-z_]{1,20}-[a-z]{1,8}$"),
+    ) -> SafeJSONResponse:
+        paths = ctx.paths()
+        body = forecastlab.get_curve(paths, season, week, player, target)
+        if body is None:
+            return _error(404, "not_found", "No curve for that player and stat this week.")
+        return week_json(paths, body)
 
     # ---- PC03: the play browser and the reconstructed play diagrams. The game id is
     # validated by pattern and existence (an unknown game or play is a fixed-text 404).

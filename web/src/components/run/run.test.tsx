@@ -78,6 +78,8 @@ function preflight(over: Partial<PreflightResponse> = {}): PreflightResponse {
       command: 'nfl playcalling update --auto --expect-week 5',
       steps: [],
     },
+    forecastlab: { allowed: false, reason: 'Everything is up to date.', command: 'nfl forecastlab update --auto --expect-week 5', steps: [] },
+    chain: true,
     dry_run_log: [],
     ...over,
   };
@@ -120,6 +122,7 @@ function runInfo(over: Partial<RunInfo> = {}): RunInfo {
     failed_step: null,
     has_events: true,
     output_tail: [],
+    follows: null,
     ...over,
   };
 }

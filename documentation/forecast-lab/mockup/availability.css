@@ -1,0 +1,72 @@
+/* The Availability week tab (FL02, D158). The control room's tokens only (styles.css is inlined
+   unchanged before this file); the React port copies this file to web/src/pages/week/forecastlab/
+   availability.css. */
+.av { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.flstrip { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; font-size: 12.5px; color: var(--ink-2); padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); }
+.flstrip > span + span::before { content: '·'; margin-right: 14px; color: var(--ink-3); }
+.flstrip b { color: var(--ink); font-weight: 600; }
+.av .notice p { margin: 4px 0 0; }
+
+/* the might-sit list: one row per player, the "if he sits" line under it */
+.av-sec .card-h .n { font-family: var(--font-display); font-size: 18px; color: var(--ink-3); }
+.av-rows { list-style: none; margin: 0; padding: 0; }
+.av-row { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(150px, .8fr) minmax(0, 1.2fr); gap: 6px 18px; align-items: center; padding: 11px 18px; border-bottom: 1px solid var(--line); }
+.av-row:last-child { border-bottom: 0; }
+.av-row .who b { font-weight: 600; color: var(--ink); }
+.av-row .who small { color: var(--ink-3); margin-left: 6px; font-size: 12px; }
+.av-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.av-chips .chip { font-size: 11px; padding: 1px 7px; }
+.av-chance { display: flex; flex-direction: column; gap: 3px; }
+.av-chance .big { font-family: var(--font-display); font-size: 26px; font-weight: 700; line-height: 1; color: var(--ink); }
+.av-chance .big small { font-family: var(--font-body); font-size: 12px; font-weight: 500; color: var(--ink-3); margin-left: 6px; }
+.av-chance .move { font-size: 12px; color: var(--ink-2); }
+.av-meter { position: relative; height: 6px; border-radius: 999px; background: var(--raised); border: 1px solid var(--line); max-width: 160px; }
+.av-meter b { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: var(--s1); }
+.av-meter i { position: absolute; top: -3px; width: 2px; height: 10px; background: var(--ink-2); transform: translateX(-1px); }
+.av-role { font-size: 13px; color: var(--ink-2); }
+.av-role b { color: var(--ink); font-weight: 600; }
+.av-inh { grid-column: 1 / -1; font-size: 12.5px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 2px 14px; padding-left: 12px; border-left: 2px solid var(--line-2); }
+.av-inh .lbl { color: var(--ink-3); }
+.av-inh b { color: var(--ink); font-weight: 600; }
+.av-after { grid-column: 1 / -1; font-size: 12.5px; color: var(--ink-2); }
+.av-after b { color: var(--ink); }
+.av-more { display: flex; justify-content: center; padding: 10px; border-top: 1px solid var(--line); }
+.av-empty { padding: 16px 18px; font-size: 13px; color: var(--ink-3); }
+details.av-sec > summary { list-style: none; cursor: pointer; }
+details.av-sec > summary::-webkit-details-marker { display: none; }
+details.av-sec > summary .card-h h2::before { content: '▸ '; color: var(--ink-3); }
+details.av-sec[open] > summary .card-h h2::before { content: '▾ '; }
+details.av-sec > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 860px) {
+  .av-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .av-row .av-role { grid-column: 1 / -1; }
+}
+
+/* the role changes: four small lists */
+.av-movers { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 12px; }
+.av-mv h3 { font-family: var(--font-display); font-size: 17px; margin: 0; }
+.av-mv ol { list-style: none; margin: 0; padding: 0; }
+.av-mv li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.av-mv li:last-child { border-bottom: 0; }
+.av-mv li small { color: var(--ink-3); font-size: 11.5px; margin-left: 4px; }
+.av-mv .ft { font-variant-numeric: tabular-nums; color: var(--ink-2); white-space: nowrap; }
+.av-mv .d { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); white-space: nowrap; }
+
+/* every player: the team picker, then that team's table */
+.av-teams { display: flex; flex-wrap: wrap; gap: 6px; }
+.av-team { border: 1px solid var(--line-2); background: var(--panel); color: var(--ink-2); border-radius: 6px; padding: 3px 8px; font-size: 12.5px; font-family: var(--font-mono); cursor: pointer; }
+.av-team:hover { color: var(--ink); border-color: var(--ink-3); }
+.av-team[aria-pressed="true"] { background: var(--accent-wash); border-color: color-mix(in srgb, var(--accent) 60%, transparent); color: var(--ink); font-weight: 600; }
+.av-team:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.av-tbl tr.av-side td { background: var(--raised); font-weight: 600; color: var(--ink-2); font-size: 12px; letter-spacing: .05em; text-transform: uppercase; }
+.av-tbl td small { color: var(--ink-3); font-size: 11.5px; margin-left: 4px; }
+.av-tbl tr.risk td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+@media (max-width: 720px) { .av-tbl .wide { display: none; } }
+
+/* how good it is, and how it did */
+.av-good { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px 18px; font-size: 13px; color: var(--ink-2); }
+.av-good b { color: var(--ink); font-family: var(--font-display); font-size: 20px; display: block; line-height: 1.1; }
+.av-score td.best { font-weight: 700; color: var(--ink); }
+
+/* read by screen readers only */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }

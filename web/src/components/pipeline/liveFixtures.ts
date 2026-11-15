@@ -175,6 +175,7 @@ export function runInfo(over: Partial<RunInfo> = {}): RunInfo {
     material: null,
     has_events: true,
     output_tail: [],
+    follows: null,
     ...over,
   };
 }

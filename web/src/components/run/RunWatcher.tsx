@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { invalidateAfterRun, useRunCurrent } from '../../api/client';
 import type { RunCurrent } from '../../api/types';
+import { labChainToast } from './forecastLabRunModel';
 import { notify } from './notify';
 import { followed, markSeen, runEndToast, runKey, useRunUi } from './runUi';
 
@@ -24,7 +25,15 @@ export function RunWatcher() {
     prev.current = d;
     const run = d.run;
     if (d.state === 'running') {
-      if (run) markSeen(ui, run);
+      if (!run) return;
+      // D158: the Forecast lab update the app starts by itself after a run this page followed
+      // is announced once when it starts (the button's own press has its own toast)
+      const key = runKey(run);
+      if (run.kind === 'forecastlab_update' && run.follows && !ui.announced.has(`start:${key}`) && (ui.seenRunning.has(run.follows) || ui.launched.has(run.follows))) {
+        ui.announced.add(`start:${key}`);
+        ui.toast(labChainToast(run));
+      }
+      markSeen(ui, run);
       return;
     }
     if (d.state === 'finished' && run) {

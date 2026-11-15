@@ -2338,6 +2338,272 @@ def playcalling_library(
         raise typer.Exit(1) from None
 
 
+# --- Forecast lab (FL00+, documentation/forecast-lab/, D158): new models beside production ----
+forecastlab_app = typer.Typer(
+    help="Forecast lab: availability and role, outcome curves (FL00+, D158).",
+    no_args_is_help=True,
+)
+app.add_typer(forecastlab_app, name="forecastlab")
+_FL_MODEL = typer.Option(..., "--model", help="availability | curves.")
+
+
+def _fl_model(model: str) -> str:
+    if model not in ("availability", "curves"):
+        raise typer.BadParameter("--model is availability or curves")
+    return model
+
+
+def _fl_seasons(text: str | None) -> list[int] | None:
+    if not text:
+        return None
+    a, _, b = text.partition("-")
+    return list(range(int(a), int(b or a) + 1))
+
+
+@forecastlab_app.command("backtest")
+def forecastlab_backtest(
+    model: str = _FL_MODEL,
+    seasons: str | None = typer.Option(None, help="Seasons, e.g. 2019-2025 (default: settings)."),
+    targets: str | None = typer.Option(None, help="curves: comma-separated target keys."),
+    views: str | None = typer.Option(None, help="availability: tuesday,saturday (default both)."),
+    tune: bool = typer.Option(False, "--tune", help="Run on the tuning window only."),
+    promote: bool = typer.Option(
+        False, "--promote", help="What passes its ship rule -> production."
+    ),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
+    smoke: bool = typer.Option(False, "--smoke", help="W&B: group forecast-lab-smoke."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Walk-forward backtest of a Forecast lab model against its baselines, with the
+    pre-registered ship rule per output (FL00) or per target (FL01)."""
+    from rich.markup import escape
+
+    common = dict(
+        seasons=_fl_seasons(seasons),
+        tune=tune,
+        promote=promote,
+        use_wandb=not no_wandb,
+        launched_by=launched_by,
+        smoke=smoke,
+        log=console.print,
+    )
+    try:
+        if _fl_model(model) == "availability":
+            from nflengine.forecastlab.availability_runs import run_backtest
+
+            extra = {"views": tuple(v.strip() for v in views.split(",") if v.strip())}
+            out = run_backtest(**common, **(extra if views else {}))
+        else:
+            from nflengine.forecastlab.curves_runs import run_backtest
+
+            keys = [k.strip() for k in targets.split(",") if k.strip()] if targets else None
+            out = run_backtest(targets=keys, **common)
+    except (FileNotFoundError, ValueError, KeyError, RuntimeError) as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(1) from e
+    t = Table(title=f"forecast lab: {model} backtest")
+    for col in ("what", "verdict"):
+        t.add_column(col)
+    if model == "availability":
+        for view, res in (out.get("views") or {}).items():
+            for name, v in (res.get("verdict") or {}).items():
+                t.add_row(f"{view} / {name}", "ships" if v.get("ships") else "not shipped")
+    else:
+        for key, res in (out.get("targets") or {}).items():
+            ships = (res.get("verdict") or {}).get("ships")
+            t.add_row(key, "ships" if ships else "not shipped")
+    console.print(t)
+    if out.get("version"):
+        console.print(f"production: {model}-model {out['version']}")
+    if out.get("url"):
+        console.print(f"W&B: {out['url']}")
+
+
+@forecastlab_app.command("predict")
+def forecastlab_predict(
+    model: str = _FL_MODEL,
+    season: int = typer.Option(..., help="Season (e.g. 2026)."),
+    week: int = typer.Option(..., help="The week to predict."),
+    view: str = typer.Option("tuesday", help="availability: tuesday | saturday."),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Make a week's availability view or outcome curves by hand (the update does this when
+    it's due) -> forecastlab/<S>/week<NN>/."""
+    from rich.markup import escape
+
+    common = dict(use_wandb=not no_wandb, launched_by=launched_by, log=console.print)
+    try:
+        if _fl_model(model) == "availability":
+            from nflengine.forecastlab.availability_runs import run_predict
+
+            if view not in ("tuesday", "saturday"):
+                raise typer.BadParameter("--view is tuesday or saturday")
+            out = run_predict(season, week, view=view, **common)
+        else:
+            from nflengine.forecastlab.curves_runs import run_predict
+
+            out = run_predict(season, week, **common)
+    except (FileNotFoundError, ValueError, KeyError, RuntimeError) as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(1) from e
+    console.print(f"{model}: {out['frame'].height} rows for {season} week {week}")
+    if out.get("url"):
+        console.print(f"W&B: {out['url']}")
+
+
+@forecastlab_app.command("grade")
+def forecastlab_grade(
+    model: str = _FL_MODEL,
+    season: int = typer.Option(..., help="Season (e.g. 2026)."),
+    week: int | None = typer.Option(None, help="Week to grade."),
+    weeks: str | None = typer.Option(None, help="A range of weeks, e.g. 4-9."),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Grade a finished week's availability or curves against what happened -> the season's
+    scoreboard file."""
+    from rich.markup import escape
+
+    if _fl_model(model) == "availability":
+        from nflengine.forecastlab.availability_runs import run_grade
+    else:
+        from nflengine.forecastlab.curves_runs import run_grade
+    for w in _weeks_option(week, weeks):
+        try:
+            out = run_grade(
+                season, w, use_wandb=not no_wandb, launched_by=launched_by, log=console.print
+            )
+        except (FileNotFoundError, ValueError, KeyError, RuntimeError) as e:
+            console.print(f"[red]{escape(str(e))}[/]")
+            raise typer.Exit(1) from e
+        console.print(f"{model}: week {w} graded ({out['frame'].height} rows)")
+        if out.get("url"):
+            console.print(f"W&B: {out['url']}")
+
+
+@forecastlab_app.command("update")
+def forecastlab_update(
+    season: int | None = typer.Option(None, help="Season (omit with --auto)."),
+    week: int | None = typer.Option(None, help="The week to refresh (omit with --auto)."),
+    auto: bool = typer.Option(False, "--auto", help="The week the calendar is in."),
+    expect_week: int | None = typer.Option(
+        None,
+        "--expect-week",
+        min=1,
+        max=22,
+        help="With --auto: stop before anything (exit 6) unless the calendar's week is this one "
+        "(the control room sends it).",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Only list what's due."),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log the steps to W&B."),
+    launched_by: str | None = LAUNCHED_BY,
+    app_run: str | None = APP_RUN,
+) -> None:
+    """Everything of the Forecast lab that's due, in order (D158): this week's availability
+    view(s), this week's outcome curves, last week's grades. The control room starts it after
+    Run week N and after the Saturday injury update. Holds the weekly-run lock. Exit codes:
+    0 done (or nothing due), 1 a step failed, 4 another run holds the lock, 5 data drive
+    missing, 6 the calendar's week isn't --expect-week."""
+    import datetime as dt
+
+    from rich.markup import escape
+
+    from nflengine.forecastlab import schema as FS
+    from nflengine.forecastlab import update as U
+    from nflengine.ops import events
+    from nflengine.ops.calendar import load_schedules, plan_week
+    from nflengine.ops.lock import LockHeld, lock_path, run_lock
+    from nflengine.paths import DataRootError, ensure_data_root
+    from nflengine.weekly import EXIT_LOCKED, EXIT_NO_DRIVE, EXIT_WEEK_MISMATCH, scrub
+
+    if expect_week is not None and not auto:
+        raise typer.BadParameter("--expect-week only works with --auto")
+    run_id = _app_run(app_run)
+    try:
+        paths = ensure_data_root(create_dirs=expect_week is None)
+    except DataRootError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(EXIT_NO_DRIVE) from None
+    if auto:
+        plan = plan_week(load_schedules(paths))
+        season, week = plan.season, plan.week
+        if expect_week is not None and week != expect_week:  # before any write
+            found = f"week {week}" if week is not None else "no week (offseason)"
+            console.print(
+                f"[red]the calendar's week is {found}, not week {expect_week} (--expect-week): "
+                "nothing was run[/]"
+            )
+            raise typer.Exit(EXIT_WEEK_MISMATCH)
+        if week is None:
+            console.print("offseason: nothing to update")
+            raise typer.Exit(0)
+        if expect_week is not None:
+            paths = ensure_data_root()
+    if season is None or week is None:
+        raise typer.BadParameter("give --season and --week, or --auto")
+    steps = U.plan_update(paths, season, week, dt.datetime.now(dt.UTC))
+    for s in steps:
+        mark = "[green]due[/]" if s.due else "[dim]skip[/]"
+        console.print(f"{mark} {s.step}: {escape(s.label)}: {escape(s.reason)}")
+    if dry_run:
+        return
+    todo = U.due(steps)
+    if not todo:
+        console.print("[green]nothing is due: everything is up to date[/]")
+        return
+    command = f"nfl forecastlab update --season {season} --week {week}"
+    rid = run_id or events.new_run_id()
+    started = dt.datetime.now(dt.UTC)
+    try:
+        with (
+            run_lock(lock_path(paths.runs), command, run_id=rid),
+            events.writing(events.events_dir(FS.season_dir(paths, season)) / f"{rid}.jsonl", rid),
+        ):
+            log = events.tee(console.print)  # each console line is also a `log` event (CR02)
+            events.run_start(
+                kind="forecastlab_update",
+                command="nfl forecastlab update --auto" if auto else command,
+                season=season,
+                week=week,
+                steps=[s.step for s in todo],
+                launched_by=launched_by,
+                via="control-room" if run_id else None,
+                plan=[f"{s.step}: {s.reason}" for s in steps],
+            )
+            results = U.run_update(
+                season,
+                week,
+                steps=steps,
+                use_wandb=not no_wandb,
+                launched_by=launched_by,
+                log=log,
+                paths=paths,
+                on_step=lambda name, label: events.step_start(name),
+                on_step_end=lambda r: events.step_end(r.step, r.status, r.seconds, r.detail),
+            )
+            status, message = U.summary(results)
+            failed = next((r.step for r in results if r.status == "failed"), None)
+            events.run_end(
+                status=status,
+                exit_code=0 if status == "ok" else 1,
+                message=message,
+                failed_step=failed,
+            )
+    except LockHeld as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(EXIT_LOCKED) from None
+    except Exception as e:
+        console.print(
+            f"[red]forecast lab update failed: {escape(scrub(f'{type(e).__name__}: {e}'))}[/]"
+        )
+        raise typer.Exit(1) from None
+    took = (dt.datetime.now(dt.UTC) - started).total_seconds()
+    console.print(f"{'[green]' if status == 'ok' else '[red]'}{escape(message)}[/] ({took:.0f} s)")
+    if status != "ok":
+        raise typer.Exit(1)
+
+
 # --- Ask the Engine (AE00+, documentation/ask-the-engine/): questions in plain English -------
 class _AskGroup(typer.core.TyperGroup):
     """`nfl ask "<question>"` runs the default `question` command; `nfl ask eval` / `pick` are

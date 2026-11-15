@@ -6,6 +6,7 @@ import { createContext, useContext } from 'react';
 import { ApiError, useRunCurrent } from '../../api/client';
 import { useNow } from '../../lib/useNow';
 import type { RunInfo } from '../../api/types';
+import { labEndToast } from './forecastLabRunModel';
 import { playcallEndToast } from './playcallUpdateModel';
 
 export type ToastTone = 'ok' | 'warn' | 'err';
@@ -123,6 +124,7 @@ export function injuryEndToast(run: RunInfo | null): ToastInput {
 export function runEndToast(run: RunInfo): ToastInput {
   if (run.kind === 'injury_update') return injuryEndToast(run);
   if (run.kind === 'playcalling_update') return playcallEndToast(run); // D132
+  if (run.kind === 'forecastlab_update') return labEndToast(run); // D158: never "Week N published"
   const w = run.week != null ? `Week ${run.week}` : 'The run';
   const text = run.message ?? undefined;
   const status = run.status ?? '';

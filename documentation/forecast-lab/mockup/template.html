@@ -1,0 +1,46 @@
+<meta charset="utf-8">
+<title>Outcomes Tab Mockup</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+{{CSS}}
+</style>
+<style>
+{{OCCSS}}
+</style>
+<style>
+/* mockup-only: the controls strip and a slim shell (the app's sidebar is unchanged) */
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); }
+.mockbar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding-block: 8px; font-size: 12px; color: var(--ink-2);
+  background: repeating-linear-gradient(135deg, var(--raised) 0 10px, var(--panel) 10px 20px); border-bottom: 1px dashed var(--line-2); }
+.mockbar .tag { font-weight: 700; letter-spacing: .06em; color: var(--accent-ink); }
+.mockbar .grp { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.mockbar .lbl { color: var(--ink-3); }
+.mockbar .hint { color: var(--ink-3); }
+.mshell { max-width: 1400px; margin: 0 auto; }
+.mshell .tabs { overflow-x: auto; }
+.mtop { padding-block: 18px 10px; }
+.mtop h1 { font-family: var(--font-display); font-size: 34px; margin: 2px 0 0; }
+.mview { padding-block: 22px 60px; }
+.tabs .tab { text-decoration: none; }
+.mtop, .mview, .mockbar { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+@media (min-width: 900px) { .mtop, .mview { padding-left: max(28px, env(safe-area-inset-left, 0px)); padding-right: max(28px, env(safe-area-inset-right, 0px)); } }
+</style>
+<div class="mockbar" aria-label="Mockup controls">
+  <span class="tag">MOCKUP CONTROLS · not part of the app</span>
+  <div class="grp"><span class="lbl">Theme</span><span class="seg" id="palPick"><button type="button" data-v="turf">Turf &amp; Pylon</button><button type="button" data-v="playbook">Playbook</button></span>
+    <span class="seg" id="modePick"><button type="button" data-v="dark">Dark</button><button type="button" data-v="light">Light</button></span></div>
+  <div class="grp"><span class="lbl">State</span><span class="seg" id="statePick"><button type="button" data-v="ok">Before the games (real)</button><button type="button" data-v="graded">After the games *</button><button type="button" data-v="none">Nothing yet (real)</button><button type="button" data-v="no_model">No model (real text)</button><button type="button" data-v="loading">Loading</button></span></div>
+  <span class="hint">Real answers for 2026 week 10 (four of the ten stats dumped; curves for the first rows of each). * synthetic: the actuals and the grades are drawn from the curves for the mockup.</span>
+</div>
+<div class="mshell">
+  <header class="mtop"><div class="eyebrow">2026 REGULAR SEASON · THIS WEEK</div><h1>Week 10</h1></header>
+  <nav class="tabs" aria-label="Week sections" id="tabs"></nav>
+  <section class="mview" id="view" aria-label="Outcomes"></section>
+</div>
+<script id="data" type="application/json">{{DATA}}</script>
+<script>
+{{JS}}
+</script>

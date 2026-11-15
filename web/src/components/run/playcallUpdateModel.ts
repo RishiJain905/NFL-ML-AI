@@ -10,13 +10,22 @@ import type { ToastInput } from './runUi';
  *  step that isn't in this run. */
 export type UpdateStepState = 'will' | 'off' | 'pending' | 'running' | 'ok' | 'failed' | 'skipped';
 
-export interface UpdateStepView extends PlaycallUpdateStep {
-  state: UpdateStepState;
-  detail: string | null; // step_end's detail once the step ended
+/** A plan step of an update run (play calling's, or the Forecast lab's since D158). */
+export interface UpdatePlanStep {
+  step: string;
+  label: string;
+  due: boolean;
+  reason: string;
+  week: number | null;
 }
 
-export interface UpdateFold {
-  steps: UpdateStepView[];
+export type UpdateStepView<T extends UpdatePlanStep = PlaycallUpdateStep> = T & {
+  state: UpdateStepState;
+  detail: string | null; // step_end's detail once the step ended
+};
+
+export interface UpdateFold<T extends UpdatePlanStep = PlaycallUpdateStep> {
+  steps: UpdateStepView<T>[];
   log: Extract<RunEvent, { type: 'log' }>[];
   end: Extract<RunEvent, { type: 'run_end' }> | null;
   started: boolean; // the run's run_start has been seen
@@ -43,7 +52,7 @@ export const STATE_ICON: Record<UpdateStepState, string> = {
 };
 
 /** The plan's steps with the run's progress on them (the events of one update run). */
-export function foldUpdate(plan: PlaycallUpdateStep[], events: RunEvent[]): UpdateFold {
+export function foldUpdate<T extends UpdatePlanStep>(plan: T[], events: RunEvent[]): UpdateFold<T> {
   const start = events.find((e): e is Extract<RunEvent, { type: 'run_start' }> => e.type === 'run_start') ?? null;
   const byStep = new Map<string, { state: UpdateStepState; detail: string | null }>();
   for (const s of plan) {

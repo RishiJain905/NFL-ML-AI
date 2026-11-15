@@ -70,6 +70,7 @@ def serve(
         fail_at=fail_at,
         live_replay=feed,
         warm_connections=True,
+        chain=True,
         tailscale=tailscale,
     )
     app = srv.create_app(settings)

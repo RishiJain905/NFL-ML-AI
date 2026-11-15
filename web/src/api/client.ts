@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AlertsResponse,
+  AvailabilityResponse,
   ApiErrorBody,
   AskExamplesResponse,
   AskRequest,
@@ -30,6 +31,8 @@ import type {
   MlopsWandbResponse,
   ModelCardResponse,
   ModelsResponse,
+  OutcomeCurve,
+  OutcomesResponse,
   PipelineResponse,
   PlayCallsResponse,
   PlaycallHistoryResponse,
@@ -151,6 +154,49 @@ export const useGraph = (season: number, week: number) =>
 /** PC01: the week's matchups of tendencies (descriptive; PC02 adds the forecast). */
 export const usePlayCalls = (season: number, week: number) =>
   useWeekQuery<PlayCallsResponse>(season, week, 'play-calls');
+/** FL02 (D158): the Availability and Outcomes tabs (read-only; refetched after an update ends,
+ *  with every ['week'] query). */
+export function useAvailability(season: number, week: number, team: string | null = null) {
+  const valid = Number.isInteger(season) && Number.isInteger(week);
+  const query = team ? `?team=${encodeURIComponent(team)}` : '';
+  return useQuery({
+    queryKey: ['week', season, week, 'availability', query],
+    queryFn: () => apiGet<AvailabilityResponse>(weekPath(season, week, 'availability') + query),
+    enabled: valid,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+    // the same week's other team only (never another week's answer)
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey[1] === season && prevQuery?.queryKey[2] === week ? prev : undefined,
+  });
+}
+/** `target`: the stat whose rows come back (null: the server's default, receiving yards). The
+ *  previous stat's answer stays on screen while the next one loads. */
+export function useOutcomes(season: number, week: number, target: string | null = null) {
+  const valid = Number.isInteger(season) && Number.isInteger(week);
+  const query = target ? `?target=${encodeURIComponent(target)}` : '';
+  return useQuery({
+    queryKey: ['week', season, week, 'outcomes', query],
+    queryFn: () => apiGet<OutcomesResponse>(weekPath(season, week, 'outcomes') + query),
+    enabled: valid,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+    // the same week's other stat only (never another week's answer)
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey[1] === season && prevQuery?.queryKey[2] === week ? prev : undefined,
+  });
+}
+/** One player's whole curve for a stat (fetched only once a row is picked). */
+export function useOutcomeCurve(season: number, week: number, player: string | null, target: string | null) {
+  const on = Number.isInteger(season) && Number.isInteger(week) && player != null && target != null;
+  const q = on ? `?player=${encodeURIComponent(player)}&target=${encodeURIComponent(target)}` : '';
+  return useQuery({
+    queryKey: ['week', season, week, 'outcomes', 'curve', player, target],
+    queryFn: () => apiGet<OutcomeCurve>(`${weekPath(season, week, 'outcomes/curve')}${q}`),
+    enabled: on,
+    staleTime: 60_000,
+  });
+}
 
 // ---- CR02: run control. The server builds the command; the browser sends a kind and its
 // expected week (a cross-check). POSTs carry the launch token (security.py).

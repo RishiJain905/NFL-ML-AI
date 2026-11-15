@@ -53,6 +53,13 @@ export function RunConfirm({
           touching anything (<code>--expect-week</code>).
         </span>
       )}
+      {/* D158: the app starts the Forecast lab update by itself once the run publishes */}
+      {pf.chain && !rehearsal ? (
+        <span>
+          Once the week is published, the app refreshes availability and outcome curves (the Availability and Outcomes tabs). A
+          failure there never touches the published week.
+        </span>
+      ) : null}
     </ConfirmDialog>
   );
 }

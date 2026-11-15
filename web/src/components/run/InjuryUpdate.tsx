@@ -34,6 +34,7 @@ export function InjuryUpdateButton({
   let reason = fallbackReason;
   if (pf?.mode === 'rehearsal') reason = gate?.reason ?? 'Not offered in rehearsal mode';
   else if (running?.kind === 'injury_update') reason = 'Running now: its log is on the Pipeline tab';
+  else if (running?.kind === 'forecastlab_update') reason = 'Availability and outcomes are updating: open again when that ends';
   else if (running) reason = 'Another run is in progress';
   else if (gate) {
     allowed = gate.allowed && !start.isPending;
@@ -111,6 +112,12 @@ export function InjuryUpdateButton({
             ) : null}
           </dl>
           {gate.command ? <div className="cmd">{gate.command}</div> : null}
+          {pf?.chain ? (
+            <span>
+              Afterwards the app makes the Saturday availability view (the Availability tab). The outcome curves stay on
+              Tuesday's projections. A failure there never touches the published week.
+            </span>
+          ) : null}
         </ConfirmDialog>
       ) : null}
     </div>

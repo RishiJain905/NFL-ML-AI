@@ -38,6 +38,8 @@ function preflight(gate: Partial<PreflightResponse['playcalling']> = {}): Prefli
     resume: { allowed: false, reason: null, command: null, step: null },
     injury_update: { allowed: false, reason: 'Opens Saturday.', command: null, opens: null, closes: null, material_last: null },
     playcalling: { allowed: true, reason: null, command: COMMAND, steps: STEPS, ...gate },
+    forecastlab: { allowed: false, reason: 'Everything is up to date.', command: 'nfl forecastlab update --auto --expect-week 5', steps: [] },
+    chain: true,
     dry_run_log: [],
   };
 }
@@ -60,6 +62,7 @@ function runInfo(over: Partial<RunInfo> = {}): RunInfo {
     material: null,
     has_events: true,
     output_tail: [],
+    follows: null,
     ...over,
   };
 }

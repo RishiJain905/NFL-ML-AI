@@ -411,11 +411,19 @@ export const runStreamKey = (run: RunInfo): string => run.run_id ?? run.started 
 /** The run's kind from `run/current` (a terminal run: judged by its command), until its `run_start` is seen. */
 export function runKindOf(info?: { kind: string; command: string } | null): RunKindName {
   const kind = info?.kind;
-  if (kind === 'weekly' || kind === 'resume' || kind === 'injury_update' || kind === 'playcalling_update' || kind === 'rehearsal')
+  if (
+    kind === 'weekly' ||
+    kind === 'resume' ||
+    kind === 'injury_update' ||
+    kind === 'playcalling_update' ||
+    kind === 'forecastlab_update' ||
+    kind === 'rehearsal'
+  )
     return kind;
   const cmd = info?.command ?? '';
   if (/injury-update/.test(cmd)) return 'injury_update';
   if (/playcalling update/.test(cmd)) return 'playcalling_update'; // D132: never a weekly run
+  if (/forecastlab update/.test(cmd)) return 'forecastlab_update'; // D158: never a weekly run
   if (/rehears/.test(cmd)) return 'rehearsal';
   if (/--from-step/.test(cmd)) return 'resume';
   return 'weekly';

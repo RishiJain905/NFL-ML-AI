@@ -21,6 +21,12 @@ SCANNED_GETS = [
         f"/api/weeks/2026/5/{tab}"
         for tab in ("pipeline", "digest", "games", "players", "results", "graph")
     ],
+    # FL02 (D158): the Availability and Outcomes tabs
+    "/api/weeks/2026/5/availability",
+    "/api/weeks/2026/5/availability?team=TB",
+    "/api/weeks/2026/5/outcomes",
+    "/api/weeks/2026/5/outcomes?target=rec_yds-wrte",
+    "/api/weeks/2026/5/outcomes/curve?player=00-0033873&target=rec_yds-wrte",
     # CR03 (also scanned with a leaky fake W&B in test_app_cr03.py)
     *[f"/api/weeks/2026/5/mlops/{s}" for s in ("health", "wandb", "artifacts")],
     "/api/season/2026/scorecard?source=live",

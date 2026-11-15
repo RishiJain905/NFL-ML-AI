@@ -418,6 +418,7 @@ def get_preflight(
         material_last=material,
     )
     playcalling = playcalling_gate(paths, season, week, now, published=published, busy=busy)
+    forecastlab = forecastlab_gate(paths, season, week, now, published=published, busy=busy)
 
     return {
         "checked_at": now,
@@ -441,6 +442,7 @@ def get_preflight(
         "resume": resume,
         "injury_update": injury,
         "playcalling": playcalling,
+        "forecastlab": forecastlab,
         "dry_run_log": _dry_run_log(plan, season, week, lock["held"])
         if plan is not None and week is not None
         else [],
@@ -482,6 +484,58 @@ def playcalling_gate(
         reason is None,
         reason,
         f"nfl playcalling update --auto --expect-week {week}",
+        steps=[
+            {
+                "step": x.step,
+                "label": clean(x.label, paths, 120),
+                "due": x.due,
+                "reason": clean(x.reason, paths, 240),
+                "week": x.week,
+            }
+            for x in steps
+        ],
+    )
+
+
+def forecastlab_gate(
+    paths: DataPaths,
+    season: int | None,
+    week: int | None,
+    now: dt.datetime,
+    *,
+    published: bool,
+    busy: bool,
+) -> dict[str, Any]:
+    """The Forecast lab update (D158): what `nfl forecastlab update --auto` would do now
+    (`steps`: each with `due` and why). The app starts it after a successful Run week N or
+    injury update; the Availability and Outcomes tabs' **Update** button runs the same
+    command. Allowed once the week's Tuesday run is published, nothing holds the lock, and a
+    step is due."""
+    if season is None or week is None:
+        return _gate(False, "No week in the calendar.", None, steps=[])
+    from nflengine.forecastlab.update import due, plan_update
+
+    try:
+        steps = plan_update(paths, season, week, now)
+    except Exception:  # noqa: BLE001 - a damaged file never breaks the pre-flight
+        steps = []
+    todo = due(steps)
+    if not published:
+        reason: str | None = f"Needs this week's Tuesday run first (Run week {week})."
+    elif busy:
+        reason = "A run is in progress."
+    elif not steps:
+        reason = "Couldn't read the Forecast lab files."
+    elif not todo and any(x.reason.startswith("no promoted") for x in steps):
+        reason = "Nothing to do until the models are promoted."
+    elif not todo:
+        reason = "Everything is up to date."
+    else:
+        reason = None
+    return _gate(
+        reason is None,
+        reason,
+        f"nfl forecastlab update --auto --expect-week {week}",
         steps=[
             {
                 "step": x.step,
@@ -602,5 +656,6 @@ def _rehearsal_preflight(
             False, "Not in rehearsal mode.", None, opens=None, closes=None, material_last=None
         ),
         "playcalling": _gate(False, "Not in rehearsal mode.", None, steps=[]),
+        "forecastlab": _gate(False, "Not in rehearsal mode.", None, steps=[]),
         "dry_run_log": [],
     }

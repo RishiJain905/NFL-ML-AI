@@ -9,6 +9,7 @@ the command **in code** from three allowed kinds and nothing else:
 | `resume` | `nfl weekly run --season S --week N --from-step X --promote` (X = the failed step) |
 | `injury_update` | `nfl weekly injury-update --auto` |
 | `playcalling_update` | `nfl playcalling update --auto --expect-week N` (D132: what's due) |
+| `forecastlab_update` | `nfl forecastlab update --auto --expect-week N` (D158: what's due) |
 
 Under `nfl app --rehearsal` they become `nfl weekly rehearse --season S --week N --out
 <data root>/rehearsals/control-room [--fresh | --steps <from the failed step>]` instead.
@@ -45,7 +46,9 @@ from nflengine.ops import events as E
 from nflengine.ops.lock import is_locked, lock_path, read_holder
 from nflengine.paths import DataPaths
 
-KINDS = ("weekly", "resume", "injury_update", "playcalling_update")
+KINDS = ("weekly", "resume", "injury_update", "playcalling_update", "forecastlab_update")
+# the kinds whose success starts the Forecast lab follow-up (D158)
+CHAIN_AFTER = ("weekly", "resume", "injury_update")
 APP_DIR = ("cache", "control-room")
 REPO_ROOT = Path(__file__).resolve().parents[3]
 TAIL_LINES = 30
@@ -73,7 +76,8 @@ class RunRefused(Exception):
 @dataclass
 class Launch:
     run_id: str
-    kind: str  # weekly | resume | injury_update | playcalling_update | rehearsal
+    # weekly | resume | injury_update | playcalling_update | forecastlab_update | rehearsal
+    kind: str
     request_kind: str  # the browser's kind
     argv: list[str]  # never leaves the server (absolute paths)
     command: str  # the display form
@@ -87,6 +91,13 @@ class _Child:
     launch: Launch
     proc: Any  # subprocess.Popen, or a test fake with .poll() / .pid / .returncode
     started: dt.datetime
+
+
+def run_id_or_none(value: Any) -> str | None:
+    """`value` when it is a well-formed run id, else None. A hand-edited record can hold
+    anything (a list, a number): `events.valid_run_id` expects text, so check the type
+    first (the test worker's find, D158)."""
+    return value if isinstance(value, str) and E.valid_run_id(value) else None
 
 
 def new_run_id(now: dt.datetime | None = None) -> str:
@@ -118,7 +129,8 @@ def build_launch(
     if kind not in KINDS:
         raise RunRefused(
             "not_allowed",
-            "Unknown kind: the app runs only weekly, resume, injury_update and playcalling_update.",
+            "Unknown kind: the app runs only weekly, resume, injury_update, playcalling_update "
+            "and forecastlab_update.",
         )
     season, week = preflight.get("season"), preflight.get("week")
     if not isinstance(season, int) or not isinstance(week, int):
@@ -128,6 +140,7 @@ def build_launch(
         "resume": preflight["resume"],
         "injury_update": preflight["injury_update"],
         "playcalling_update": preflight.get("playcalling") or {},
+        "forecastlab_update": preflight.get("forecastlab") or {},
     }[kind]
     if not gate.get("allowed"):
         raise RunRefused("not_allowed", gate.get("reason") or "Not allowed right now.")
@@ -143,6 +156,18 @@ def build_launch(
         ]  # fmt: skip
         shown = f"nfl playcalling update --auto --expect-week {week}"
         folder = E.events_dir(paths.playcalling / str(season))
+        return Launch(run_id, kind, kind, argv, shown, season, week, folder)
+    if kind == "forecastlab_update":  # D158: its own events folder, like play calling
+        if rehearsal:
+            raise RunRefused("not_allowed", "No Forecast lab update in rehearsal mode.")
+        from nflengine.forecastlab.schema import season_dir
+
+        argv = [
+            python, "-m", "nflengine.cli", "forecastlab", "update", "--auto",
+            "--expect-week", str(week), "--launched-by", "rishi", *tail,
+        ]  # fmt: skip
+        shown = f"nfl forecastlab update --auto --expect-week {week}"
+        folder = E.events_dir(season_dir(paths, season))
         return Launch(run_id, kind, kind, argv, shown, season, week, folder)
     if rehearsal:
         root = rehearsal_root(paths)
@@ -365,9 +390,11 @@ class Runner:
         preflight: dict[str, Any],
         now: dt.datetime,
         lock_held: bool,
+        follows: str | None = None,
     ) -> dict[str, Any]:
         """Start `kind`, or raise `RunRefused`. The browser's `expect_week` must equal the
-        server's week (a cross-check: it never goes into the command)."""
+        server's week (a cross-check: it never goes into the command). `follows`: the run id
+        this launch was chained after (the Forecast lab follow-up, D158); None for a press."""
         with self._lock:
             if self._alive() or self._starting(paths, now) is not None:
                 raise RunRefused("running", "A run the app started is still going.")
@@ -407,6 +434,7 @@ class Runner:
                 "started": _iso(now),
                 "pid": getattr(proc, "pid", None),
                 "events_dir": str(launch.events_dir),
+                "follows": run_id_or_none(follows),
             }
             tmp = folder / "runs" / f"{run_id}.json.tmp"
             tmp.write_text(json.dumps(record, indent=2), encoding="utf-8")
@@ -418,6 +446,16 @@ class Runner:
                 "season": launch.season,
                 "week": launch.week,
             }
+
+    def exit_code(self, run_id: str) -> int | None:
+        """The exit code of the child this app launched as `run_id`: None while it runs,
+        -1 when the app no longer holds that child (another launch replaced it, or the
+        app restarted). The follow-up after a run waits on this (D158)."""
+        child = self._child
+        if child is None or child.launch.run_id != run_id:
+            return -1
+        code = child.proc.poll()
+        return None if code is None else int(code)
 
     def _alive(self) -> bool:
         return self._child is not None and self._child.proc.poll() is None
@@ -451,7 +489,7 @@ class Runner:
                 rec = json.loads(f.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 continue
-            if isinstance(rec, dict) and E.valid_run_id(rec.get("run_id")):
+            if isinstance(rec, dict) and run_id_or_none(rec.get("run_id")):
                 out.append(rec)
         return out
 
@@ -530,6 +568,8 @@ class Runner:
             "run_id": rec["run_id"],
             "kind": rec.get("kind"),
             "launched_from": "app",
+            # the run this one was chained after (D158), or None: a button press
+            "follows": run_id_or_none(rec.get("follows")),
             "command": clean(rec.get("command"), paths, 200),
             "season": rec.get("season"),
             "week": rec.get("week"),
@@ -574,6 +614,8 @@ class Runner:
                 if "injury-update" in command
                 else "playcalling_update"
                 if "playcalling update" in command
+                else "forecastlab_update"
+                if "forecastlab update" in command
                 else "resume"
                 if "--from-step" in command
                 else "weekly"
@@ -581,11 +623,14 @@ class Runner:
             root = paths.runs
         f = expected = None
         if season is not None and week is not None and "--as-of" not in command:
-            folder = (
-                E.events_dir(paths.playcalling / str(season))
-                if kind == "playcalling_update"
-                else E.events_dir(root / str(season) / f"week{week:02d}")
-            )
+            if kind == "playcalling_update":
+                folder = E.events_dir(paths.playcalling / str(season))
+            elif kind == "forecastlab_update":
+                from nflengine.forecastlab.schema import season_dir
+
+                folder = E.events_dir(season_dir(paths, season))
+            else:
+                folder = E.events_dir(root / str(season) / f"week{week:02d}")
             rid = note.get("run_id")
             if E.valid_run_id(rid):  # the note names its events file exactly
                 expected = folder / f"{rid}.jsonl"
@@ -609,6 +654,7 @@ class Runner:
             "run_id": rid or (f.stem if f is not None else None),
             "kind": kind,
             "launched_from": "terminal",
+            "follows": None,
             "command": clean(command, paths, 200),
             "season": season,
             "week": week,

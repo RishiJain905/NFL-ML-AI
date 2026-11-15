@@ -1,0 +1,7 @@
+/* The Availability and Outcomes week tabs (FL02, D158). Same tokens as app.css; stage 2's mockup
+   adds the rest. */
+.flstrip { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; font-size: 12.5px; color: var(--ink-2); padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); }
+.flstrip > span + span::before { content: '·'; margin-right: 14px; color: var(--ink-3); }
+.flstrip b { color: var(--ink); font-weight: 600; }
+.flacts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; align-items: center; max-width: 100%; }
+.flacts .cmd { max-width: 100%; min-width: 0; } /* a long command scrolls inside its box on a phone */

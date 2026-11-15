@@ -5,12 +5,14 @@ import { NavLink, Navigate, useParams } from 'react-router-dom';
 import { useMeta, useWeekDetail, useWeeks } from '../api/client';
 import { WeekHeader } from '../components/WeekHeader';
 import { comma } from '../lib/format';
+import { AvailabilityTab } from './week/AvailabilityTab';
 import { DigestTab } from './week/DigestTab';
 import { GameDayTab } from './week/GameDayTab';
 import { useCachedLiveCount } from './week/gameday/useCachedLive';
 import { GamesTab } from './week/GamesTab';
 import { GraphTab } from './week/GraphTab';
 import { MlopsTab } from './week/MlopsTab';
+import { OutcomesTab } from './week/OutcomesTab';
 import { PipelineTab } from './week/PipelineTab';
 import { PlayCallsTab } from './week/PlayCallsTab';
 import { PlayersTab } from './week/PlayersTab';
@@ -82,6 +84,8 @@ export function WeekPage() {
         {tab === 'mlops' ? <MlopsTab {...props} /> : null}
         {tab === 'game-day' ? <GameDayTab {...props} /> : null}
         {tab === 'play-calls' ? <PlayCallsTab {...props} /> : null}
+        {tab === 'availability' ? <AvailabilityTab {...props} /> : null}
+        {tab === 'outcomes' ? <OutcomesTab {...props} /> : null}
       </section>
     </>
   );

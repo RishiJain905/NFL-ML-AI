@@ -10,10 +10,12 @@ import {
   failingRun,
   pipelineBase,
   rehearsalRun,
+  RUN_ID,
   runInfo,
   upTo,
   weeklyRun,
 } from '../../components/pipeline/liveFixtures';
+import { runKindOf } from '../../components/pipeline/live';
 import { META, mockApi, renderApp } from '../../test/utils';
 import { installFakeEventSource } from '../../test/fakeEventSource';
 import { PipelineTab } from './PipelineTab';
@@ -84,6 +86,8 @@ const PREFLIGHT: PreflightResponse = {
   resume: { allowed: false, reason: 'No failed run to resume.', command: null, step: null },
   injury_update: { allowed: false, reason: 'Opens Saturday.', command: null, opens: null, closes: null, material_last: null },
   playcalling: { allowed: false, reason: "Needs this week's Tuesday run first (Run week 5).", command: null, steps: [] },
+  forecastlab: { allowed: false, reason: "Needs this week's Tuesday run first (Run week 5).", command: null, steps: [] },
+  chain: true,
   dry_run_log: [
     { ts: '10:00:01', text: 'previous week 4: 16/16 final, complete', cls: 'ok' },
     { ts: '10:00:01', text: 'dry run: would run ingest, ready, curate, ratings, game, graph, player, digest for 2026 week 05', cls: 'ok' },
@@ -284,6 +288,25 @@ describe('PipelineTab: a play-calling update of this week (D132)', () => {
     expect(screen.queryByRole('region', { name: 'Run progress' })).toBeNull();
     expect(screen.queryByText(/A run of this week is in progress/)).toBeNull();
     expect(screen.queryByText('Saturday injury update')).toBeNull();
+  });
+});
+
+describe('PipelineTab: a Forecast lab update of this week (D158)', () => {
+  it.each([
+    ['chained by the app after the run', runInfo({ kind: 'forecastlab_update', run_id: 'fl1', follows: RUN_ID, command: 'nfl forecastlab update --auto --expect-week 5' })],
+    ['from a terminal', runInfo({ kind: 'forecastlab_update', launched_from: 'terminal', run_id: 'fl2', command: 'nfl forecastlab update --auto --expect-week 5' })],
+  ])("isn't the week's run (%s): no stream, no now-bar, no in-progress notice", async (_name, run) => {
+    mockApi({
+      [PIPELINE]: finishedWeek({ log: [{ ts: '20:27:39', text: '$ nfl weekly run --auto --expect-week 5', cls: 'acc' }] }),
+      '/api/run/current': { state: 'running', run } satisfies RunCurrent,
+      '/api/meta': META,
+    });
+    renderApp(<PipelineTab season={2026} week={5} />);
+    expect(await screen.findByRole('heading', { name: 'The run' })).toBeInTheDocument();
+    expect(es.all()).toHaveLength(0);
+    expect(screen.queryByRole('region', { name: 'Run progress' })).toBeNull();
+    expect(screen.queryByText(/A run of this week is in progress/)).toBeNull();
+    expect(runKindOf({ kind: 'terminal', command: run.command })).toBe('forecastlab_update'); // judged by its command
   });
 });
 

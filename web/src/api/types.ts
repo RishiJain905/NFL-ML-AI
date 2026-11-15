@@ -450,7 +450,7 @@ export interface PreflightCheck {
   blocking: boolean; // a `fail` here keeps Run greyed out (Neo4j is warn-only: the run starts it)
 }
 
-export type RunKind = 'weekly' | 'resume' | 'injury_update' | 'playcalling_update';
+export type RunKind = 'weekly' | 'resume' | 'injury_update' | 'playcalling_update' | 'forecastlab_update';
 
 export interface ActionGate {
   allowed: boolean;
@@ -491,6 +491,13 @@ export interface PreflightResponse {
   playcalling: ActionGate & {
     steps: PlaycallUpdateStep[];
   };
+  // D158: the Availability and Outcomes tabs' Update button (`nfl forecastlab update --auto
+  // --expect-week N`); the app also starts it by itself after Run week N / a resume / the injury
+  // update ends well. Same shape as `playcalling` (the type is in the FL02 block)
+  forecastlab: ForecastLabGate;
+  // D158: this app starts the Forecast lab update after a run it launched ends well (false in
+  // rehearsal mode, or when the app runs with the chain off)
+  chain: boolean;
   dry_run_log: LogLine[]; // `nfl weekly run --auto --expect-week N --dry-run`'s lines (read-only)
 }
 
@@ -534,10 +541,13 @@ export interface RunInfo {
   exit_code: number | null;
   message: string | null; // run_end's message (scrubbed)
   published: boolean | null; // the week's digest is published after this run
-  failed_step: StepName | PlaycallUpdateStep['step'] | null; // a play-calling update names its own step
+  failed_step: StepName | PlaycallUpdateStep['step'] | ForecastLabUpdateStep['step'] | null; // an update names its own step
   material: boolean | null; // injury update only: an addendum was published (run_end's `material`)
   has_events: boolean; // an events file exists: GET /api/run/stream replays it
   output_tail: string[]; // last lines of the command's output (scrubbed), only when the run ended without a run_end event
+  // D158: the run this one was chained after (the Forecast lab update the app starts after Run
+  // week N / a resume / the injury update); null for a button press and for terminal runs
+  follows: string | null;
 }
 
 /** GET /api/run/current: the run in progress (also after a page reload), else the last one the app launched. */
@@ -560,7 +570,7 @@ interface EventBase {
 }
 export interface RunStartEvent extends EventBase {
   type: 'run_start';
-  kind: 'weekly' | 'resume' | 'injury_update' | 'playcalling_update' | 'rehearsal';
+  kind: 'weekly' | 'resume' | 'injury_update' | 'playcalling_update' | 'forecastlab_update' | 'rehearsal';
   command: string;
   season: number;
   week: number;
@@ -1413,6 +1423,246 @@ export interface LiveSeasonReviewResponse {
   trend: ReviewTrendRow[];
   calibration: ReviewCalibration | null;
   computed_at: string | null;
+}
+
+// ---------------------------------------------------------------- FL02: Forecast lab
+// GET /api/weeks/{S}/{W}/availability, GET /api/weeks/{S}/{W}/outcomes and
+// GET /api/weeks/{S}/{W}/outcomes/curve?player=<gsis id>&target=<target key>, plus pre-flight's
+// `forecastlab` gate and the runner's fifth kind `forecastlab_update` (D158). Read-only, from the
+// files `nfl forecastlab update` writes under forecastlab/<S>/ (src/nflengine/forecastlab/schema.py;
+// the reader is src/nflengine/app/readers/forecastlab.py). Shares and chances are 0-1. Only
+// shipped outputs are filled: an output that missed its ship rule is null (its baseline isn't).
+// (This block sits before AE01's: tests/app/test_app_forecastlab_contract.py reads it up to the
+// next block header.)
+
+/** `ok`: the week's file is there; `none`: nothing for this week yet; `no_model`: nothing promoted. */
+export type ForecastLabStatus = 'ok' | 'none' | 'no_model';
+/** `tuesday`: what Tuesday's run knows (no injury report); `saturday`: after the final report. */
+export type AvailabilityView = 'tuesday' | 'saturday';
+/** Why a player is on the might-sit list: `report` (Out / Doubtful / Questionable this week),
+ *  `uncertain` (a regular whose chance is low for another reason), `reserve` (on a reserve list:
+ *  not expected back, kept for who took his work). */
+export type RiskGroup = 'report' | 'uncertain' | 'reserve';
+
+/** One step of `nfl forecastlab update` (D158), in run order. */
+export interface ForecastLabUpdateStep {
+  step: 'availability' | 'curves' | 'grade';
+  label: string; // "Availability for week 11 (Saturday view)"
+  due: boolean;
+  reason: string; // why it's due, or why it's skipped
+  week: number | null; // grade: the week just played
+}
+
+/** Pre-flight's `forecastlab` gate: the Availability and Outcomes tabs' Update button. */
+export interface ForecastLabGate {
+  allowed: boolean;
+  reason: string | null; // "Everything is up to date." when nothing is due
+  command: string | null; // "nfl forecastlab update --auto --expect-week 11"
+  steps: ForecastLabUpdateStep[];
+}
+
+/** A teammate who gains when an at-risk player sits (top 3 per kind, gains only). */
+export interface AvailabilityInherit {
+  kind: string; // targets | carries | snaps
+  player_id: string;
+  player: string | null;
+  position: string | null;
+  share_if_in: number | null;
+  share_if_out: number | null;
+  delta: number | null; // share_if_out - share_if_in
+}
+
+/** One player and game: the Saturday view when it exists, else Tuesday's. */
+export interface AvailabilityPlayer {
+  player_id: string;
+  player: string | null;
+  team: string | null;
+  opponent: string | null;
+  home: boolean | null;
+  game_id: string | null;
+  position: string | null;
+  pgroup: string | null; // QB RB WR TE DL LB CB S
+  side: string | null; // off | def
+  view: AvailabilityView;
+  report_status: string | null; // Out | Doubtful | Questionable (Saturday view)
+  practice_status: string | null; // full | limited | dnp
+  prev_status: string | null; // last week's report status
+  roster_status: string | null; // ACT, RES ...
+  p_play: number | null; // the chance he plays
+  p_play_tuesday: number | null; // the Tuesday view's chance (to show how the report moved it)
+  base_p_play: number | null; // the baseline: the rate for his status and group
+  snap_p10: number | null; // snap share if he plays, 80% range
+  snap_p50: number | null;
+  snap_p90: number | null;
+  base_snap: number | null; // the baseline: his mean over his last 2 games
+  exp_snap: number | null; // p_play * snap_p50
+  tgt_share: number | null; // share of the team's targets (WR TE RB)
+  base_tgt_share: number | null;
+  carry_share: number | null; // share of the team's carries (RB, QB)
+  base_carry_share: number | null;
+  at_risk: boolean;
+  games_season: number | null;
+  played: boolean | null; // filled once the game is played
+  actual_snap: number | null;
+  actual_tgt_share: number | null;
+  actual_carry_share: number | null;
+}
+export interface AvailabilityAtRisk extends AvailabilityPlayer {
+  risk_group: RiskGroup;
+  stake: number | null; // playing time at stake: base_snap * (1 - chance); the list's order in a group
+  inherit: AvailabilityInherit[]; // at most 3 per kind, real gains only, teammates likely to play
+}
+export interface AvailabilityMover extends AvailabilityPlayer {
+  change: number; // model - baseline
+}
+
+export interface AvailabilityViewMeta {
+  made_at: string | null;
+  rows: number | null;
+}
+
+export interface AvailabilityScoreRow {
+  view: string;
+  output: string; // play | snap | tgt_share | carry_share
+  group: string; // ALL or a position group
+  n: number;
+  weeks?: number; // the season rows only
+  brier_model: number | null; // output play
+  brier_baseline: number | null;
+  mae_model: number | null; // the share outputs
+  mae_baseline: number | null;
+  coverage_80: number | null; // output snap
+}
+
+export interface AvailabilityResponse {
+  season: number;
+  week: number;
+  status: ForecastLabStatus;
+  hint: string | null; // the empty state's sentence (may hold a `command`)
+  meta: {
+    views: { tuesday?: AvailabilityViewMeta; saturday?: AvailabilityViewMeta };
+    version: string | null;
+    trained_through: string | null; // "2026-w09"
+    shipped: Record<AvailabilityView, string[]>; // the outputs that passed their ship rule, per view
+    games_after_kickoff: string[];
+  } | null;
+  tiles: {
+    players: number;
+    at_risk: number; // the might-sit list's size
+    by_group: Record<RiskGroup, number>;
+    role_floor: number; // a regular: base_snap at least this (0.30)
+    out: number;
+    doubtful: number;
+    questionable: number;
+    view: AvailabilityView;
+  } | null;
+  at_risk: AvailabilityAtRisk[];
+  movers: {
+    snap_up: AvailabilityMover[];
+    snap_down: AvailabilityMover[];
+    targets_up: AvailabilityMover[];
+    carries_up: AvailabilityMover[];
+  };
+  team: string | null; // the team in `players` (`?team=`); null: no team asked, `players` empty
+  players: AvailabilityPlayer[];
+  teams: string[]; // the teams with a game this week
+  graded: boolean; // some row has `played` (a game is over), not "the week is graded"
+  scoreboard: { week: AvailabilityScoreRow[]; season: AvailabilityScoreRow[] };
+}
+
+export interface CurveMark {
+  mark: number | null; // 49.5
+  p_over: number | null; // the curve's chance of more than the mark
+  bell_p_over: number | null; // a bell curve's, for comparison
+}
+export interface CurveGap extends CurveMark {
+  diff: number; // p_over - bell_p_over
+}
+
+/** One player, game and stat: the curve's summary. */
+export interface OutcomeRow {
+  player_id: string;
+  player: string | null;
+  team: string | null;
+  opponent: string | null;
+  game_id: string | null;
+  position: string | null;
+  group: string | null;
+  stat: string; // "rec_yds-wrte"
+  target_label: string | null; // "receiving yards"
+  kind: string | null; // amount | count
+  p10: number | null; // the published projection the curve is built on
+  p50: number | null;
+  p90: number | null;
+  mean: number | null;
+  q05: number | null; // the curve's own quantiles
+  q10: number | null;
+  q25: number | null;
+  q50: number | null;
+  q75: number | null;
+  q90: number | null;
+  q95: number | null;
+  band: number | null; // the band's half-width
+  p_band: number | null; // chance of landing within ±band of the projection
+  bell_p_band: number | null;
+  marks: CurveMark[];
+  gap: CurveGap | null; // the mark where the curve and the bell curve differ most
+  n_analogs: number | null; // past projections the curve was built from
+  actual: number | null; // once the game is played
+  played: boolean | null;
+}
+
+export interface OutcomeTarget {
+  stat: string;
+  label: string;
+  group: string;
+  kind: string;
+  marks: number[];
+  band: number;
+  n: number;
+}
+
+export interface CurveScoreRow {
+  stat: string;
+  n: number;
+  weeks?: number; // the season rows only
+  crps_model: number | null;
+  crps_bell: number | null; // a bell curve through P10 / P90
+  crps_own: number | null; // the player's own past games
+  brier_model: number | null;
+  brier_bell: number | null;
+  brier_own: number | null;
+  band_pred: number | null;
+  band_hit: number | null;
+  pit_ece: number | null; // 0 = perfectly calibrated
+}
+
+export interface OutcomesResponse {
+  season: number;
+  week: number;
+  status: ForecastLabStatus;
+  hint: string | null;
+  meta: {
+    made_at: string | null;
+    rows: number; // rows of the stat in `rows`
+    version: string | null;
+    shipped: string[]; // the target keys that passed their ship rule
+    source_version: string | null; // the player model's version
+    games_after_kickoff: string[];
+  } | null;
+  tiles: { curves: number; players: number; stats: number } | null; // the whole week
+  targets: OutcomeTarget[]; // every stat the week has
+  stat: string | null; // the stat in `rows` (`?target=`; default receiving yards)
+  rows: OutcomeRow[]; // that one stat's curves, biggest projection first
+  gaps: OutcomeRow[]; // where the curve and the simple curve differ most: two per stat
+  graded: boolean;
+  scoreboard: { week: CurveScoreRow[]; season: CurveScoreRow[] };
+}
+
+/** GET .../outcomes/curve: one whole curve. `cdf[i]` = the chance of `grid_lo + i` or fewer. */
+export interface OutcomeCurve extends OutcomeRow {
+  grid_lo: number;
+  cdf: number[];
 }
 
 // ---------------------------------------------------------------- AE01: Ask the Engine

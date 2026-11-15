@@ -2,14 +2,14 @@
 
 Status → see the **Forecast lab** rows in [plans/PROGRESS.md](../plans/PROGRESS.md). Planned 2026-11-14 (Rishi). Decision: D158 in the [decisions log](../10-decisions-log.md).
 
-> **Where it stands (2026-11-14):** this document is written; no code yet. The data probes that fix each model's details could not run: the data drive (D:) stopped answering during the planning session. Sections marked **to confirm in the probe** are the plan, not findings.
+> **Where it stands (2026-11-14, evening):** FL00, FL01 and FL02 are built (D159–D161): both models promoted, the update and the follow-up after a run working, both tabs in the app. This document is the plan as agreed; what was actually built, with real numbers, is in the [guide](../guides/forecast-lab.md), the model cards ([availability and role](../model_cards/availability-and-role.md), [outcome curves](../model_cards/outcome-curves.md)) and each phase file's findings and "As built". FL03 and FL04 are still plans.
 
 The goal is four additions that answer questions the engine can't answer today, each one a **new model or layer beside the existing ones**. The existing models stay exactly as they are (D107).
 
 | # | Addition | The question it answers | Phase | Status |
 |---|---|---|---|---|
-| 1 | **Availability and role** | Will he play, how much, and who gets the work if he doesn't? | FL00 | Building first |
-| 2 | **Outcome curves** | What is the chance he clears 50 yards, or lands between 60 and 90? | FL01 | Building first |
+| 1 | **Availability and role** | Will he play, how much, and who gets the work if he doesn't? | FL00 | Built (D159) |
+| 2 | **Outcome curves** | What is the chance he clears 50 yards, or lands between 60 and 90? | FL01 | Built (D160) |
 | 3 | **Season simulator** | What are each team's playoff, division and seed chances, and how much does this week's game move them? | FL03 | Planned |
 | 4 | **Game-script simulator** | How is this game likely to be played (shootout, blowout, one-score), and what does each player's line look like in each? | FL04 | Planned |
 
@@ -108,7 +108,7 @@ Each tab has a designed empty state before its first refresh, and says when it w
 
 1. **Run week N** starts `nfl weekly run --auto` exactly as today.
 2. When that run ends with the week published, the app starts `nfl forecastlab update --auto --expect-week N` as a follow-up. It has its own progress on the new tabs and its own events file.
-3. The same follow-up starts after the **Saturday injury update**, which gives the availability model its Saturday view.
+3. The same follow-up starts after the **Saturday injury update**, which gives the availability model its Saturday view. The outcome curves are not re-made then: the injury update doesn't change the week's player projections, so the curves stay on Tuesday's (as built; making the curves follow Saturday's news would be a new decision).
 4. A failure in the follow-up never touches the published week. The tabs then show an **Update** button (the same command), which is also the way to refresh after a run started from a terminal.
 
 Rules:
@@ -118,11 +118,13 @@ Rules:
 
 ## 5. Architecture
 
-- **`src/nflengine/forecastlab/`** (new package): `availability.py` and `curves.py` (the models, pure), `runs.py` (files, backtests, W&B), `update.py` (what's due and the update command).
-- **Files** under `{NFL_DATA_ROOT}/forecastlab/<S>/week<NN>/` (`availability.parquet`, `curves.parquet`, `update.json`), season scoreboards beside them, backtests under `forecastlab/backtests/`, models under `models/forecastlab/`.
-- **CLI:** `nfl forecastlab backtest | predict | grade | update`.
-- **W&B:** group `forecast-lab` with its own job types and artifacts (`availability-model`, `curves-model`), each with its own `production` alias.
-- **App:** a fifth runner kind `forecastlab_update`, a pre-flight gate, `GET /api/weeks/{S}/{W}/availability` and `/outcomes`.
+As built (D159–D161); the contract is `src/nflengine/forecastlab/schema.py`.
+
+- **`src/nflengine/forecastlab/`** (new package): `schema.py` (the file layout, every column, the ten curve targets), `availability.py` + `availability_runs.py` and `curves.py` + `curves_runs.py` (each model: pure functions, then the files, backtests and W&B), `update.py` (what's due and the update).
+- **Files** under `{NFL_DATA_ROOT}/forecastlab/<S>/week<NN>/`: `availability.parquet` + `availability.json`, `inherit.parquet`, `curves.parquet` + `curves.json`. Season scoreboards beside the week folders (`availability_scoreboard.parquet`, `curves_scoreboard.parquet`), the update's progress events under `<S>/events/`, backtests under `forecastlab/backtests/`, models under `models/forecastlab/<family>/` with a `production.json` each.
+- **CLI:** `nfl forecastlab backtest | predict | grade --model availability | curves`, and `nfl forecastlab update`.
+- **W&B:** group `forecast-lab`; job types `availability-backtest / -predict / -grade` and `curves-backtest / -predict / -grade`; artifacts `availability-model` and `curves-model`, each with its own `production` alias.
+- **App:** a fifth runner kind `forecastlab_update`, the pre-flight's `forecastlab` gate and `chain` flag, and three read-only GETs: `/api/weeks/{S}/{W}/availability[?team=]`, `/api/weeks/{S}/{W}/outcomes[?target=]`, `/api/weeks/{S}/{W}/outcomes/curve?player=&target=`.
 
 ## 6. The no-touch rule (D107)
 

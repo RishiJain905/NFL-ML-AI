@@ -66,8 +66,8 @@ def lock_target(lock: dict[str, Any], plan: WeekPlan | None) -> tuple[int, int] 
         return None
     if "--as-of" in lock["command"]:  # a time-travel simulation: not the live week
         return None
-    if is_playcalling_update(lock):  # it holds the lock, but none of the week's steps runs
-        return None
+    if is_playcalling_update(lock) or is_forecastlab_update(lock):
+        return None  # it holds the lock, but none of the week's steps runs
     m = _WEEK_ARGS.search(lock["command"])
     if m:
         return int(m.group(1)), int(m.group(2))
@@ -80,6 +80,12 @@ def is_playcalling_update(lock: dict[str, Any]) -> bool:
     """A held lock taken by `nfl playcalling update` (the Play calls tab's button, D132): it
     may re-curate FTN, so it takes the weekly lock, but it runs none of the week's steps."""
     return bool(lock.get("held")) and "playcalling update" in str(lock.get("command") or "")
+
+
+def is_forecastlab_update(lock: dict[str, Any]) -> bool:
+    """A held lock taken by `nfl forecastlab update` (the follow-up after a run, or the
+    Availability / Outcomes tabs' Update button, D158): none of the week's steps runs."""
+    return bool(lock.get("held")) and "forecastlab update" in str(lock.get("command") or "")
 
 
 def is_injury_update(lock: dict[str, Any]) -> bool:

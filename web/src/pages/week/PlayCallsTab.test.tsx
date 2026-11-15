@@ -102,7 +102,7 @@ describe('PlayCallsTab', () => {
     renderApp(<WeekPage />, { route: '/week/2026/5/play-calls', path: '/week/:season/:week/:tab' });
     const tabs = screen.getByRole('navigation', { name: 'Week sections' });
     const names = within(tabs).getAllByRole('link').map((t) => t.textContent);
-    expect(names.slice(-2)).toEqual(['Game day', 'Play calls']);
+    expect(names.slice(-4)).toEqual(['Game day', 'Play calls', 'Availability', 'Outcomes']); // FL02's two tabs follow (D158)
     expect(within(tabs).getByRole('link', { name: 'Play calls' })).toHaveAttribute('aria-current', 'page');
     expect(await screen.findByText(/The forecast arrives in PC02/)).toBeInTheDocument();
   });
