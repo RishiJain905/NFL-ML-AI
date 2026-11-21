@@ -2689,6 +2689,123 @@ def ask_question(
         raise typer.Exit(2)
 
 
+@ask_app.command("agent")
+def ask_agent(
+    question: str = typer.Argument(..., help="The question, in quotes."),
+    model: str | None = typer.Option(
+        None, help="local:<name> (the server at ask.local.base_url) or an OpenRouter model id "
+        "(default ask.llm.model)."  # fmt: skip
+    ),
+    calls: int = typer.Option(3, help="Queries the model may run (the last one is the answer)."),
+    show_query: bool = typer.Option(False, "--show-query", help="Print every query it ran."),
+    json_out: bool = typer.Option(False, "--json", help="Print the whole result as JSON."),
+) -> None:
+    """The query agent: the model queries the stats tables and the graphs itself (read-only)."""
+    import json as _json
+
+    from rich.markup import escape
+
+    from nflengine.ask.agent import QueryAgent
+    from nflengine.ask.llm import AskLLMError, OutOfCredits
+    from nflengine.safetext import scrub_bounded as scrub
+
+    try:
+        agent = QueryAgent.build(model=model, max_calls=calls)
+    except AskLLMError as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(1) from None
+    try:
+        res = agent.ask(question)
+    except OutOfCredits as e:
+        console.print(f"[red]{escape(str(e))}[/]")
+        raise typer.Exit(3) from None
+    finally:
+        agent.close()
+    if json_out:
+        console.print_json(_json.dumps(_scrub_tree(res.to_dict(), scrub), default=str))
+    else:
+        if show_query:
+            for i, s in enumerate(res.steps, start=1):
+                console.print(f"[dim]query {i} ({s.source or s.tool}, {s.kind}, {s.rows} rows):[/]")
+                console.print(escape(scrub(s.query, 4000)))
+        if res.status == "clarify":
+            for c in res.choices:
+                opts = "; ".join(m["label"] for m in c["matches"])
+                console.print(f'Which "{escape(c["text"])}"? {escape(opts)}')
+        elif res.error:
+            console.print(f"[yellow]{escape(res.error)}[/]")
+        if res.columns:
+            console.print(escape(" | ".join(map(str, res.columns))))
+            for r in res.rows[:40]:
+                console.print(escape(" | ".join(scrub(str(v), 200) for v in r)))
+            if len(res.rows) > 40:
+                console.print(f"[dim]... {len(res.rows)} rows in all[/]")
+        if res.reply:
+            console.print(escape(scrub(res.reply, 1000)))
+        console.print(f"[dim]{res.status}, {len(res.steps)} queries, {res.seconds:.1f} s[/]")
+    if res.status == "error":
+        raise typer.Exit(2)
+
+
+bench_app = typer.Typer(
+    help="The query agent's benchmark: `answers`, then `run`, then `grade` (ask/agent_bench/).",
+    no_args_is_help=True,
+)
+ask_app.add_typer(bench_app, name="bench")
+
+
+@bench_app.command("answers")
+def ask_bench_answers() -> None:
+    """Run every golden and held-out reference on today's data into answers.json."""
+    from nflengine.ask.agent_bench import build_answers
+
+    f = build_answers(log=console.print)
+    console.print(f"[green]answers: {f}[/]")
+
+
+@bench_app.command("run")
+def ask_bench_run(
+    model: str | None = typer.Option(None, help="local:<name> or an OpenRouter model id."),
+    label: str = typer.Option(..., help="A short name for the run's file and W&B run."),
+    sets: str = typer.Option("main,holdout", help="main, holdout or both (comma-separated)."),
+    ids: str | None = typer.Option(None, help="Only these question ids, e.g. g001,g014."),
+    n: int | None = typer.Option(None, help="Only the first N questions."),
+    resume: str | None = typer.Option(None, help="An unfinished run file to continue."),
+) -> None:
+    """The agent answers the benchmark's questions (one JSON line each; resumable)."""
+    from nflengine.ask.agent_bench import run_bench
+
+    f = run_bench(
+        model,
+        label,
+        sets=tuple(s for s in sets.split(",") if s),
+        ids=[i for i in (ids or "").split(",") if i] or None,
+        n=n,
+        resume=Path(resume) if resume else None,
+        log=console.print,
+    )
+    console.print(f"[green]run file: {f}[/]")
+
+
+@bench_app.command("grade")
+def ask_bench_grade(
+    run_file: str = typer.Argument(..., help="A run file from `nfl ask bench run`."),
+    no_wandb: bool = typer.Option(False, "--no-wandb", help="Don't log to W&B."),
+    launched_by: str | None = LAUNCHED_BY,
+) -> None:
+    """Grade a run against answers.json; write <run>.summary.json and a W&B run."""
+    import json as _json
+
+    from nflengine.ask.agent_bench import grade
+
+    out = grade(
+        Path(run_file), use_wandb=not no_wandb, launched_by=launched_by, log=console.print
+    )
+    s = out["summary"]
+    console.print_json(_json.dumps({k: v for k, v in s.items() if k != "graded"}, default=str))
+    console.print(f"[green]summary: {out['file']}[/]")
+
+
 @ask_app.command("eval")
 def ask_eval(
     model: str | None = typer.Option(None, help="An OpenRouter model id (default ask.llm.model)."),
