@@ -139,6 +139,14 @@ Spec: `documentation/ask-the-engine/README.md` (+ phase files AE00-AE04). Plain-
 - **The local provider** (`provider: local`): `ask.local.base_url` must be localhost (`_local_url`), no key, `chat_template_kwargs` sent (thinking off), cost a known 0; `make_llm(model="local:<name>")`, `AskConfig.llm_for`, `run_eval` swaps `cfg.llm` for a `local:` model. **The split** (`--generate-model`): `AskEngine.gen_llm` writes generated queries (and their fixes); its calls count in `res.calls`; the summary's model is "<local> + <generator>" (a bake-off entry of its own).
 - Tests: `tests/ask/test_ask_local_model.py` (no Neo4j, no network).
 
+## 14. The query agent and its benchmark (D162)
+
+- `ask/agent.py` (`QueryAgent`): the trained tool shape (three tools, one per source, up to 3 queries, **the last query is the answer**), every query through `Sources.run`; the prompt is `prompts/agent.md` and `tests/ask/test_ask_agent.py` pins its wording and run 2's result format (10 rows, 40-char cells, the error's first line). It builds its own request body in `_chat` (thinking on for `local:`, `LOCAL_TEMPLATE`); `ask.local.chat_template_kwargs` (thinking off) is the engine's, not the agent's.
+- `ask/agent_bench.py`: `answers` (references on today's data; a `ref_error` scores the question wrong for everyone, rebuild until none), `run` (resumable; re-runs the first query when there were turns), `grade` (strict `compare`, the pre-registered loose count `loose_match`, first query; refusals need `refused` / `no_query`; `BENCH_GRADER`).
+- **Before a benchmark after a restart:** Docker Desktop and `asktrainer-neo4j` don't auto-start; start the history graph (`nfl history-graph start`); warm both graphs with full property scans (cold USB reads time out the 10 s guard); then `answers`.
+- **The local server:** the float32-merged Q8_0 only (a bf16 merge loses the RL adapter), llama-server on **8091** (`ask.local.base_url`; another app's Docker container holds 8080), 4 slots, `--reasoning-budget 1024`, no `-kvu`.
+- Result 2026-11-22: step 40 26.7% vs DeepSeek 65.5% strict in this harness (production stays D141). The local model's SQL habits are SQLite's (bare columns beside `GROUP BY`): expect `BinderException` retries on DuckDB.
+
 ## Improving this skill
 
 Update it in the same commit as any change to `src/nflengine/ask/` that changes how things work, and note it in the PROGRESS session log. Never weaken §1.

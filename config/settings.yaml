@@ -238,7 +238,7 @@ ask:                      # Ask the Engine (AE00+; documentation/ask-the-engine/
   # llama-server or LM Studio. `nfl ask eval --model local:<name>` uses it; `ask.llm` above stays
   # the default unless the D154 rule says otherwise. Not a secret: localhost only, no key.
   local:
-    base_url: http://127.0.0.1:8080/v1   # the server's OpenAI-compatible address (localhost only)
+    base_url: http://127.0.0.1:8091/v1   # the server's OpenAI-compatible address (localhost only; 8080 is taken by another app)
     model: spark-x2.6-4b-ask              # the name the server serves the model under
     max_tokens: 1024
     timeout_s: 120

@@ -13,7 +13,7 @@ from nflengine.ask.agent import (
     render,
     system_template,
 )
-from nflengine.ask.agent_bench import grade_one, summarise
+from nflengine.ask.agent_bench import grade_one, loose_match, summarise
 from nflengine.ask.config import ask_config
 from nflengine.ask.guard import QueryFailed, QueryResult, Refused
 
@@ -194,3 +194,22 @@ def test_grading_with_turns_and_on_the_first_query():
     assert grade_one(refuse, no_query)["correct"]
     s = summarise([g, grade_one(refuse, no_query)])
     assert s["main"]["accuracy"] == 1.0 and s["main"]["first_accuracy"] == 0.5
+
+
+def test_a_failed_reply_is_not_a_refusal():
+    refuse = {"id": "g2", "set": "main", "category": "trick", "expect": "refuse", "source": None}
+    assert not grade_one(refuse, {"status": "error", "steps": []})["correct"]
+    assert grade_one(refuse, {"status": "refused", "steps": []})["correct"]
+
+
+def test_the_loose_count_forgives_one_column_and_nothing_else():
+    cols, rows = ["player", "games"], [["A", 3], ["B", 2]]
+    assert loose_match(["name"], [["B"], ["A"]], cols, rows)  # names without the count
+    assert not loose_match(["name"], [["B"], ["C"]], cols, rows)  # a wrong name
+    assert not loose_match(["name"], [["A"]], cols, rows)  # a missing row
+    wk = ["week", "yards", "td"]
+    assert loose_match(["game", "yds", "td"], [["g1", 10, 1], ["g2", 20, 0]], wk,
+                       [[1, 10, 1], [2, 20, 0]])  # fmt: skip
+    assert not loose_match(["game", "yds"], [["g1", 10], ["g2", 20]], wk,
+                           [[1, 10, 1], [2, 20, 0]])  # fmt: skip  (two columns short)
+    assert not loose_match(["n"], [["A"]], ["player"], [["A"]])  # one column: strict only

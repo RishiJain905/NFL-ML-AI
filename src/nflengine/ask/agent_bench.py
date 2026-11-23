@@ -182,6 +182,27 @@ def run_bench(model: str | None, label: str, *, sets: tuple[str, ...] = ("main",
 # ---- 3. grading --------------------------------------------------------------------------------
 
 
+# 2: refusals need `refused` / `no_query`, the loose count, timeouts (2026-11-22)
+BENCH_GRADER = 2
+
+
+def loose_match(got_cols: list[str], got_rows: list[list[Any]], ref_cols: list[str],
+                ref_rows: list[list[Any]]) -> bool:  # fmt: skip
+    """The right answer in a different shape (fixed 2026-11-22 before any DeepSeek result was
+    seen): the strict comparison passes once any one reference column is dropped, at least one
+    column left. It forgives a missing count beside a list of names, or a game id in place of a
+    week; values, rows and every other column must still match. A secondary count only: the
+    headline stays the strict `compare` (D141's rule)."""
+    if len(ref_cols) < 2:
+        return False
+    for j in range(len(ref_cols)):
+        cols = ref_cols[:j] + ref_cols[j + 1 :]
+        rows = [r[:j] + r[j + 1 :] for r in ref_rows]
+        if compare(got_cols, got_rows, cols, rows)[0]:
+            return True
+    return False
+
+
 def grade_one(q: dict[str, Any], r: dict[str, Any]) -> dict[str, Any]:
     """One question's verdicts: `correct` (with turns), `first_correct` (the first query
     alone), and why."""
@@ -191,27 +212,33 @@ def grade_one(q: dict[str, Any], r: dict[str, Any]) -> dict[str, Any]:
            "cost": sum((c.get("cost") or 0.0) for c in r.get("calls") or []),
            "model_calls": len(r.get("calls") or [])}  # fmt: skip
     steps = r.get("steps") or []
+    out["timeouts"] = sum("timeout" in (s.get("code") or "").lower() for s in steps)
     if q["expect"] == "refuse":
-        ok = not steps or r.get("status") == "refused"
-        out.update(correct=ok, first_correct=ok, reason="no query" if ok else "ran a query")
+        # declining is a reply without a query (or the code-level refusal), never a failed call
+        ok = r.get("status") in ("refused", "no_query")
+        why = "no query" if ok else ("ran a query" if steps else f"no reply ({r.get('status')})")
+        out.update(correct=ok, first_correct=ok, loose_correct=ok, reason=why)
         return out
     if q["expect"] == "clarify":
         offered = {m["value"] for c in r.get("choices") or [] for m in c.get("matches") or []}
         missing = [c for c in q.get("choices") or [] if c not in offered]
         ok = r.get("status") == "clarify" and not missing
-        out.update(correct=ok, first_correct=ok,
+        out.update(correct=ok, first_correct=ok, loose_correct=ok,
                    reason="clarified" if ok else f"no clarify ({r.get('status')})")  # fmt: skip
         return out
     if "ref_error" in q:
-        out.update(
-            correct=False, first_correct=False, reason=f"reference failed ({q['ref_error']})"
-        )
+        out.update(correct=False, first_correct=False, loose_correct=False,
+                   reason=f"reference failed ({q['ref_error']})")  # fmt: skip
         return out
     if not r.get("ok"):
         why = r.get("status") if r.get("status") != "answered" else "last query failed"
-        out.update(correct=False, first_correct=False, reason=f"no rows ({why})")
+        out.update(correct=False, first_correct=False, loose_correct=False,
+                   reason=f"no rows ({why})")  # fmt: skip
         return out
     ok, why = compare(r.get("columns") or [], r.get("rows") or [], q["columns"], q["rows"])
+    out["loose_correct"] = ok or loose_match(
+        r.get("columns") or [], r.get("rows") or [], q["columns"], q["rows"]
+    )
     if len(steps) <= 1:
         f_ok, f_why = ok, why
     elif "first_rows" in r:
@@ -241,10 +268,12 @@ def summarise(graded: list[dict[str, Any]]) -> dict[str, Any]:
         ans = [x for x in rows if x["expect"] == "answer"]
         return {"n": len(rows), "accuracy": _acc(rows),
                 "first_accuracy": _acc(rows, "first_correct"),
+                "loose_accuracy": _acc(rows, "loose_correct"),
                 "answer_n": len(ans), "answer_accuracy": _acc(ans),
-                "answer_first_accuracy": _acc(ans, "first_correct")}  # fmt: skip
+                "answer_first_accuracy": _acc(ans, "first_correct"),
+                "answer_loose_accuracy": _acc(ans, "loose_correct")}  # fmt: skip
 
-    s: dict[str, Any] = {"scorer_version": SCORER_VERSION}
+    s: dict[str, Any] = {"scorer_version": SCORER_VERSION, "bench_grader": BENCH_GRADER}
     for name in ("main", "holdout"):
         rows = [x for x in graded if x["set"] == name]
         if not rows:
@@ -265,6 +294,7 @@ def summarise(graded: list[dict[str, Any]]) -> dict[str, Any]:
     s["cost_total"] = round(sum(x["cost"] for x in graded), 6)
     s["cost_per_question"] = round(s["cost_total"] / len(graded), 6) if graded else None
     s["errors"] = sum(x["status"] == "error" for x in graded)
+    s["timeouts"] = sum(x.get("timeouts", 0) for x in graded)
     return s
 
 

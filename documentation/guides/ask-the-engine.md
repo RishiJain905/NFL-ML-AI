@@ -473,3 +473,62 @@ AE03 added **person links** to the history graph (`nfl history-graph derive`, [h
 **The fix was the templates', not the model's:** `history_coach_colleagues` had no `limit` at all, and `history_most_snaps_with`'s description didn't say a single answer is `limit: 1`. Template answers took 1.4–2.3 s (the router call), the free-form one 18 s. The rest of the golden set wasn't re-run (nothing in its path changed but the schema text; the live tests ran every reference and every template through the guard: `uv run pytest -m integration tests/ask/test_ask_history_live.py`).
 
 **g141 is the unstable one:** three runs took three routes (a generated count of every passer, a generated count of QBs, a template list). Not re-run again (the paid-evals rule); total spent on the new ids $0.021 of the $0.30.
+
+## 17. The query agent and its benchmark (2026-11-22, D162)
+
+### 17.1 What it is
+
+Everything above is the **engine**: a question goes to a template, or the model writes one query in a JSON reply. The **query agent** is the other common shape for text-to-query, the one the fine-tuned SQL + Cypher model was trained on (nfl-ask-trainer, then reinforcement learning in NFL-RL). The model is handed the schemas and three tools and does the querying itself:
+
+| Tool | Runs on |
+|---|---|
+| `query_stats` | DuckDB SQL on the curated stats tables |
+| `query_weekly_graph` | Cypher on the weekly knowledge graph |
+| `query_history_graph` | Cypher on the history graph (every play since 2018) |
+
+It picks a tool, sees the result (a table of up to 10 rows with cells cut at 40 characters, `0 rows`, or `Error: ` and the database's first error line), may query again, at most 3 queries, and **the last query it ran is its answer**. Then it replies with a sentence. It shares the engine's safety: every query goes through the same guard (§4), and the length, write-intent, weekly-lock and "which one?" checks run before any model call. It never grades itself.
+
+```
+uv run nfl ask agent "Who led the NFL in rushing yards in 2024?" --model local:<name> --show-query
+uv run nfl ask agent "..." --model deepseek/deepseek-v4.1-flash-1017 --json
+```
+
+Files: `src/nflengine/ask/agent.py`, its prompt `src/nflengine/ask/prompts/agent.md` (the trainer's tool prompt plus run 2's "one query at a time" rule), tests `tests/ask/test_ask_agent.py`.
+
+### 17.2 The benchmark
+
+`src/nflengine/ask/agent_bench.py` keeps the answers apart from the agent:
+
+```
+uv run nfl ask bench answers                     # run every reference on today's data
+uv run nfl ask bench run --model <id> --label <name> [--sets main,holdout] [--n 10] [--resume <file>]
+uv run nfl ask bench grade <run file>            # summary file + W&B run (group ask-agent-bench)
+```
+
+- `answers` runs the golden and held-out sets' reference queries (§6) and writes `ask/agent_bench/answers.json` on D: with the data's dates and the sets' hashes. A reference that fails is kept with `ref_error` and that question is scored wrong for every model, so rebuild until there are none.
+- **Warm the graphs first after a restart.** Both Neo4j stores live on the USB drive and read cold: heavy reference queries took 14-117 s the first time (the guard's limit is 10 s) and 0.0 s once read. A full scan of every node's and relationship's properties warms them (weekly graph 71 s, history graph 23 s on 2026-11-22).
+- `run` writes one JSON line per question to `ask/agent_bench/runs/<stamp>_<label>.jsonl`; when the agent queried more than once it also re-runs the first query, so "the first query alone" can be graded. `--resume` skips the ids already in the file.
+- `grade` scores three ways: **strict** (`evaluate.compare`, the same rule as the engine's 94%: every reference column must be there), **loose** (strict once any one reference column is dropped: a list of names without its count, a game id in place of a week; the rule was fixed before any comparison was seen) and **first query only**. A trick question counts only when the agent declined (no query, or the guard's refusal); a "which one?" question when the choices were offered. Timeouts are counted on their own.
+
+### 17.3 Result: the RL model against DeepSeek (2026-11-22)
+
+165 questions (main 125, held-out 40), the same harness, graphs warm, 0 timeouts:
+
+| | Step 40 (NFL-RL run 2, Q8_0, local) | DeepSeek V4.1 Flash, max |
+|---|---|---|
+| Strict, all | 26.7% | 65.5% |
+| Main / held-out (strict) | 22.4% / 40.0% | 64.8% / 67.5% |
+| SQL / weekly graph / history answers | 31.7 / 12.5 / 12.0% | 73.0 / 53.6 / 48.0% |
+| Trick questions declined | 7 of 14 | 13 of 14 |
+| Loose, all | 32.7% | 69.7% |
+| First query only | 23.6% | 74.5% |
+| Median time a question | 6.7 s | 4.9 s |
+| Cost | $0 (the GPU) | $0.18 |
+
+DeepSeek was right on 71 questions step 40 missed, step 40 on 7 that DeepSeek missed (sign test p = 2e-14). W&B: [lp4yfe06](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/lp4yfe06) (step 40), [up3k6jso](https://wandb.ai/models-ontario-tech-university/nfl-analytics-engine/runs/up3k6jso) (DeepSeek).
+
+How to read it:
+- **The engine stays on DeepSeek** (D141, D162). DeepSeek's 94% / 91% through the engine is higher than its 66% here because the engine's templates and conventions do much of the work; this table compares the two models in the plain agent shape only.
+- **Why the 4B model misses:** wrong rows (54 of its 114 missed answers), a last query that failed (17, mostly Cypher syntax: undefined variables, SQL written inside Cypher), the wrong database (it chose the reference's 63% of the time, often the history graph for a weekly-graph question), and a habit from training: its SQL was checked on SQLite, which accepts a bare column beside `GROUP BY`; DuckDB refuses that, and the model often sent the same query again.
+- **"The last query is the answer" hurts DeepSeek:** it often ends with a checking query, so 23 of its right first queries became wrong final answers (8 went the other way).
+- **Serving the local model:** use the **float32-merged** Q8_0 (NFL-RL's rollout model). A bf16 merge loses the RL changes (they are smaller than bf16's step): its Q8_0 scored 46.7% on NFL-RL's evalset against the adapter's 60.2%. `ask.local.base_url` is port 8091, because another app's Docker container holds 8080.
