@@ -416,7 +416,7 @@ class TestLocalProvider:
 
         def handler(request: httpx.Request) -> httpx.Response:
             seen.append(json.loads(request.content))
-            assert str(request.url) == "http://127.0.0.1:8080/v1/chat/completions"
+            assert str(request.url) == "http://127.0.0.1:8091/v1/chat/completions"
             assert "authorization" not in request.headers
             return httpx.Response(
                 200,

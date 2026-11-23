@@ -39,7 +39,7 @@ class AskLocalConfig(BaseModel):
     """`ask.local`: the fine-tuned local model (AE04). `nfl ask eval --model local:<name>`
     runs the golden set against it; `<name>` is the model name the server was started with."""
 
-    base_url: str = "http://127.0.0.1:8080/v1"
+    base_url: str = "http://127.0.0.1:8091/v1"  # 8080 is held by another app (D162)
     model: str = "spark-x2.6-4b-ask"
     max_tokens: int = 1024
     timeout_s: float = 120.0
